@@ -1,1 +1,0 @@
-from HeritageConnector import HeritageConnector
