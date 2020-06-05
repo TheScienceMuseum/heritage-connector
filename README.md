@@ -24,7 +24,8 @@ Transforming text into data to extract meaning and make connections
 ## Local development
 
 - Python 3
-- We use [pipenv](https://pipenv-fork.readthedocs.io/en/latest/index.html) to manage virtual enviroments.
+- Flask8 linting
+- We use [pipenv](https://pipenv-fork.readthedocs.io/en/latest/index.html) to manage virtual enviroments
 - Create a new branch / Pull Request for each new feature / unit of functionality
 
 ## Running
