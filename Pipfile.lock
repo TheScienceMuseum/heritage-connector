@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "bbf559282eabf9ac9d713a2de3dd5cac67d0902262ea8972250f623e2add6262"
+            "sha256": "a82b674d67d29678775ff6b773de1686a9593749ec14483b0d8e05131b662286"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -31,10 +31,6 @@
             ],
             "index": "pypi",
             "version": "==1.1.2"
-        },
-        "heritage-connector-pkg": {
-            "file": "file:///Users/jamieunwin/projects/heritage-connector",
-            "version": "==0.0.1"
         },
         "itsdangerous": {
             "hashes": [

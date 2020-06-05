@@ -6,7 +6,6 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-heritage-connector-pkg = {file = "file:///Users/jamieunwin/projects/heritage-connector"}
 flask = "*"
 
 [requires]
