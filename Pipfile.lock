@@ -1,0 +1,25 @@
+{
+    "_meta": {
+        "hash": {
+            "sha256": "2aff921fa7efc0f8e8321705c57a63bdd60590bf7bf669ee8a257693e24da3a3"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "3.7"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "heritage-connector-pkg": {
+            "file": "file:///Users/jamieunwin/projects/heritage-connector",
+            "version": "==0.0.1"
+        }
+    },
+    "develop": {}
+}
