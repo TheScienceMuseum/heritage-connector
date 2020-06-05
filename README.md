@@ -10,15 +10,20 @@ Transforming text into data to extract meaning and make connections
 - Project team and partners
 - Getting involved
 
-## Core components 
+## Core components
 
+- Heritage Connector
+- Ingest
+- Process
 - API
+- Dashboard
 
 ## Demonstrator apps and widgets
 
 
 ## Local development
 
+## Running
 
 ## Deployment
 
