@@ -5,7 +5,6 @@ repos:
     -   id: check-json
     -   id: check-merge-conflict
     -   id: detect-aws-credentials
-    -   id: requirements-txt-fixer
 -   repo: https://gitlab.com/pycqa/flake8
     rev: 3.7.9
     hooks:
