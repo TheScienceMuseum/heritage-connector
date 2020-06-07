@@ -5,7 +5,7 @@ repos:
     -   id: check-json
     -   id: check-merge-conflict
     -   id: detect-aws-credentials
--   repo: https://gitlab.com/pycqa/flake8
-    rev: 3.7.9
-    hooks:
-    - id: flake8
+# -   repo: https://gitlab.com/pycqa/flake8
+#     rev: 3.7.9
+#     hooks:
+#     - id: flake8
