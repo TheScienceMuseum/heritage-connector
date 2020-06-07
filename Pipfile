@@ -10,6 +10,8 @@ pre-commit = "*"
 flask = "*"
 pre-commit = "*"
 flake8 = "*"
+spacy = "*"
+lxml = "*"
 
 [requires]
 python_version = "3.7"
