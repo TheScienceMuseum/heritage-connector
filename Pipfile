@@ -5,6 +5,8 @@ verify_ssl = true
 
 [dev-packages]
 pre-commit = "*"
+jupyterlab = "*"
+matplotlib = "*"
 black = "*"
 
 [packages]
@@ -13,6 +15,7 @@ pre-commit = "*"
 flake8 = "*"
 spacy = "*"
 lxml = "*"
+pandas = "*"
 
 [requires]
 python_version = "3.7"
