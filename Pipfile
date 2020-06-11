@@ -7,6 +7,7 @@ verify_ssl = true
 pre-commit = "*"
 jupyterlab = "*"
 matplotlib = "*"
+black = "*"
 
 [packages]
 flask = "*"
@@ -18,3 +19,6 @@ pandas = "*"
 
 [requires]
 python_version = "3.7"
+
+[pipenv]
+allow_prereleases = true
