@@ -1,6 +1,9 @@
 branch-defaults:
   awsdeployment:
     environment: heritageconnector-dev
+  feature/url_to_wid:
+    environment: heritageconnector-dev
+    group_suffix: null
 global:
   application_name: heritageconnector
   branch: null
@@ -11,7 +14,7 @@ global:
   instance_profile: null
   platform_name: null
   platform_version: null
-  profile: null
+  profile: hc
   repository: null
   sc: git
   workspace_type: Application
