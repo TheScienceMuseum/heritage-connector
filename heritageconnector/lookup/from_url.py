@@ -15,8 +15,8 @@ class wikidata_id:
     """
 
     """
-        Wikidata IDs
-        ============
+        Wikidata Property IDs
+        =====================
 
         oxfordnb.com => https://www.wikidata.org/wiki/Property:P1415
         getty.edu => https://www.wikidata.org/wiki/Property:P1667
