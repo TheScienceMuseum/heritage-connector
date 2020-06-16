@@ -1,9 +1,10 @@
 from urllib.parse import urlparse
 import urllib
-from SPARQLWrapper import SPARQLWrapper, JSON
 import time
 import json
 import re
+from ..utils.sparql import get_sparql_results
+from ..utils.generic import extract_json_values
 
 # methods to exchange URLs for IDs (e.g. wikidata ID)
 
@@ -41,7 +42,6 @@ class wikidata_id:
     def __init__(self):
         self._domain_method_mapping = {
             "oxforddnb.com": self.from_oxdnb,
-            "getty.edu": self.from_getty,
             "en.wikipedia.org": self.from_wikipedia,
         }
 
@@ -109,7 +109,7 @@ class wikidata_id:
             }}
         """
 
-        res = self.get_sparql_results(endpoint_url, query)
+        res = get_sparql_results(endpoint_url, query)
 
         if res:
             wikidata = res["results"]["bindings"]
@@ -118,31 +118,6 @@ class wikidata_id:
                 wikidata_id = re.findall(r"(Q\d+)", wikidata_url)[0]
 
                 return wikidata_id
-
-    @classmethod
-    def get_sparql_results(self, endpoint_url: str, query: str) -> dict:
-        """
-        Makes a SPARQL query to endpoint_url. 
-
-        Args:
-            endpoint_url (str): query endpoint
-            query (str): SPARQL query
-
-        Returns:
-            query_result (dict): the JSON result of the query as a dict
-        """
-        time.sleep(2)
-        sparql = SPARQLWrapper(endpoint_url)
-        sparql.setQuery(query)
-        sparql.setReturnFormat(JSON)
-        try:
-            return sparql.query().convert()
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                print("429 code : sleeping for 60 seconds")
-                time.sleep(60)
-                return self.get_sparql_results(endpoint_url, query)
-            raise
 
     @classmethod
     def from_oxdnb(self, url):
@@ -170,29 +145,8 @@ class wikidata_id:
         res = urllib.request.urlopen(endpoint)
         res_body = res.read()
         data = json.loads(res_body.decode("utf-8"))
-        wikibase_item = self.extract_json_values(data, "wikibase_item")
+        wikibase_item = extract_json_values(data, "wikibase_item")
         if wikibase_item and wikibase_item[0]:
             return wikibase_item[0]
         else:
             return
-
-    @staticmethod
-    def extract_json_values(obj, key):
-        """ Pull all values of specified key from nested JSON."""
-        arr = []
-
-        def extract(obj, arr, key):
-            """ Recursively search for values of key in JSON tree. """
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    if isinstance(v, (dict, list)):
-                        extract(v, arr, key)
-                    elif k == key:
-                        arr.append(v)
-            elif isinstance(obj, list):
-                for item in obj:
-                    extract(item, arr, key)
-            return arr
-
-        results = extract(obj, arr, key)
-        return results
