@@ -5,6 +5,7 @@ import json
 import re
 from ..utils.sparql import get_sparql_results
 from ..utils.generic import extract_json_values
+import requests
 
 # methods to exchange URLs for IDs (e.g. wikidata ID)
 
@@ -22,7 +23,7 @@ class wikidata_id:
         =====================
 
         oxfordnb.com => https://www.wikidata.org/wiki/Property:P1415
-        getty.edu (artist names) => https://www.wikidata.org/wiki/Property:P245
+        getty.edu (ULAN) => https://www.wikidata.org/wiki/Property:P245
         gracesguide.co.uk => https://www.wikidata.org/wiki/Property:P3074
         books.google.co.uk => https://www.wikidata.org/wiki/Property:P675
         britannica.com => https://www.wikidata.org/wiki/Property:P1417
@@ -41,18 +42,28 @@ class wikidata_id:
     """
 
     def __init__(self):
-        # TODO (KD): change to {domain: (method, uid_pattern, pid)}
         self._domain_method_mapping = {
-            "oxforddnb.com": self.from_oxdnb,
-            "en.wikipedia.org": self.from_wikipedia,
-            "getty.edu": self.from_getty,
-            "gracesguide.co.uk": self.from_graces_guide,
-            "books.google.co.uk": self.from_google_books,
+            "en.wikipedia.org": self.from_wikipedia,  # we use the API
+            "getty.edu": self.from_getty,  # there's more than 1 URL
+            "britannica.com": self.from_britannica,  # old url formats in collection
+        }
+
+        # domain: (uid_from_url_regex, pid)
+        # uid_regex is the regex in re.findall(uid_regex, url)[0]
+        # that produces the URL
+        self._domain_regex_mapping = {
+            "oxforddnb.com": (r"/article/(\d+)", "P1415"),
+            "gracesguide.co.uk": (r"gracesguide.co.uk/(.*)", "P3074"),
+            "books.google.co.uk": (r"id=(\w+)", "P675"),
+            "discovery.nationalarchives.gov.uk": (r"details/c/([A-Z]\d+)", "P3029"),
+            "viaf.org": (r"/viaf/([1-9]\d(\d{0,7}|\d{17,20}))", "P214"),
         }
 
     @classmethod
     def get_enabled_domains(self):
-        return tuple(self()._domain_method_mapping.keys())
+        return tuple(self()._domain_method_mapping.keys()) + tuple(
+            self()._domain_regex_mapping.keys()
+        )
 
     @staticmethod
     def get_domain_from_url(url):
@@ -77,32 +88,19 @@ class wikidata_id:
             raise Exception(f"PARSING FAILED: {url}")
 
     @classmethod
-    def check_domain_enabled(self, domain):
-        """
-        Checks whether the domain can be handled.
-
-        Args:
-            domain (str): in the format XXXX.co.uk
-
-        Returns:
-            boolean
-        """
-
-        if domain in self.get_enabled_domains():
-            return True
-        else:
-            raise ValueError(f"Domain {domain} not currently handled.")
-
-    @classmethod
-    def get(self, url):
+    def get(self, url: str) -> str:
         """
         Resolves URL to a Wikidata ID.
         """
 
         domain = self.get_domain_from_url(url)
 
-        if self.check_domain_enabled(domain):
+        if domain in self()._domain_method_mapping.keys():
             return self()._domain_method_mapping[domain](url)
+
+        elif domain in self()._domain_regex_mapping.keys():
+            pattern, pid = self()._domain_regex_mapping[domain]
+            return self.from_regex(url, pattern, pid)
 
     @classmethod
     def lookup_wikidata_id(self, pid: str, uid: str) -> str:
@@ -139,20 +137,38 @@ class wikidata_id:
                 return wikidata_id
 
     @classmethod
-    def from_oxdnb(self, url: str):
+    def from_regex(self, url: str, uid_pattern: str, pid: str) -> str:
         """
         Given an Oxford DNB URL e.g. https://www.oxforddnb.com/view/article/23105, return the Wikidata ID.
+
+        Args:
+            url (str): the URL of the page
+            uid_pattern (str): the regex pattern to extract the uid from the URL
+            pid (str): the Wikidata property ID for the domain
+        Returns:
+            qcode (str)
         """
 
-        uid = re.findall(r"/article/(\d+)", url)[0]
-        qcode = self.lookup_wikidata_id("P1415", uid)
+        matches = re.search(uid_pattern, url)
 
-        return qcode
+        # if there's a match return the qcode, if not return empty string
+        #  TODO: fail better
+        if matches[1]:
+            uid = matches[1]
+            qcode = self.lookup_wikidata_id(pid, uid)
+            return qcode
+        else:
+            return ""
 
     @classmethod
-    def from_wikipedia(self, url: str):
+    def from_wikipedia(self, url: str) -> str:
         """
         Given a Wikipedia URL e.g. https://en.wikipedia.org/wiki/Joseph_Lister, return the Wikidata ID.
+
+        Args:
+            url (str)
+        Returns: 
+            qcode (str)
         """
 
         path = re.findall("/wiki/(.*)", url)[0]
@@ -171,7 +187,7 @@ class wikidata_id:
             return
 
     @classmethod
-    def from_getty(self, url: str):
+    def from_getty(self, url: str) -> str:
         """
         Given a Getty URL e.g. 
         https://www.getty.edu/vow/ULANFullDisplay?find=Wheldon&role=&nation=&prev_page=1&subjectid=500044753 
@@ -179,6 +195,8 @@ class wikidata_id:
 
         Args:
             url (str)
+        Returns: 
+            qcode (str)
         """
 
         # extract ID from URL
@@ -190,29 +208,21 @@ class wikidata_id:
         return self.lookup_wikidata_id("P245", uid)
 
     @classmethod
-    def from_graces_guide(self, url: str):
+    def from_britannica(self, url: str) -> str:
         """
-        Given a Grace's Guide URL e.g. https://www.gracesguide.co.uk/Maudslay,_Sons_and_Field,
-        return the Wikidata ID.
+        Given a britannica.com URL, return the Wikidata ID.
 
         Args:
             url (str)
+        Returns: 
+            qcode (str)
         """
 
-        uid = re.findall(r"gracesguide.co.uk/(.*)", url)[0]
+        # get redirected (new) URL
+        r = requests.get(url)
+        redirected_url = r.url
 
-        return self.lookup_wikidata_id("P3074", uid)
+        pattern = r"((?:biography|topic|place|science|animal|event|art|technology|plant|sports)\/.*)$"
+        pid = "P1417"
 
-    @classmethod
-    def from_google_books(self, url: str):
-        """
-        Given a Google Books URL e.g. https://books.google.co.uk/books?id=RMMRRho44EsC&hl=en,
-        return the Wikidata ID.
-
-        Args:
-            url (str)
-        """
-
-        uid = re.findall(r"id=(\w+)")[0]
-
-        return self.lookup_wikidata_id("P675", uid)
+        return self.from_regex(redirected_url, pattern, pid)
