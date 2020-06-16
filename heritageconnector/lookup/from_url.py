@@ -1,5 +1,7 @@
-from urllib.parse import urlparse, request
-from qwikidata.sparql import return_sparql_query_results
+from urllib.parse import urlparse
+import urllib
+from SPARQLWrapper import SPARQLWrapper, JSON
+import time
 import json
 import re
 
@@ -55,7 +57,7 @@ class wikidata_id:
         Args:
             url (str): URL in the usual format.
         """
-
+        # TODO (KD): get this to work when no http://
         domain = urlparse(url).netloc
 
         return domain
@@ -83,48 +85,89 @@ class wikidata_id:
         if self.check_domain_enabled(domain):
             return self._domain_method_mapping[domain](url)
 
-    def lookup_wikidata_id(pid, uid):
+    @classmethod
+    def lookup_wikidata_id(self, pid: str, uid: str) -> str:
         """
-        lookup UID on Wikidata against given property ID of source
+        Lookup UID on Wikidata against given property ID of source
+
+        Args:
+            pid (str): Property ID of source (e.g. OxDnB ID: P1415)
+            uid (str): Value of source ID (e.g. an OxDnB ID: 23105)
+
+        Returns:
+            qcode: Wikidata qcode in format Q(d+)
         """
 
-        sparql_query = f"""
+        endpoint_url = "https://query.wikidata.org/sparql"
+
+        query = f"""
             SELECT ?item ?itemLabel WHERE {{
-                ?item wdt:"{pid}" "{uid}".
+                ?item wdt:{pid} "{uid}".
                 SERVICE wikibase:label {{
                     bd:serviceParam wikibase:language "en" .
                 }}
             }}
         """
 
-        res = return_sparql_query_results(sparql_query)
-        qcode = res["results"]["bindings"][0]["item"]["value"]
+        res = self.get_sparql_results(endpoint_url, query)
 
-        return qcode
+        if res:
+            wikidata = res["results"]["bindings"]
+            if wikidata and wikidata[0]:
+                wikidata_url = wikidata[0]["item"]["value"]
+                wikidata_id = re.findall(r"(Q\d+)", wikidata_url)[0]
 
+                return wikidata_id
+
+    @classmethod
+    def get_sparql_results(self, endpoint_url: str, query: str) -> dict:
+        """
+        Makes a SPARQL query to endpoint_url. 
+
+        Args:
+            endpoint_url (str): query endpoint
+            query (str): SPARQL query
+
+        Returns:
+            query_result (dict): the JSON result of the query as a dict
+        """
+        time.sleep(2)
+        sparql = SPARQLWrapper(endpoint_url)
+        sparql.setQuery(query)
+        sparql.setReturnFormat(JSON)
+        try:
+            return sparql.query().convert()
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                print("429 code : sleeping for 60 seconds")
+                time.sleep(60)
+                return self.get_sparql_results(endpoint_url, query)
+            raise
+
+    @classmethod
     def from_oxdnb(self, url):
         """
         Given an Oxford DNB URL e.g. https://www.oxforddnb.com/view/article/23105, return the Wikidata ID.
         """
 
-        match = re.search(r"/article/(\d+)", url)
-        uid = match[1]
+        uid = re.findall(r"/article/(\d+)", url)[0]
         qcode = self.lookup_wikidata_id("P1415", uid)
 
         return qcode
 
+    @classmethod
     def from_wikipedia(self, url):
         """
-        Given a Wikipedia URL e.g. https://en.wikipedia.org/wiki/Joseph_Lister, return the WIkidata ID.
+        Given a Wikipedia URL e.g. https://en.wikipedia.org/wiki/Joseph_Lister, return the Wikidata ID.
         """
 
-        path = urlparse(url).path
+        path = re.findall("/wiki/(.*)", url)[0]
         endpoint = (
             "https://en.wikipedia.org/w/api.php?action=query&prop=pageprops&titles="
             + path
             + "&format=json"
         )
-        res = request.urlopen(endpoint)
+        res = urllib.request.urlopen(endpoint)
         res_body = res.read()
         data = json.loads(res_body.decode("utf-8"))
         wikibase_item = self.extract_json_values(data, "wikibase_item")

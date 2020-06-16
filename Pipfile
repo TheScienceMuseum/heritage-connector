@@ -8,6 +8,7 @@ pre-commit = "*"
 jupyterlab = "*"
 matplotlib = "*"
 black = "*"
+pytest = "*"
 
 [packages]
 flask = "*"
@@ -16,7 +17,7 @@ flake8 = "*"
 spacy = "*"
 lxml = "*"
 pandas = "*"
-qwikidata = "*"
+sparqlwrapper = "*"
 
 [requires]
 python_version = "3.7"
