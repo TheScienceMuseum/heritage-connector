@@ -1,4 +1,4 @@
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 import urllib
 import time
 import json
@@ -22,8 +22,9 @@ class wikidata_id:
         =====================
 
         oxfordnb.com => https://www.wikidata.org/wiki/Property:P1415
-        getty.edu => https://www.wikidata.org/wiki/Property:P1667
-        graceguide.co.uk => https://www.wikidata.org/wiki/Property:P3074
+        getty.edu (artist names) => https://www.wikidata.org/wiki/Property:P245
+        gracesguide.co.uk => https://www.wikidata.org/wiki/Property:P3074
+        books.google.co.uk => https://www.wikidata.org/wiki/Property:P675
         britannica.com => https://www.wikidata.org/wiki/Property:P1417
         nationalarchives.gov.uk => https://www.wikidata.org/wiki/Property:P3029
         npg.org.uk => https://www.wikidata.org/wiki/Property:P1816
@@ -40,14 +41,18 @@ class wikidata_id:
     """
 
     def __init__(self):
+        # TODO (KD): change to {domain: (method, uid_pattern, pid)}
         self._domain_method_mapping = {
             "oxforddnb.com": self.from_oxdnb,
             "en.wikipedia.org": self.from_wikipedia,
+            "getty.edu": self.from_getty,
+            "gracesguide.co.uk": self.from_graces_guide,
+            "books.google.co.uk": self.from_google_books,
         }
 
-    @property
-    def enabled_domains(self):
-        return self._enabled_domains
+    @classmethod
+    def get_enabled_domains(self):
+        return tuple(self()._domain_method_mapping.keys())
 
     @staticmethod
     def get_domain_from_url(url):
@@ -57,11 +62,21 @@ class wikidata_id:
         Args:
             url (str): URL in the usual format.
         """
-        # TODO (KD): get this to work when no http://
-        domain = urlparse(url).netloc
 
-        return domain
+        try:
+            # if the url doesn't start with http, the main bit of the url ends up in path
+            domain = urlsplit(url).netloc or urlsplit(url).path
 
+            # remove www. and slug if present
+            domain = re.sub("^www.", "", domain)
+            domain = re.sub("/.*$", "", domain)
+
+            return domain
+
+        except:
+            raise Exception(f"PARSING FAILED: {url}")
+
+    @classmethod
     def check_domain_enabled(self, domain):
         """
         Checks whether the domain can be handled.
@@ -73,8 +88,12 @@ class wikidata_id:
             boolean
         """
 
-        return domain in self._domain_method_mapping.keys()
+        if domain in self.get_enabled_domains():
+            return True
+        else:
+            raise ValueError(f"Domain {domain} not currently handled.")
 
+    @classmethod
     def get(self, url):
         """
         Resolves URL to a Wikidata ID.
@@ -83,7 +102,7 @@ class wikidata_id:
         domain = self.get_domain_from_url(url)
 
         if self.check_domain_enabled(domain):
-            return self._domain_method_mapping[domain](url)
+            return self()._domain_method_mapping[domain](url)
 
     @classmethod
     def lookup_wikidata_id(self, pid: str, uid: str) -> str:
@@ -120,7 +139,7 @@ class wikidata_id:
                 return wikidata_id
 
     @classmethod
-    def from_oxdnb(self, url):
+    def from_oxdnb(self, url: str):
         """
         Given an Oxford DNB URL e.g. https://www.oxforddnb.com/view/article/23105, return the Wikidata ID.
         """
@@ -131,7 +150,7 @@ class wikidata_id:
         return qcode
 
     @classmethod
-    def from_wikipedia(self, url):
+    def from_wikipedia(self, url: str):
         """
         Given a Wikipedia URL e.g. https://en.wikipedia.org/wiki/Joseph_Lister, return the Wikidata ID.
         """
@@ -150,3 +169,50 @@ class wikidata_id:
             return wikibase_item[0]
         else:
             return
+
+    @classmethod
+    def from_getty(self, url: str):
+        """
+        Given a Getty URL e.g. 
+        https://www.getty.edu/vow/ULANFullDisplay?find=Wheldon&role=&nation=&prev_page=1&subjectid=500044753 
+        or http://vocab.getty.edu/page/ulan/500044753, return the Wikidata ID.
+
+        Args:
+            url (str)
+        """
+
+        # extract ID from URL
+        if "ulanfulldisplay" in url.lower():
+            uid = re.findall(r"subjectid=(\d+)", url)[0]
+        elif "ulan" in url.lower():
+            uid = re.findall(r"/ulan/(\d+)", url)[0]
+
+        return self.lookup_wikidata_id("P245", uid)
+
+    @classmethod
+    def from_graces_guide(self, url: str):
+        """
+        Given a Grace's Guide URL e.g. https://www.gracesguide.co.uk/Maudslay,_Sons_and_Field,
+        return the Wikidata ID.
+
+        Args:
+            url (str)
+        """
+
+        uid = re.findall(r"gracesguide.co.uk/(.*)", url)[0]
+
+        return self.lookup_wikidata_id("P3074", uid)
+
+    @classmethod
+    def from_google_books(self, url: str):
+        """
+        Given a Google Books URL e.g. https://books.google.co.uk/books?id=RMMRRho44EsC&hl=en,
+        return the Wikidata ID.
+
+        Args:
+            url (str)
+        """
+
+        uid = re.findall(r"id=(\w+)")[0]
+
+        return self.lookup_wikidata_id("P675", uid)
