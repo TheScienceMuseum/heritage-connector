@@ -13,9 +13,6 @@ import requests
 class wikidata_id:
     """
     Get a Wikidata ID from a URL, where this process involves a direct lookup on Wikidata.
-
-    Attributes:
-        _domain_method_mapping (dict): mapping from domains in the format XXXX.co.uk to class methods
     """
 
     """
