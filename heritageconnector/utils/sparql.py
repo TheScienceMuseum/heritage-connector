@@ -16,7 +16,6 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
     Returns:
         query_result (dict): the JSON result of the query as a dict
     """
-    time.sleep(2)
     sparql = SPARQLWrapper(endpoint_url)
     sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
@@ -24,7 +23,10 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
         return sparql.query().convert()
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            print("429 code : sleeping for 60 seconds")
-            time.sleep(60)
+            if "retry-after" in e.headers:
+                if isinstance(e.headers["retry-after"], int):
+                    time.sleep(e.headers["retry-after"])
+            else:
+                time.sleep(10)
             return get_sparql_results(endpoint_url, query)
         raise
