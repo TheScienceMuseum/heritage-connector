@@ -1,4 +1,5 @@
 # General utils for heritageconnector that don't fit anywhere else.
+import requests
 
 
 def extract_json_values(obj: dict, key: str) -> list:
@@ -29,3 +30,15 @@ def extract_json_values(obj: dict, key: str) -> list:
 
     results = extract(obj, arr, key)
     return results
+
+
+def get_redirected_url(url: str) -> str:
+    """
+    Given a URL, return the URL it redirects to.
+
+    Args:
+        url (str)
+    """
+
+    r = requests.get(url)
+    return r.url

@@ -61,3 +61,19 @@ class TestGet:
     def test_get_viaf(self):
         qcode = from_url.wikidata_id.get("https://viaf.org/viaf/40191108/")
         assert qcode == "Q2539929"
+
+    def test_get_multiple(self):
+        qcodes, urls = from_url.wikidata_id.get_from_free_text(
+            """
+            ODNB: J. F. Payne, ‘Lettsom, John Coakley (1744–1815)’, rev. Roy Porter, Oxford Dictionary of National Biography, Oxford University Press, 2004 
+            [http://www.oxforddnb.com/view/article/16527, accessed 6 Jan 2015] John Coakley Lettsom (1744–1815): doi:10.1093/ref:odnb/16527
+            WIKI: http://en.wikipedia.org/wiki/John_C._Lettsome
+            """,
+            return_urls=True,
+        )
+
+        assert qcodes == ["Q6224512"]
+        assert urls == [
+            "http://www.oxforddnb.com/view/article/16527",
+            "http://en.wikipedia.org/wiki/John_C._Lettsome",
+        ]

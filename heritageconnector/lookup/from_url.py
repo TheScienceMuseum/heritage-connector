@@ -4,8 +4,7 @@ import time
 import json
 import re
 from ..utils.sparql import get_sparql_results
-from ..utils.generic import extract_json_values
-import requests
+from ..utils.generic import extract_json_values, get_redirected_url
 
 # methods to exchange URLs for IDs (e.g. wikidata ID)
 
@@ -103,6 +102,43 @@ class wikidata_id:
             raise ValueError("URL not handled")
 
     @classmethod
+    def get_from_free_text(self, text: str, return_urls=False) -> list:
+        """
+        Gets all references to URLs and returns Wikidata IDs from any that can be parsed.
+
+        Args:
+            text (str): the text from which to extract the Wikidata IDs
+            return_urls (bool): whether to return a list of URLs
+
+        Returns:
+            list: the Wikipedia IDs of each URL matched
+            list (optional): the URLs extracted from the text
+        """
+
+        # find all URLs
+        url_pattern = (
+            "((?:https?:\/\/|www\.|https?:\/\/|www\.)[a-z0-9\.:].*?(?=[\s;,!:\[\]]|$))"
+        )
+        urls = re.findall(url_pattern, text)
+
+        # map all URLs to qcodes
+        if len(urls) > 0:
+            qcodes = []
+            for url in urls:
+                try:
+                    qcodes.append(self.get(url))
+                except ValueError:
+                    pass
+        else:
+            return []
+
+        # remove duplicates
+        qcodes = list(set(qcodes))
+
+        # return lists
+        return qcodes, urls if return_urls else qcodes
+
+    @classmethod
     def lookup_wikidata_id(self, pid: str, uid: str) -> str:
         """
         Lookup UID on Wikidata against given property ID of source
@@ -172,10 +208,12 @@ class wikidata_id:
         """
 
         path = re.findall("/wiki/(.*)", url)[0]
+
+        # passing the redirects param through the API gets the details of the page that Wikipedia may redirect to
         endpoint = (
             "https://en.wikipedia.org/w/api.php?action=query&prop=pageprops&titles="
             + path
-            + "&format=json"
+            + "&format=json&redirects"
         )
         res = urllib.request.urlopen(endpoint)
         res_body = res.read()
@@ -184,7 +222,7 @@ class wikidata_id:
         if wikibase_item and wikibase_item[0]:
             return wikibase_item[0]
         else:
-            return
+            return ""
 
     @classmethod
     def from_getty(self, url: str) -> str:
@@ -219,8 +257,7 @@ class wikidata_id:
         """
 
         # get redirected (new) URL
-        r = requests.get(url)
-        redirected_url = r.url
+        redirected_url = get_redirected_url(url)
 
         pattern = r"((?:biography|topic|place|science|animal|event|art|technology|plant|sports)\/.*)$"
         pid = "P1417"
