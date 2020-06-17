@@ -117,20 +117,17 @@ class wikidata_id:
 
         # find all URLs
         url_pattern = (
-            "((?:https?:\/\/|www\.|https?:\/\/|www\.)[a-z0-9\.:].*?(?=[\s;,!:\[\]]|$))"
+            r"((?:https?://|www\.|https?://|www\.)[a-z0-9\.:].*?(?=[\s;,!:\[\]]|$))"
         )
         urls = re.findall(url_pattern, text)
 
         # map all URLs to qcodes
-        if len(urls) > 0:
-            qcodes = []
-            for url in urls:
-                try:
-                    qcodes.append(self.get(url))
-                except ValueError:
-                    pass
-        else:
-            return []
+        qcodes = []
+        for url in urls:
+            try:
+                qcodes.append(self.get(url))
+            except ValueError:
+                pass
 
         # remove duplicates
         qcodes = list(set(qcodes))
@@ -189,7 +186,7 @@ class wikidata_id:
 
         # if there's a match return the qcode, if not return empty string
         #  TODO: fail better
-        if matches[1]:
+        if matches:
             uid = matches[1]
             qcode = self.lookup_wikidata_id(pid, uid)
             return qcode
@@ -207,20 +204,22 @@ class wikidata_id:
             qcode (str)
         """
 
-        path = re.findall("/wiki/(.*)", url)[0]
+        matches = re.findall("/wiki/(.*)", url)
+        if len(matches) == 1:
+            path = matches[0]
 
-        # passing the redirects param through the API gets the details of the page that Wikipedia may redirect to
-        endpoint = (
-            "https://en.wikipedia.org/w/api.php?action=query&prop=pageprops&titles="
-            + path
-            + "&format=json&redirects"
-        )
-        res = urllib.request.urlopen(endpoint)
-        res_body = res.read()
-        data = json.loads(res_body.decode("utf-8"))
-        wikibase_item = extract_json_values(data, "wikibase_item")
-        if wikibase_item and wikibase_item[0]:
-            return wikibase_item[0]
+            # passing the redirects param through the API gets the details of the page that Wikipedia may redirect to
+            endpoint = (
+                "https://en.wikipedia.org/w/api.php?action=query&prop=pageprops&titles="
+                + path
+                + "&format=json&redirects"
+            )
+            res = urllib.request.urlopen(endpoint)
+            res_body = res.read()
+            data = json.loads(res_body.decode("utf-8"))
+            wikibase_item = extract_json_values(data, "wikibase_item")
+            if len(wikibase_item) >= 1:
+                return wikibase_item[0]
         else:
             return ""
 
@@ -239,11 +238,17 @@ class wikidata_id:
 
         # extract ID from URL
         if "ulanfulldisplay" in url.lower():
-            uid = re.findall(r"subjectid=(\d+)", url)[0]
+            match = re.findall(r"subjectid=(\d+)", url)
         elif "ulan" in url.lower():
-            uid = re.findall(r"/ulan/(\d+)", url)[0]
+            match = re.findall(r"/ulan/(\d+)", url)
+        else:
+            match = []
 
-        return self.lookup_wikidata_id("P245", uid)
+        if len(match) == 1:
+            uid = match[0]
+            return self.lookup_wikidata_id("P245", uid)
+        else:
+            return ""
 
     @classmethod
     def from_britannica(self, url: str) -> str:
