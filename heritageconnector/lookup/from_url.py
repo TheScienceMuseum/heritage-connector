@@ -99,6 +99,9 @@ class wikidata_id:
             pattern, pid = self()._domain_regex_mapping[domain]
             return self.from_regex(url, pattern, pid)
 
+        else:
+            raise ValueError("URL not handled")
+
     @classmethod
     def lookup_wikidata_id(self, pid: str, uid: str) -> str:
         """
