@@ -1,0 +1,20 @@
+branch-defaults:
+  awsdeployment:
+    environment: heritageconnector-dev
+  feature/url_to_wid:
+    environment: heritageconnector-dev
+    group_suffix: null
+global:
+  application_name: heritageconnector
+  branch: null
+  default_ec2_keyname: heritage-connector
+  default_platform: Python 3.7
+  default_region: eu-west-1
+  include_git_submodules: true
+  instance_profile: null
+  platform_name: null
+  platform_version: null
+  profile: hc
+  repository: null
+  sc: git
+  workspace_type: Application

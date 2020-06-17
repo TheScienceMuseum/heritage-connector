@@ -27,6 +27,11 @@ Transforming text into data to extract meaning and make connections
 - flake8 linting is enabled as a git pre-commit hook
 - Create a new branch / Pull Request for each new feature / unit of functionality
 
+### Running tests
+Run `python -m pytest`.
+
+We use `pytest` for tests, and all tests are in *./test*. 
+
 ## Running
 
 ## Deployment
