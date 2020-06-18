@@ -44,7 +44,7 @@ class wikidata_id:
             "britannica.com": self.from_britannica,  # old url formats in collection
         }
 
-        # domain: (uid_from_url_regex, pid)
+        # domain: (uid_from_regex, pid)
         # uid_regex is the regex in re.findall(uid_regex, url)[0]
         # that produces the URL
         self._domain_regex_mapping = {
@@ -96,7 +96,7 @@ class wikidata_id:
 
         elif domain in self()._domain_regex_mapping.keys():
             pattern, pid = self()._domain_regex_mapping[domain]
-            return self.from_url_regex(url, pattern, pid)
+            return self.from_regex(url, pattern, pid)
 
         else:
             raise ValueError("URL not handled")
@@ -170,19 +170,19 @@ class wikidata_id:
                 return wikidata_id
 
     @classmethod
-    def from_url_regex(self, url: str, uid_pattern: str, pid: str) -> str:
+    def from_regex(self, text: str, uid_pattern: str, pid: str) -> str:
         """
-        Given an Oxford DNB URL e.g. https://www.oxforddnb.com/view/article/23105, return the Wikidata ID.
+        Given string and a regex pattern to extract the UID, return the Wikipedia ID.
 
         Args:
-            url (str): the URL of the page
-            uid_pattern (str): the regex pattern to extract the uid from the URL
+            text (str): input text to extract the uid from
+            uid_pattern (str): regex pattern to extract the uid from the text
             pid (str): the Wikidata property ID for the domain
         Returns:
-            qcode (str)
+            str
         """
 
-        matches = re.search(uid_pattern, url)
+        matches = re.search(uid_pattern, text)
 
         # if there's a match return the qcode, if not return empty string
         #  TODO: fail better
@@ -267,4 +267,4 @@ class wikidata_id:
         pattern = r"((?:biography|topic|place|science|animal|event|art|technology|plant|sports)\/.*)$"
         pid = "P1417"
 
-        return self.from_url_regex(redirected_url, pattern, pid)
+        return self.from_regex(redirected_url, pattern, pid)
