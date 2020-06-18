@@ -3,6 +3,7 @@ import urllib
 import time
 import json
 import re
+from typing import Union
 from ..utils.sparql import get_sparql_results
 from ..utils.generic import extract_json_values, get_redirected_url
 
@@ -37,7 +38,11 @@ class wikidata_id:
         steamindex.com
     """
 
-    def __init__(self):
+    def __init__(self, custom_patterns=None):
+        """
+        Args:
+            custom_patterns (list(tuple), optional): Any custom regex patterns to extract uids from in `wikidata_id.get_from_free_text`, in the format [(r"pattern", pid)] where pid is the Wikidata Property ID.
+        """
         self._domain_method_mapping = {
             "en.wikipedia.org": self.from_wikipedia,  # we use the API
             "getty.edu": self.from_getty,  # there's more than 1 URL
@@ -54,6 +59,33 @@ class wikidata_id:
             "discovery.nationalarchives.gov.uk": (r"details/c/([A-Z]\d+)", "P3029"),
             "viaf.org": (r"/viaf/([1-9]\d(\d{0,7}|\d{17,20}))", "P214"),
         }
+
+        self.custom_patterns = custom_patterns
+        self._check_custom_patterns()
+
+    def _check_custom_patterns(self):
+        """
+        Assert that custom patterns is in the format list(list/tuple(str, str), ...).
+
+        Raises:
+            ValueError: Provides guidance on correct type of custom_patterns.
+        """
+
+        if self.custom_patterns:
+            if (
+                not isinstance(self.custom_patterns, (list))
+                and all(
+                    isinstance(item, (list, tuple)) for item in self.custom_patterns
+                )
+                and all(
+                    isinstance(text, str)
+                    for item in self.custom_patterns
+                    for text in item
+                )
+            ):
+                raise ValueError(
+                    "Input variable custom_patterns must be follow the format lst(lst(str,str)), where lst is list/tuple"
+                )
 
     @classmethod
     def get_enabled_domains(self):
@@ -101,7 +133,6 @@ class wikidata_id:
         else:
             raise ValueError("URL not handled")
 
-    @classmethod
     def get_from_free_text(self, text: str, return_urls=False) -> list:
         """
         Gets all references to URLs and returns Wikidata IDs from any that can be parsed.
@@ -131,6 +162,16 @@ class wikidata_id:
 
         # remove duplicates
         qcodes = list(set(qcodes))
+
+        # get qcodes from uids in user-defined patterns
+        if self.custom_patterns:
+            for pattern, pid in self.custom_patterns:
+                new_qcodes = self.from_regex(text, pattern, pid)
+
+                if isinstance(new_qcodes, str) and len(new_qcodes) > 0:
+                    qcodes.append(new_qcodes)
+                elif isinstance(new_qcodes, list):
+                    qcodes += new_qcodes
 
         # return lists
         return qcodes, urls if return_urls else qcodes
@@ -170,28 +211,33 @@ class wikidata_id:
                 return wikidata_id
 
     @classmethod
-    def from_regex(self, text: str, uid_pattern: str, pid: str) -> str:
+    def from_regex(self, text: str, uid_pattern: str, pid: str) -> Union[str, list]:
         """
-        Given string and a regex pattern to extract the UID, return the Wikipedia ID.
+        Given a string, PID and a regex pattern to extract the UID, return the Wikidata ID.
 
         Args:
             text (str): input text to extract the uid from
             uid_pattern (str): regex pattern to extract the uid from the text
             pid (str): the Wikidata property ID for the domain
         Returns:
-            str
+            str if 0-1 outputs; list(str) if multiple
         """
 
-        matches = re.search(uid_pattern, text)
+        matches = re.findall(uid_pattern, text)
 
-        # if there's a match return the qcode, if not return empty string
-        #  TODO: fail better
-        if matches:
-            uid = matches[1]
-            qcode = self.lookup_wikidata_id(pid, uid)
-            return qcode
-        else:
+        qcodes = []
+        for uid_match in matches:
+            # if findall has returned more than one group, choose the longest group
+            if isinstance(uid_match, tuple):
+                uid_match = max(uid_match, key=len)
+            qcodes.append(self.lookup_wikidata_id(pid, uid_match))
+
+        if len(qcodes) == 0:
             return ""
+        elif len(qcodes) == 1:
+            return qcodes[0]
+        else:
+            return qcodes
 
     @classmethod
     def from_wikipedia(self, url: str) -> str:
