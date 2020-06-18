@@ -96,7 +96,7 @@ class wikidata_id:
 
         elif domain in self()._domain_regex_mapping.keys():
             pattern, pid = self()._domain_regex_mapping[domain]
-            return self.from_regex(url, pattern, pid)
+            return self.from_url_regex(url, pattern, pid)
 
         else:
             raise ValueError("URL not handled")
@@ -170,7 +170,7 @@ class wikidata_id:
                 return wikidata_id
 
     @classmethod
-    def from_regex(self, url: str, uid_pattern: str, pid: str) -> str:
+    def from_url_regex(self, url: str, uid_pattern: str, pid: str) -> str:
         """
         Given an Oxford DNB URL e.g. https://www.oxforddnb.com/view/article/23105, return the Wikidata ID.
 
@@ -267,4 +267,4 @@ class wikidata_id:
         pattern = r"((?:biography|topic|place|science|animal|event|art|technology|plant|sports)\/.*)$"
         pid = "P1417"
 
-        return self.from_regex(redirected_url, pattern, pid)
+        return self.from_url_regex(redirected_url, pattern, pid)
