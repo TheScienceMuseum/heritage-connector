@@ -7,7 +7,7 @@ import time
 
 def get_sparql_results(endpoint_url: str, query: str) -> dict:
     """
-    Makes a SPARQL query to endpoint_url. 
+    Makes a SPARQL query to endpoint_url.
 
     Args:
         endpoint_url (str): query endpoint

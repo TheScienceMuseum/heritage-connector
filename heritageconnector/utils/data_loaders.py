@@ -1,9 +1,11 @@
 from ..config import config
 import pandas as pd
 from logging import getLogger
+
 logger = getLogger(__file__)
 
-class local_loader():
+
+class local_loader:
     def __init__(self):
         self.catalogue_data_path = config.MIMSY_CATALOGUE_PATH
         self.people_data_path = config.MIMSY_PEOPLE_PATH
@@ -55,5 +57,5 @@ class local_loader():
         """
 
         people_orgs_df = pd.read_csv(self.people_data_path, low_memory=False)
-        
+
         return people_orgs_df

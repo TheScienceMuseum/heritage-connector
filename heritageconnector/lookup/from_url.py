@@ -80,7 +80,7 @@ class wikidata_id:
 
             return domain
 
-        except:
+        except Exception:
             raise Exception(f"PARSING FAILED: {url}")
 
     @classmethod
