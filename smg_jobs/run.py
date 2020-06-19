@@ -9,7 +9,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 tqdm.pandas()
 
 from heritageconnector.utils import data_loaders
-from heritageconnector.lookup import from_url
+from heritageconnector.entity_matching import lookup
 
 
 def main():
@@ -72,7 +72,7 @@ class jobs:
         df[cols_look_for_url] = df[cols_look_for_url].astype(str)
         df["res_ALL_NOTES"] = df[cols_look_for_url].agg(" --- ".join, axis=1)
 
-        wid = from_url.wikidata_id(custom_patterns=self.config["custom_patterns"])
+        wid = lookup.wikidata_id(custom_patterns=self.config["custom_patterns"])
 
         def text_to_urls(text):
             return wid.get_from_free_text(text, return_urls=True)

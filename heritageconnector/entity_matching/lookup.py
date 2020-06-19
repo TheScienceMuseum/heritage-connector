@@ -12,7 +12,7 @@ from ..utils.generic import extract_json_values, get_redirected_url
 
 class wikidata_id:
     """
-    Get a Wikidata ID from a URL, where this process involves a direct lookup on Wikidata.
+    Get a Wikidata ID free text, where this process involves a direct lookup on Wikidata.
     """
 
     """
@@ -116,7 +116,7 @@ class wikidata_id:
             raise Exception(f"PARSING FAILED: {url}")
 
     @classmethod
-    def get(self, url: str) -> str:
+    def get_from_url(self, url: str) -> str:
         """
         Resolves URL to a Wikidata ID.
         """
@@ -156,7 +156,7 @@ class wikidata_id:
         qcodes = []
         for url in urls:
             try:
-                qcodes.append(self.get(url))
+                qcodes.append(self.get_from_url(url))
             except ValueError:
                 pass
 
