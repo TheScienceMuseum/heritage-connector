@@ -1,5 +1,6 @@
-# local data folder
+# local data folder and config
 GITIGNORE_DATA
+config.ini
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
