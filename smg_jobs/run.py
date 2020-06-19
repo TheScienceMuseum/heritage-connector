@@ -1,18 +1,15 @@
 import sys
+import warnings
+import pandas as pd
+from tqdm import tqdm
+import os
 
 sys.path.append("..")
-import warnings
-
 warnings.simplefilter(action="ignore", category=FutureWarning)
-
-from tqdm import tqdm
-import pandas as pd
-import os
+tqdm.pandas()
 
 from heritageconnector.utils import data_loaders
 from heritageconnector.lookup import from_url
-
-tqdm.pandas()
 
 
 def main():
