@@ -18,4 +18,6 @@ def fuzzy_match(
 
     assert 0 <= threshold <= 100
 
-    return scorer(string1, string2)
+    result = scorer(string1, string2)
+
+    return result >= threshold
