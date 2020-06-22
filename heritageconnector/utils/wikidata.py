@@ -1,16 +1,18 @@
 import requests
 from typing import List, Union
+from tqdm import tqdm
 
 
 class entities:
-    def __init__(self, qcodes: Union[list, str], lang="en"):
+    def __init__(self, qcodes: Union[list, str], lang="en", page_limit=50):
         """
         One instance of this class per list of qcodes. The JSON response for a list of qcodes is made to Wikidata on 
         creation of a class instance. 
 
         Args:
             qcodes (str/list): Wikidata qcode or list of qcodes/
-            lang (str, optional): [description]. Defaults to 'en'.
+            lang (str, optional): Defaults to 'en'.
+            page_limit (int): page limit for Wikidata API. Usually 50, can reach 500. 
         """
         self.endpoint = (
             "http://www.wikidata.org/w/api.php?action=wbgetentities&format=json"
@@ -22,6 +24,7 @@ class entities:
         self.qcodes = qcodes
         self.properties = ["labels", "claims", "aliases"]
         self.lang = lang
+        self.page_limit = page_limit
 
         # get json response
         self.response = self.get_json()
@@ -48,36 +51,62 @@ class entities:
             dict: raw JSON response from API
         """
 
-        url = f"http://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={self._param_join(self.qcodes)}&props={self._param_join(self.properties)}&languages=en&languagefallback=1&formatversion=2"
+        qcodes_paginated = [
+            self.qcodes[i : i + self.page_limit]
+            for i in range(0, len(self.qcodes), self.page_limit)
+        ]
+        all_responses = {}
+        print(f"Getting wikidata documents in pages of {self.page_limit}")
 
-        return requests.get(url).json()
+        for page in tqdm(qcodes_paginated):
+            url = f"http://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={self._param_join(page)}&props={self._param_join(self.properties)}&languages=en&languagefallback=1&formatversion=2"
+            response = requests.get(url).json()
+            all_responses.update(response["entities"])
 
-    def get_labels(self) -> Union[list, str]:
+        return {"entities": all_responses}
+
+    def get_labels(self, qcodes=None) -> Union[list, str]:
         """
         Get label from Wikidata qcodes. Returns string if string is passed; list if list is passed.
+
+        Args: 
+            qcodes (list, optional): subset of all qcodes to pass in
 
         Returns:
             str/list: label or labels
         """
 
+        if qcodes:
+            assert all(elem in self.qcodes for elem in self.qcodes)
+        else:
+            qcodes = self.qcodes
+
         labels = [
             self.response["entities"][qcode]["labels"][self.lang]["value"]
-            for qcode in self.qcodes
+            for qcode in qcodes
         ]
 
         return labels if len(labels) > 1 else labels[0]
 
-    def get_aliases(self) -> list:
+    def get_aliases(self, qcodes=None) -> list:
         """
         Get aliases from Wikidata qcodes. Returns list if string is passed; list of lists if list is passed.
+
+        Args: 
+            qcodes (list, optional): subset of all qcodes to pass in
 
         Returns:
             list: of aliases
         """
 
+        if qcodes:
+            assert all(elem in self.qcodes for elem in self.qcodes)
+        else:
+            qcodes = self.qcodes
+
         aliases = []
 
-        for qcode in self.qcodes:
+        for qcode in qcodes:
             response_aliases = self.response["entities"][qcode]["aliases"]
             if len(response_aliases) == 0:
                 aliases.append([])
@@ -86,7 +115,7 @@ class entities:
 
         return aliases if len(aliases) > 1 else aliases[0]
 
-    def get_property_values(self, property_id) -> Union[str, list]:
+    def get_property_values(self, property_id, qcodes=None) -> Union[str, list]:
         """
         Get the value or values for a given property ID.
 
@@ -97,9 +126,14 @@ class entities:
             str/list: value or values of the specified property ID. 
         """
 
+        if qcodes:
+            assert all(elem in self.qcodes for elem in self.qcodes)
+        else:
+            qcodes = self.qcodes
+
         property_vals = []
 
-        for qcode in self.qcodes:
+        for qcode in qcodes:
             try:
                 property_data = self.response["entities"][qcode]["claims"][property_id]
             except KeyError:
@@ -115,9 +149,9 @@ class entities:
 
         return property_vals if len(property_vals) > 1 else property_vals[0]
 
-    def get_property_instance_of(self) -> Union[str, list]:
+    def get_property_instance_of(self, qcodes=None) -> Union[str, list]:
         """
         Gets the value of the 'instance of' property for each Wikidata item. 
         """
 
-        return self.get_property_values("P31")
+        return self.get_property_values("P31", qcodes)
