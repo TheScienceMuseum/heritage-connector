@@ -18,6 +18,8 @@ spacy = "*"
 lxml = "*"
 pandas = "*"
 sparqlwrapper = "*"
+fuzzywuzzy = "*"
+python-levenshtein = "*"
 
 [requires]
 python_version = "3.7"
