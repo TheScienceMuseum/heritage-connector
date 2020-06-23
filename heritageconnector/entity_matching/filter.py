@@ -151,27 +151,42 @@ class Filter:
             [target_strings] if isinstance(target_strings, str) else target_strings
         )
 
-        if include_aliases:
-            aliases = self.entities.get_aliases(qcodes)
-            print(qcodes, aliases)
-            # target_strings is a list of lists
-            target_strings = [
-                item.append(target_strings[idx]) for idx, item in enumerate(aliases)
-            ]
-
-            bool_matches = []
-            for item in aliases:
-                string_matches = [
-                    fuzzy_match(source_string, t, threshold=threshold) for t in item
-                ]
-                # append True if any of the matches return True, else False
-                bool_matches.append(any(x for x in string_matches))
-
-        else:
-            bool_matches = [
+        def get_bool_matches(source_string, target_strings):
+            return [
                 fuzzy_match(source_string, t, threshold=threshold)
                 for t in target_strings
             ]
+
+        if include_aliases:
+            aliases = self.entities.get_aliases(qcodes)
+
+            if len(qcodes) == 1:
+                # only one item to look up -> add aliases onto target_strings
+                target_strings += aliases
+                string_matches = get_bool_matches(source_string, target_strings)
+
+                # if any of the strings matched, return qcodes
+                if any(x for x in string_matches):
+                    return qcodes
+                else:
+                    return []
+
+            else:
+                target_strings = [
+                    aliases[i] + [target_strings[i]]
+                    for i in range(0, len(target_strings))
+                ]
+                bool_matches = []
+
+                # for each list in the list of lists, find out whether there are any matches
+                for item in target_strings:
+                    string_matches = get_bool_matches(source_string, item)
+                    bool_matches.append(any(x for x in string_matches))
+
+                return list(compress(qcodes, bool_matches))
+
+        else:
+            bool_matches = get_bool_matches(source_string, target_strings)
 
         # print(source_string, target_strings, bool_matches)
 
