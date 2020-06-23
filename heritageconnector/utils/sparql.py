@@ -18,6 +18,7 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
     """
     sparql = SPARQLWrapper(endpoint_url)
     sparql.setQuery(query)
+    sparql.setMethod("POST")
     sparql.setReturnFormat(JSON)
     sparql.addCustomHttpHeader(
         "User-Agent",
