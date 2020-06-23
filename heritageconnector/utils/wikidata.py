@@ -56,7 +56,9 @@ class entities:
             for i in range(0, len(self.qcodes), self.page_limit)
         ]
         all_responses = {}
-        print(f"Getting wikidata documents in pages of {self.page_limit}")
+        print(
+            f"Getting {len(self.qcodes)} wikidata documents in pages of {self.page_limit}"
+        )
 
         for page in tqdm(qcodes_paginated):
             url = f"http://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={self._param_join(page)}&props={self._param_join(self.properties)}&languages=en&languagefallback=1&formatversion=2"
@@ -76,15 +78,20 @@ class entities:
             str/list: label or labels
         """
 
-        if qcodes:
+        if qcodes is not None:
             assert all(elem in self.qcodes for elem in self.qcodes)
         else:
             qcodes = self.qcodes
 
-        labels = [
-            self.response["entities"][qcode]["labels"][self.lang]["value"]
-            for qcode in qcodes
-        ]
+        labels = []
+        for qcode in qcodes:
+            try:
+                labels.append(
+                    self.response["entities"][qcode]["labels"][self.lang]["value"]
+                )
+            except KeyError:
+                # if there is no value in the correct language, return an empty string
+                labels.append("")
 
         return labels if len(labels) > 1 else labels[0]
 
@@ -99,7 +106,7 @@ class entities:
             list: of aliases
         """
 
-        if qcodes:
+        if qcodes is not None:
             assert all(elem in self.qcodes for elem in self.qcodes)
         else:
             qcodes = self.qcodes
@@ -126,7 +133,7 @@ class entities:
             str/list: value or values of the specified property ID. 
         """
 
-        if qcodes:
+        if qcodes is not None:
             assert all(elem in self.qcodes for elem in self.qcodes)
         else:
             qcodes = self.qcodes
