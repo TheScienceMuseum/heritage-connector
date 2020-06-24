@@ -1,12 +1,15 @@
 from heritageconnector.nlp.string_pairs import fuzzy_match
 from heritageconnector.utils.wikidata import entities
+from heritageconnector.utils.sparql import get_sparql_results
+from heritageconnector.utils.generic import add_dicts
 import pandas as pd
 from tqdm import tqdm
 from itertools import compress
+import re
 
 
 class Filter:
-    def __init__(self, dataframe: pd.DataFrame, qcode_col: str, lang="en"):
+    def __init__(self, dataframe: pd.DataFrame, qcode_col: str):
         """
         Set of filters to filter candidate qcode matches from a dataframe. 
 
@@ -19,25 +22,15 @@ class Filter:
         self.filters = {}
         self.qcode_col = qcode_col
         self.new_qcode_col = "qcodes_filtered"
-        self.lang = lang
 
-        self.qcodes_unique = self._get_unique_qcodes()
-        self.entities = self._load_entities_instance()
-        self.df[self.qcode_col] = self._clean_qcode_col()
-
-    def _get_unique_qcodes(self):
-        """
-        get unique list of qcodes
-        """
-
-        qcodes_unique = list(set(self.df[self.qcode_col].sum()))
-        qcodes_unique = [i for i in qcodes_unique if str(i).startswith("Q")]
-
-        return qcodes_unique
+        self.df.loc[:, self.qcode_col] = self._clean_qcode_col()
+        self.qcodes_unique = list(set(self.df[self.qcode_col].sum()))
+        self.sparql_endpoint_url = "https://query.wikidata.org/sparql"
 
     def _clean_qcode_col(self):
         """
-        ensure each qcode in self.qcode_col starts with a Q, and reduce to unique values
+        ensure each qcode in self.qcode_col starts with a Q, and reduce each cell to only 
+        contain unique qcodes
         """
 
         new_col = self.df[self.qcode_col].apply(
@@ -54,20 +47,102 @@ class Filter:
 
         return entities(self.qcodes_unique, lang=self.lang)
 
-    def add_property_filter(self, property_id, value, column=False):
+    def _run_wikidata_query_paginated(
+        self, page_limit, qcodes: list, instance_of_filter: bool, **kwargs
+    ):
+        qcodes_paginated = [
+            qcodes[i : i + page_limit] for i in range(0, len(qcodes), page_limit)
+        ]
+
+        return pd.concat(
+            [
+                self._run_wikidata_query(qcodes, instance_of_filter, **kwargs)
+                for page in qcodes_paginated
+            ]
+        )
+
+    def _run_wikidata_query(
+        self, qcodes: list, instanceof_filter: bool, **kwargs
+    ) -> pd.DataFrame:
         """
-        Add a filter which asserts a match between a column or string, and a value 
-        of a given property ID.
+        Runs a parametrised Wikidata query with options to filter by instance or subclass of a specific property.
+        Returns a dataframe with qcodes matching the filter, their labels and their aliases. 
 
         Args:
-            value ([type]): [description]
-            property_id ([type]): [description]
-            column (bool, optional): [description]
+            qcodes (list): a list of qcodes before filtering
+            instanceof_filter (bool): whether to filter results by instance or subclass of a certain property
+
+        Kwargs:
+            property_id (str): the property to use as a parameter for the 'instance of' filter
+            include_class_tree (bool): whether to include all subclasses in the search up the tree, or just the instanceof property
+
+        Returns:
+            pd.DataFrame: columns are qcode, label, alias
         """
 
-        new_filter = {"property": [property_id, value, column]}
-        print(f"Added filter {new_filter}")
-        self.filters.update(new_filter)
+        if instanceof_filter:
+            # process kwargs related to the 'instance of' filter
+            try:
+                property_id = kwargs["property_id"]
+            except KeyError:
+                raise ValueError(
+                    "Keyword argument property_id (str) must be passed if using instance_of_filter."
+                )
+
+            try:
+                include_class_tree = kwargs["include_class_tree"]
+            except KeyError:
+                raise ValueError(
+                    "Keyword argument include_class_tree (bool) must be passed if using instance_of_filter."
+                )
+
+            # create line of SPARQL query that does filtering
+            class_tree = "/wdt:P279*" if include_class_tree else ""
+            sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id}."
+
+        else:
+            sparq_instanceof = ""
+
+        def map_ids(ids):
+            return " ".join([f"(wd:{i})" for i in ids])
+
+        query = f"""
+        SELECT ?item ?itemLabel ?altLabel
+                WHERE
+                {{
+                    VALUES (?item) {{ {map_ids(qcodes)} }}
+                    {sparq_instanceof}
+                    OPTIONAL {{
+                        ?item skos:altLabel ?altLabel .
+                        FILTER (lang(?altLabel) = "en")
+                        }}
+
+                    SERVICE wikibase:label {{ 
+                    bd:serviceParam wikibase:language "en" .
+                    }}
+                }} 
+        GROUP BY ?item ?itemLabel ?altLabel
+        """
+        self.query = query
+        res = get_sparql_results(self.sparql_endpoint_url, query)["results"]["bindings"]
+
+        res_df = pd.json_normalize(res)
+        res_df.loc[:, "qcode"] = res_df["item.value"].apply(
+            lambda x: re.findall(r"(Q\d+)", x)[0]
+        )
+        res_df = res_df[["qcode", "itemLabel.value", "altLabel.value"]]
+
+        # convert aliases to lowercase and drop duplicates
+        res_df["altLabel.value"] = (
+            res_df["altLabel.value"].fillna(" ").astype(str).str.lower()
+        )
+        res_df = res_df.drop_duplicates()
+
+        res_df = res_df.rename(
+            columns={"itemLabel.value": "label", "altLabel.value": "alias"}
+        )
+
+        return res_df
 
     def add_label_filter(self, col, threshold=90, include_aliases=False):
         """
@@ -77,156 +152,187 @@ class Filter:
             col ([type]): [description]
         """
 
-        new_filter = {"label": [col, threshold, include_aliases]}
+        new_filter = {
+            "label": {
+                "label_col": col,
+                "threshold": threshold,
+                "include_aliases": include_aliases,
+            }
+        }
         print(f"Added filter {new_filter}")
         self.filters.update(new_filter)
 
-    def _apply_property_filter(
-        self, qcode_col: str, filter_params: list, row: pd.Series
-    ) -> list:
+    def add_instanceof_filter(self, property_id: str, include_class_tree: bool):
         """
-        Apply a property filter to a row. Filters qcodes on whether a specified property has or contains
-        a certain value.
+        Add a filter to return only records of a given type, indicated by the 
+        'instance of' property or its subclass tree. 
 
         Args:
-            qcode_col (str): the column name in the row to apply the filter to
-            filter_params (list)
-            row (pd.Series)
-
-        Returns:
-            list: list of qcodes after applying filter
+            property_id (str): the property to filter by
+            include_class_tree (bool): whether to include the class hierarchy as well 
+            as the 'instance of' property
         """
 
-        property_id, value, column = filter_params
-        qcodes = row[qcode_col]
+        new_filter = {
+            "instance_of": {
+                "property_id": property_id,
+                "include_class_tree": include_class_tree,
+            }
+        }
+        print(f"Added filter {new_filter}")
+        self.filters.update(new_filter)
 
-        if column:
-            match_val = row[value]
-        else:
-            match_val = value
+    def _get_aliases(self, res_df: pd.DataFrame, qcodes: list) -> list:
+        """
+        Get all aliases for supplied qcodes.
 
-        try:
-            property_vals = self.entities.get_property_values(property_id, qcodes)
-        except KeyError:
-            # property does not exist
-            property_vals = ["DONTEXIST" for item in qcodes]
+        Args:
+            res_df (dataframe): result of self.process_dataframe
+            qcodes (list): list of qcodes
 
-        # bool_matches is a list of booleans, describing whether the query value is either equal to the
-        # value for the Wikidata property (if string) or in the list of values for that Wikidata property
-        # (if list)
-        bool_matches = []
+        Returns:
+            dict
+        """
+        return {
+            qcode: res_df.loc[res_df["qcode"] == qcode, "alias"].tolist()
+            for qcode in qcodes
+        }
 
-        for p in property_vals:
-            if isinstance(p, str):
-                bool_matches.append(p == match_val)
-            elif isinstance(p, list):
-                bool_matches.append(match_val in p)
+    def _get_labels(self, res_df: pd.DataFrame, qcodes: list):
+        """
+        Get all labels for supplied qcodes.
 
-        return list(compress(qcodes, bool_matches))
+        Args:
+            res_df (dataframe): result of self.process_dataframe
+            qcodes (list): list of qcodes
+
+        Returns:
+            dict
+        """
+        return {
+            qcode: res_df.loc[res_df["qcode"] == qcode, "label"].unique().tolist()
+            for qcode in qcodes
+        }
 
     def _apply_label_filter(
-        self, qcode_col: str, filter_params: list, row: pd.Series
+        self, res_df: pd.DataFrame, row: pd.Series, qcode_col: str, filter_args: dict
     ) -> list:
         """
-        Apply a label filter to a row. Uses fuzzy matching to filter IDs to ones whose labels are similar to
-        the specified dataframe column. 
+        Apply 
 
         Args:
-            qcode_col (str): the column name in the row to apply the filter to
-            filter_params (list)
-            row (pd.Series)
+            res_df (pd.DataFrame): result of sparql query with headers qcode, label, alias
+            row (pd.Series): a row of self.df
+            qcode_col (str): the column of the row containing qcodes to filter
+            filter_args (dict): label_col, threshold, include_aliases
 
         Returns:
-            list: list of qcodes after applying filter
+            list: filtered qcodes
         """
-        # TODO: enable include_aliases
-        # get filter params and qcodes
-        string_col, threshold, include_aliases = filter_params
-        qcodes = row[qcode_col]
 
-        # create list of qcodes filtered on whether there were matches
-        source_string = row[string_col]
-        target_strings = self.entities.get_labels(qcodes)
-        target_strings = (
-            [target_strings] if isinstance(target_strings, str) else target_strings
+        label_col, threshold, include_aliases = (
+            filter_args["label_col"],
+            filter_args["threshold"],
+            filter_args["include_aliases"],
         )
 
-        def get_bool_matches(source_string, target_strings):
-            return [
-                fuzzy_match(source_string, t, threshold=threshold)
-                for t in target_strings
-            ]
+        source_string = row[label_col]
+        qcodes = row[qcode_col]
+
+        labels = self._get_labels(res_df, qcodes)
 
         if include_aliases:
-            aliases = self.entities.get_aliases(qcodes)
+            aliases = self._get_aliases(res_df, qcodes)
+            # add aliases list onto labels list for each key
+            labels = add_dicts(labels, aliases)
 
-            if len(qcodes) == 1:
-                # only one item to look up -> add aliases onto target_strings
-                target_strings += aliases
-                string_matches = get_bool_matches(source_string, target_strings)
+        qcodes_matched = []
+        # for each qcode, produce a boolean list of matches between source and all targets.
+        # add the qcode to qcodes_matched if at least on one of the matches returned True
+        for qcode in qcodes:
+            text_matches = [
+                fuzzy_match(source_string, target, threshold=threshold)
+                for target in labels[qcode]
+            ]
+            if any(x for x in text_matches):
+                qcodes_matched.append(qcode)
 
-                # if any of the strings matched, return qcodes
-                if any(x for x in string_matches):
-                    return qcodes
-                else:
-                    return []
+        return qcodes_matched
 
-            else:
-                target_strings = [
-                    aliases[i] + [target_strings[i]]
-                    for i in range(0, len(target_strings))
-                ]
-                bool_matches = []
+    def _apply_instanceof_filter(
+        self, qcodes_unique_filtered: list, row: pd.Series, qcode_col: str
+    ) -> list:
+        """
+        Using a filtered list returned from the sparql query, 
 
-                # for each list in the list of lists, find out whether there are any matches
-                for item in target_strings:
-                    string_matches = get_bool_matches(source_string, item)
-                    bool_matches.append(any(x for x in string_matches))
+        Args:
+            qcodes_unique_filtered (list): unique list of qcodes returned from the sparql query (after filtering)
+            row (pd.Series): a row of self.df
+            qcode_col (str): the column of the row containing qcodes to filter
 
-                return list(compress(qcodes, bool_matches))
+        Returns:
+            list
+        """
 
-        else:
-            bool_matches = get_bool_matches(source_string, target_strings)
-
-        # print(source_string, target_strings, bool_matches)
-
-        return list(compress(qcodes, bool_matches))
+        return [i for i in row[qcode_col] if i in qcodes_unique_filtered]
 
     def process_dataframe(self) -> pd.DataFrame:
         """
-        Processes dataframe with filter created and returns the processed dataframe.
-        Also shows a message of how many have matched.
+        Processes dataframe with filters created and returns the processed dataframe.
+        TODO: Also shows a message of how many have matched.
 
         Returns:
             pd.DataFrame: [description]
         """
 
-        self.df.loc[:, self.new_qcode_col] = self.df.loc[:, self.qcode_col]
+        if "instance_of" in self.filters:
+            instanceof_filter = True
+            property_id = self.filters["instance_of"]["property_id"]
+            include_class_tree = self.filters["instance_of"]["include_class_tree"]
+        else:
+            instanceof_filter = property_id = include_class_tree = False
 
-        i = 0
+        print("Running Wikidata query..")
+        sparql_res = self._run_wikidata_query(
+            self.qcodes_unique,
+            instanceof_filter,
+            property_id=property_id,
+            include_class_tree=include_class_tree,
+        )
+        self.sparql_res = sparql_res
 
-        for k, params in self.filters.items():
-            print(f"Processing filter {i+1} of {len(self.filters)}")
-            # filter what we process down to rows where we still have qcodes
-            df_to_process = self.df[
-                self.df[self.new_qcode_col].map(lambda d: len(d)) > 0
-            ]
+        print("Applying filters...")
+        self.df.loc[:, self.new_qcode_col] = self.df[self.qcode_col]
 
-            if k == "property":
-                for idx, row in tqdm(
-                    df_to_process.iterrows(), total=df_to_process.shape[0]
-                ):
-                    self.df.at[idx, self.new_qcode_col] = self._apply_property_filter(
-                        self.new_qcode_col, params, row
-                    )
+        # we only need to process the rows which don't already have an empty list
+        df_to_process = self.df[self.df[self.new_qcode_col].map(lambda d: len(d)) > 0]
 
-            elif k == "label":
-                for idx, row in tqdm(
-                    df_to_process.iterrows(), total=df_to_process.shape[0]
-                ):
-                    self.df.at[idx, self.new_qcode_col] = self._apply_label_filter(
-                        self.new_qcode_col, params, row
-                    )
+        if instanceof_filter:
+            print(f"Filter: instance of {property_id}")
+            qcodes_unique_filtered = sparql_res["qcode"].unique().tolist()
+
+            for idx, row in tqdm(
+                df_to_process.iterrows(), total=df_to_process.shape[0]
+            ):
+                self.df.at[idx, self.new_qcode_col] = self._apply_instanceof_filter(
+                    qcodes_unique_filtered, row, self.new_qcode_col
+                )
+
+        # we can do this again each time we run a new filter
+        df_to_process = self.df[self.df[self.new_qcode_col].map(lambda d: len(d)) > 0]
+
+        if "label" in self.filters:
+            label_filter_args = self.filters["label"]
+            print(
+                f"Filter: check label similarity against column {label_filter_args['label_col']}"
+            )
+
+            for idx, row in tqdm(
+                df_to_process.iterrows(), total=df_to_process.shape[0]
+            ):
+                self.df.at[idx, self.new_qcode_col] = self._apply_label_filter(
+                    sparql_res, row, self.new_qcode_col, label_filter_args
+                )
 
     def get_dataframe(self) -> pd.DataFrame:
         """

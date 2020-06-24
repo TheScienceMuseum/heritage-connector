@@ -2,7 +2,7 @@ from fuzzywuzzy import fuzz
 
 
 def fuzzy_match(
-    string1: str, string2: str, scorer=fuzz.token_sort_ratio, threshold=90
+    string1: str, string2: str, scorer=fuzz.token_set_ratio, threshold=90
 ) -> bool:
     """
     Work out whether two strings are similar to each other.
