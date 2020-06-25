@@ -108,11 +108,27 @@ class Filter:
             return " ".join([f"(wd:{i})" for i in ids])
 
         query = f"""
-        SELECT ?item ?itemLabel ?altLabel
+        SELECT ?item ?itemLabel ?altLabel ?birthYear ?deathYear ?inceptionYear ?dissolvedYear
                 WHERE
                 {{
                     VALUES (?item) {{ {map_ids(qcodes)} }}
                     {sparq_instanceof}
+                    OPTIONAL{{
+                        ?item wdt:P569 ?birthDate.
+                        BIND( year(?birthDate) AS ?birthYear )
+                        }}
+                    OPTIONAL {{
+                        ?item wdt:P570 ?deathDate.
+                        BIND( year(?deathDate) AS ?deathYear )
+                        }}
+                    OPTIONAL {{
+                        ?item wdt:P571 ?inceptionDate.
+                        BIND( year(?inceptionDate) AS ?inceptionYear )
+                        }}
+                    OPTIONAL {{
+                        ?item wdt:P576 ?dissolvedDate.
+                        BIND( year(?dissolvedDate) AS ?dissolvedYear )  
+                        }}
                     OPTIONAL {{
                         ?item skos:altLabel ?altLabel .
                         FILTER (lang(?altLabel) = "en")
@@ -121,8 +137,7 @@ class Filter:
                     SERVICE wikibase:label {{ 
                     bd:serviceParam wikibase:language "en" .
                     }}
-                }} 
-        GROUP BY ?item ?itemLabel ?altLabel
+                }}
         """
         self.query = query
         res = get_sparql_results(self.sparql_endpoint_url, query)["results"]["bindings"]
@@ -131,17 +146,45 @@ class Filter:
         res_df.loc[:, "qcode"] = res_df["item.value"].apply(
             lambda x: re.findall(r"(Q\d+)", x)[0]
         )
-        res_df = res_df[["qcode", "itemLabel.value", "altLabel.value"]]
 
-        # convert aliases to lowercase and drop duplicates
+        # fill missing columns with blanks for any columns that aren't in the data
+        final_cols = [
+            "qcode",
+            "itemLabel.value",
+            "altLabel.value",
+            "birthYear.value",
+            "deathYear.value",
+            "inceptionYear.value",
+            "dissolvedYear.value",
+        ]
+        cols_missing = set(final_cols) - set(res_df.columns.values.tolist())
+        for col in cols_missing:
+            res_df[col] = ""
+
+        res_df = res_df[
+            [
+                "qcode",
+                "itemLabel.value",
+                "altLabel.value",
+                "birthYear.value",
+                "deathYear.value",
+                "inceptionYear.value",
+                "dissolvedYear.value",
+            ]
+        ]
+
+        # convert aliases to lowercase and fill nan with empty string
         res_df["altLabel.value"] = (
-            res_df["altLabel.value"].fillna(" ").astype(str).str.lower()
+            res_df["altLabel.value"].fillna("").astype(str).str.lower()
         )
+
         res_df = res_df.drop_duplicates()
 
+        # rename columns (remove .value suffic from year columns)
         res_df = res_df.rename(
             columns={"itemLabel.value": "label", "altLabel.value": "alias"}
         )
+        res_df = res_df.rename(columns=lambda x: x.replace(".value", ""))
 
         return res_df
 
