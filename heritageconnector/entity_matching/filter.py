@@ -4,6 +4,7 @@ from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.generic import add_dicts
 import pandas as pd
 from tqdm import tqdm
+from fuzzywuzzy import fuzz
 from itertools import compress
 import re
 
@@ -144,7 +145,13 @@ class Filter:
 
         return res_df
 
-    def add_label_filter(self, col, threshold=90, include_aliases=False):
+    def add_label_filter(
+        self,
+        col,
+        include_aliases=False,
+        threshold=90,
+        fuzzy_match_scorer=fuzz.token_sort_ratio,
+    ):
         """
         Add a fuzzy matching filter on a column name and the label of each page.
 
@@ -155,8 +162,9 @@ class Filter:
         new_filter = {
             "label": {
                 "label_col": col,
-                "threshold": threshold,
                 "include_aliases": include_aliases,
+                "threshold": threshold,
+                "fuzzy_match_scorer": fuzzy_match_scorer,
             }
         }
         print(f"Added filter {new_filter}")
@@ -230,10 +238,11 @@ class Filter:
             list: filtered qcodes
         """
 
-        label_col, threshold, include_aliases = (
+        label_col, threshold, include_aliases, fuzzy_match_scorer = (
             filter_args["label_col"],
             filter_args["threshold"],
             filter_args["include_aliases"],
+            filter_args["fuzzy_match_scorer"],
         )
 
         source_string = row[label_col]
@@ -251,7 +260,12 @@ class Filter:
         # add the qcode to qcodes_matched if at least on one of the matches returned True
         for qcode in qcodes:
             text_matches = [
-                fuzzy_match(source_string, target, threshold=threshold)
+                fuzzy_match(
+                    source_string,
+                    target,
+                    scorer=fuzzy_match_scorer,
+                    threshold=threshold,
+                )
                 for target in labels[qcode]
             ]
             if any(x for x in text_matches):
