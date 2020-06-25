@@ -42,3 +42,10 @@ def get_redirected_url(url: str) -> str:
 
     r = requests.get(url)
     return r.url
+
+
+def add_dicts(dict1, dict2) -> dict:
+    """
+    Return a dictionary with the sum of the values for each key in both dicts. 
+    """
+    return {x: dict1.get(x, 0) + dict2.get(x, 0) for x in set(dict1).union(dict2)}

@@ -18,7 +18,12 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
     """
     sparql = SPARQLWrapper(endpoint_url)
     sparql.setQuery(query)
+    sparql.setMethod("POST")
     sparql.setReturnFormat(JSON)
+    sparql.addCustomHttpHeader(
+        "User-Agent",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36",
+    )
     try:
         return sparql.query().convert()
     except urllib.error.HTTPError as e:
