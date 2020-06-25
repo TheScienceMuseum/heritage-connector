@@ -23,6 +23,7 @@ class Filter:
         self.filters = {}
         self.qcode_col = qcode_col
         self.new_qcode_col = "qcodes_filtered"
+        self.date_values = ["birthYear", "deathYear", "inceptionYear", "dissolvedYear"]
 
         self.df.loc[:, self.qcode_col] = self._clean_qcode_col()
         self.qcodes_unique = list(set(self.df[self.qcode_col].sum()))
@@ -185,7 +186,7 @@ class Filter:
             columns={"itemLabel.value": "label", "altLabel.value": "alias"}
         )
         res_df = res_df.rename(columns=lambda x: x.replace(".value", ""))
-
+        self.sparql_res = res_df
         return res_df
 
     def add_label_filter(
@@ -233,6 +234,30 @@ class Filter:
         print(f"Added filter {new_filter}")
         self.filters.update(new_filter)
 
+    def add_date_filter(self, date_col: str, wiki_value: str, uncertainty: int):
+        """
+        Adds a filter on records by year in a date column. Uncertainty allows dates from Wikidata +-
+        a certain number of years outside the recorded date.
+
+        Args:
+            date_col (str): 
+            wiki_value (str): from birthDate, deathDate, inceptionDate, dissolvedDate
+            uncertainty (int): number of years either side of the recorded date to accept a date from Wikidata
+        """
+
+        assert wiki_value in self.date_values
+
+        new_filter = {
+            f"date_{wiki_value}": {
+                "date_col": date_col,
+                "wiki_value": wiki_value,
+                "uncertainty": uncertainty,
+            }
+        }
+
+        print(f"Added filter {new_filter}")
+        self.filters.update(new_filter)
+
     def _get_aliases(self, res_df: pd.DataFrame, qcodes: list) -> list:
         """
         Get all aliases for supplied qcodes.
@@ -264,6 +289,119 @@ class Filter:
             qcode: res_df.loc[res_df["qcode"] == qcode, "label"].unique().tolist()
             for qcode in qcodes
         }
+
+    def _get_dates(self, wiki_value: str, res_df: pd.DataFrame, qcodes: list) -> dict:
+        """
+        Get dates for qcodes from specified date_col in res_df. If the specified date value doesn't exist
+        for that qcode, then an empty list is returned for the key. 
+
+        Args:
+            wiki_value (str)
+            res_df (pd.DataFrame)
+            qcodes (list)
+
+        Raises:
+            Exception
+
+        Returns:
+            dict: keys=qcodes, vals=date or None
+        """
+
+        date_dict = dict()
+
+        for qcode in qcodes:
+            dates_unique = list(
+                set(res_df.loc[res_df["qcode"] == qcode, wiki_value].dropna().tolist())
+            )
+
+            if len(dates_unique) == 1:
+                date_dict.update({qcode: dates_unique[0]})
+            elif len(dates_unique) == 0:
+                date_dict.update({qcode: None})
+            elif len(dates_unique) > 1:
+                #  more than one birth date in Wikidata: return an average
+                dates_unique = [int(date) for date in dates_unique]
+                date_average = int(sum(dates_unique) / len(dates_unique))
+                date_dict.update({qcode: str(date_average)})
+
+        return date_dict
+
+    def get_year_from_date_value(self, datestring: str) -> int:
+        """
+        Looks for a year mention in a date-like string by finding a run of 1-4 digits if BCE, 
+        or 4 digits if not BCE.
+
+        Returns None if no date found, the date if only 1 is found, the average of the two if 
+        two dates are found, and the first date if more than 2 dates are found.
+
+        Args:
+            date (str)
+
+        Returns:
+            str:
+        """
+
+        datestring = str(datestring)
+
+        if "BCE" in datestring:
+            datestring = datestring.replace("BCE", "").strip()
+            year_matches = re.findall(r"(\d{1,4})", datestring)
+            # BCE dates are recorded in Wikidata as negative years
+            year_matches = [-1 * int(match) for match in year_matches]
+
+        else:
+            # look for (\d{4)) - avoiding trying to convert "about 1984ish" into
+            # a date format using datetime
+            year_matches = re.findall(r"(\d{4})", datestring)
+
+        try:
+            if len(year_matches) == 0:
+                return None
+            elif len(year_matches) == 1 or len(year_matches) > 2:
+                return int(year_matches[0])
+            elif len(year_matches) == 2:
+                # assume in the format "333-345 BCE" / "1983-1984"
+                return (int(year_matches[0]) + int(year_matches[1])) / 2
+        except ValueError as e:
+            print(e)
+
+    def _apply_date_filter(
+        self, res_df: pd.DataFrame, row: pd.Series, qcode_col: str, filter_args: dict
+    ) -> list:
+        """
+        Apply date filter which filters records by year of the field specified, with a specified amount
+        of leeway expressed through an uncertainty value.
+
+        Args:
+            res_df (pd.DataFrame): 
+            row (pd.Series): 
+            filter_args (dict): col, wiki_value, uncertainty
+
+        Returns:
+            list: filtered qcodes
+        """
+
+        date_col, wiki_value, uncertainty = (
+            filter_args["date_col"],
+            filter_args["wiki_value"],
+            filter_args["uncertainty"],
+        )
+        record_year = self.get_year_from_date_value(row[date_col])
+
+        qcodes = row[qcode_col]
+        qcode_years = self._get_dates(wiki_value, res_df, qcodes)
+
+        # if a year can't be extracted from the column in question return all the qcodes
+        if not record_year:
+            return qcodes
+
+        # return all years within the specified uncertainty of the target year, or those for which there wasn't a date
+        # on Wikidata (value in qcode_years is None)
+        return [
+            k
+            for k, v in qcode_years.items()
+            if v is None or -uncertainty <= int(record_year) - int(v) <= uncertainty
+        ]
 
     def _apply_label_filter(
         self, res_df: pd.DataFrame, row: pd.Series, qcode_col: str, filter_args: dict
@@ -391,6 +529,22 @@ class Filter:
                     sparql_res, row, self.new_qcode_col, label_filter_args
                 )
 
+        if any("date" in key for key in self.filters.keys()):
+            date_filters = [k for k in self.filters.keys() if "date" in k]
+
+            for f in date_filters:
+                df_to_process = self.df[
+                    self.df[self.new_qcode_col].map(lambda d: len(d)) > 0
+                ]
+                date_filter_args = self.filters[f]
+
+                for idx, row in tqdm(
+                    df_to_process.iterrows(), total=df_to_process.shape[0]
+                ):
+                    self.df.at[idx, self.new_qcode_col] = self._apply_date_filter(
+                        sparql_res, row, self.new_qcode_col, date_filter_args
+                    )
+
     def get_dataframe(self) -> pd.DataFrame:
         """
         Returns the dataframe
@@ -434,5 +588,4 @@ class Filter:
         for k, v in self.filters.items():
             print(f" - {k}: {v}")
 
-    # TODO: add_date_filter,
     # TODO: instance filters from_file, to_file

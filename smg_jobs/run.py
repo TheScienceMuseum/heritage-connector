@@ -95,12 +95,12 @@ class jobs:
         """
 
         print("Running lookup...")
-        df_lookup = self.lookup(export=False)
-        # df_lookup = pd.read_pickle(os.path.join(self.data_folder, "lookup_result.pkl"))
+        # df_lookup = self.lookup(export=False)
+        df_lookup = pd.read_pickle(os.path.join(self.data_folder, "lookup_result.pkl"))
         people = df_lookup[df_lookup["GENDER"].isin(["M", "F"])].copy()
         orgs = df_lookup[df_lookup["GENDER"] == "N"].copy()
 
-        print("Running filtering on found qcodes...")
+        print("Running filtering on found Wikidata references...")
         print("PEOPLE")
         f = filtering.Filter(dataframe=people, qcode_col="res_WIKIDATA_IDs")
         f.add_instanceof_filter("Q5", False)
@@ -110,6 +110,7 @@ class jobs:
             include_aliases=True,
             fuzzy_match_scorer=fuzz.token_sort_ratio,
         )
+        f.add_date_filter("BIRTH_DATE", "birthYear", 8)
         f.process_dataframe()
         f.view_stats()
 
