@@ -206,7 +206,7 @@ class Filter:
             for qcode in qcodes
         }
 
-    def _get_labels(self, res_df: pd.DataFrame, qcodes: list):
+    def _get_labels(self, res_df: pd.DataFrame, qcodes: list) -> list:
         """
         Get all labels for supplied qcodes.
 
