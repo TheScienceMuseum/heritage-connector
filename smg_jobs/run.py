@@ -3,18 +3,19 @@ import warnings
 import pandas as pd
 from tqdm import tqdm
 import os
+from fuzzywuzzy import fuzz
 
 sys.path.append("..")
 warnings.simplefilter(action="ignore", category=FutureWarning)
 tqdm.pandas()
 
 from heritageconnector.utils import data_loaders
-from heritageconnector.entity_matching import lookup
+from heritageconnector.entity_matching import lookup, filtering
 
 
 def main():
     j = jobs()
-    named_methods = {"lookup": j.lookup}
+    named_methods = {"lookup": j.lookup, "match_people_orgs": j.match_people_orgs}
     method_names = ", ".join(list(named_methods.keys()))
 
     if len(sys.argv) == 1 or "help" in sys.argv[1]:
@@ -82,7 +83,58 @@ class jobs:
         )
 
         if export:
-            df.to_pickle(os.path.join(self.data_folder, "lookup_result.pkl"))
+            export_path = os.path.join(self.data_folder, "lookup_result.pkl")
+            df.to_pickle(export_path)
+            print(f"Results exported to {export_path}")
+
+        return df
+
+    def match_people_orgs(self, export=True):
+        """
+        Record matching on people and organisations. 
+        """
+
+        print("Running lookup...")
+        df_lookup = self.lookup(export=False)
+        # df_lookup = pd.read_pickle(os.path.join(self.data_folder, "lookup_result.pkl"))
+        people = df_lookup[df_lookup["GENDER"].isin(["M", "F"])].copy()
+        orgs = df_lookup[df_lookup["GENDER"] == "N"].copy()
+
+        print("Running filtering on found qcodes...")
+        print("PEOPLE")
+        f = filtering.Filter(dataframe=people, qcode_col="res_WIKIDATA_IDs")
+        f.add_instanceof_filter("Q5", False)
+        f.add_label_filter(
+            "PREFERRED_NAME",
+            threshold=80,
+            include_aliases=True,
+            fuzzy_match_scorer=fuzz.token_sort_ratio,
+        )
+        f.process_dataframe()
+        f.view_stats()
+
+        print("ORGS")
+        fo = filtering.Filter(dataframe=orgs, qcode_col="res_WIKIDATA_IDs")
+        fo.add_instanceof_filter("Q43229", True)
+        fo.add_label_filter(
+            "PREFERRED_NAME",
+            threshold=80,
+            include_aliases=True,
+            fuzzy_match_scorer=fuzz.token_set_ratio,
+        )
+        fo.process_dataframe()
+        fo.view_stats()
+
+        people_filtered = f.get_dataframe()
+        orgs_filtered = fo.get_dataframe()
+        df_filtered = pd.concat([people_filtered, orgs_filtered])
+
+        if export:
+            export_path = os.path.join(
+                self.data_folder, "filtering_people_orgs_result.pkl"
+            )
+            df_filtered.to_pickle(export_path)
+            print(f"Results exported to {export_path}")
 
 
 if __name__ == "__main__":

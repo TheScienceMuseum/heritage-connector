@@ -361,6 +361,26 @@ class Filter:
         else:
             print("WARNING: filters not run against dataframe yet so nothing returned.")
 
+    def view_stats(self):
+        """
+        Prints statistics for the filtering process.
+        """
+
+        if self.new_qcode_col not in self.df.columns:
+            raise Exception("Filters not run so no stats to display.")
+
+        num_records_after_filter = len(
+            self.df[(self.df[self.new_qcode_col].map(lambda d: len(d)) > 0)]
+        )
+        num_records_total = len(self.df)
+        perc_records_with_unique_match = round(
+            100 * num_records_after_filter / num_records_total, 1
+        )
+
+        print(
+            f"No. records after filtering: {num_records_after_filter}/{num_records_total} ({perc_records_with_unique_match}%)"
+        )
+
     def view_filters(self):
         """
         Shows filters added so far. For use in an interactive environment.
