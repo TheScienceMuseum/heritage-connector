@@ -5,7 +5,7 @@ Transforming text into data to extract meaning and make connections
 ## Documentation and materials
 
 - Project overview
-– [Project blog](https://thesciencemuseum.github.io/heritageconnector)
+- [Project blog](https://thesciencemuseum.github.io/heritageconnector)
 - Technical overview
 - Webinars and talks
 - Project team and partners
