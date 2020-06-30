@@ -9,6 +9,7 @@ jupyterlab = "*"
 matplotlib = "*"
 black = "*"
 pytest = "*"
+scikit-learn = "*"
 
 [packages]
 flask = "*"
