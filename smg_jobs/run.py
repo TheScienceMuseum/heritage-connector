@@ -83,7 +83,7 @@ class jobs:
         )
 
         if export:
-            export_path = os.path.join(self.data_folder, "lookup_result.pkl")
+            export_path = os.path.join(self.data_folder, "results/lookup_result.pkl")
             df.to_pickle(export_path)
             print(f"Results exported to {export_path}")
 
@@ -132,7 +132,7 @@ class jobs:
 
         if export:
             export_path = os.path.join(
-                self.data_folder, "filtering_people_orgs_result.pkl"
+                self.data_folder, "results/filtering_people_orgs_result.pkl"
             )
             df_filtered.to_pickle(export_path)
             print(f"Results exported to {export_path}")
