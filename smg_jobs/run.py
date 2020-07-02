@@ -106,11 +106,12 @@ class jobs:
         f.add_instanceof_filter("Q5", False)
         f.add_label_filter(
             "PREFERRED_NAME",
-            threshold=80,
+            threshold=85,
             include_aliases=True,
             fuzzy_match_scorer=fuzz.token_sort_ratio,
         )
         f.add_date_filter("BIRTH_DATE", "birthYear", 8)
+        f.add_date_filter("DEATH_DATE", "deathYear", 8)
         f.process_dataframe()
         f.view_stats()
 
