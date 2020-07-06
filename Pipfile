@@ -23,6 +23,7 @@ fuzzywuzzy = "*"
 python-levenshtein = "*"
 elasticsearch = "*"
 rdflib = "*"
+rdflib-jsonld = "*"
 
 [requires]
 python_version = "3.7"
