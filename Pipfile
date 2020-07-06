@@ -21,6 +21,8 @@ pandas = "*"
 sparqlwrapper = "*"
 fuzzywuzzy = "*"
 python-levenshtein = "*"
+elasticsearch = "*"
+rdflib = "*"
 
 [requires]
 python_version = "3.7"
