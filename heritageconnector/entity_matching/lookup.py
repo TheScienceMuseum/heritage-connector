@@ -4,6 +4,7 @@ import time
 import json
 import re
 from typing import Union
+import pandas as pd
 from ..utils.sparql import get_sparql_results
 from ..utils.generic import extract_json_values, get_redirected_url
 
@@ -314,3 +315,41 @@ class wikidata_id:
         pid = "P1417"
 
         return self.from_regex(redirected_url, pattern, pid)
+
+
+def get_internal_urls_from_wikidata(
+    url_pattern: str, wikidata_endpoint="https://query.wikidata.org/sparql"
+):
+    """
+    Get all Wikidata records with property P973 'described at URL' following the pattern in url_pattern. 
+
+    Args:
+        url_pattern (str): the regex pattern to describe collection URLs. The Science Museum's is 'collection.sciencemuseum.org.uk'.
+        wikidata_endpoint (str, optional): SPARQL endpoint for Wikidata. Defaults to "https://query.wikidata.org/sparql".
+
+    Returns:
+        pd.DataFrame: columns item (qcode), itemLabel (label) and URL (internal URL)
+    """
+
+    query = f"""
+        SELECT DISTINCT ?item ?itemLabel ?URL WHERE {{
+            ?item wdt:P973 ?URL
+
+            filter( regex(str(?URL), "{url_pattern}" ) )
+
+            SERVICE wikibase:label {{
+            bd:serviceParam wikibase:language "en" .
+            }}
+        }}     
+    """
+
+    res = get_sparql_results(wikidata_endpoint, query)["results"]["bindings"]
+    res_df = pd.json_normalize(res)
+
+    if len(res_df) > 0:
+        res_df = res_df[["item.value", "itemLabel.value", "URL.value"]].rename(
+            columns=lambda x: x.replace(".value", "")
+        )
+        res_df["item"] = res_df["item"].apply(lambda i: re.findall(r"(Q\d+)", i)[0])
+
+    return res_df

@@ -15,7 +15,11 @@ from heritageconnector.entity_matching import lookup, filtering
 
 def main():
     j = jobs()
-    named_methods = {"lookup": j.lookup, "match_people_orgs": j.match_people_orgs}
+    named_methods = {
+        "lookup": j.lookup,
+        "match_people_orgs": j.match_people_orgs,
+        "urls_from_wikidata": j.urls_from_wikidata,
+    }
     method_names = ", ".join(list(named_methods.keys()))
 
     if len(sys.argv) == 1 or "help" in sys.argv[1]:
@@ -50,6 +54,7 @@ class jobs:
                 (r"doi:10.1093/ref:odnb/(\d{1,6})", "P1415",),
             ],
             "data_model": {"people_freetext": ["DESCRIPTION", "NOTE"]},
+            "wikidata_endpoint": "https://query.wikidata.org/sparql",
         }
 
     def load_data(self):
@@ -136,6 +141,20 @@ class jobs:
                 self.data_folder, "results/filtering_people_orgs_result.pkl"
             )
             df_filtered.to_pickle(export_path)
+            print(f"Results exported to {export_path}")
+
+    def urls_from_wikidata(self, export=True):
+        wikidata_endpoint = self.config["wikidata_endpoint"]
+
+        res_df = lookup.get_internal_urls_from_wikidata(
+            "collection.sciencemuseum.org.uk", wikidata_endpoint
+        )
+
+        if export:
+            export_path = os.path.join(
+                self.data_folder, "results/wikidata_url_lookup.csv"
+            )
+            res_df.to_csv(export_path, index=False)
             print(f"Results exported to {export_path}")
 
 
