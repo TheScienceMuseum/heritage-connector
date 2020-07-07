@@ -181,3 +181,23 @@ class wikipedia_text_search(TextSearch):
         res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
 
         return res_df
+
+
+def combine_results(search_results: list, topn=20) -> pd.Series:
+    """
+    Combines list of dataframes returned from TextSearch objects, by taking a mean of the scores.
+
+    Args:
+        search_results (list)
+        topn (int): the number of top results to return 
+
+    Return:
+        pd.Series: Wikidata references, ranked by score
+    """
+
+    all_results = pd.concat(search_results)
+    score_series = (
+        all_results.groupby("item").sum()["score"] / len(search_results)
+    ).sort_values(ascending=False)
+
+    return score_series[0:topn]
