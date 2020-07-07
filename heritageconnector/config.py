@@ -23,4 +23,4 @@ class LoadConfig:
             self.__dict__.update(config_items)
 
 
-config = LoadConfig(os.path.join(this_path, "../config.ini"))
+config = LoadConfig(os.path.join(this_path, "../config/config.ini"))
