@@ -7,64 +7,116 @@ from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
 from pprint import pprint
 
-collectionName = "SMG"
+collection = "SMG"
+context = [
+    {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
+    {"@schema": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
+    {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
+]
 
 
-def load_object_data(csv):
+def loadObjectData(csv):
     """Load data from CSV files """
 
     # loop though CSV file and create/store records for each row
     # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
-    create(data)
+    data = {}
+    record_type = "object"
+    addRecord(record_type, data)
 
     return
 
 
-def load_maker_data(csv):
+def loadPeopleData(csv):
+    """Load data from CSV files """
+
+    # loop though CSV file and create/store records for each row
+    # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
+    data = {}
+    record_type = "people"
+    addRecord(record_type, data)
+
+    return
+
+
+def loadMakerData(csv):
+    """Load object -> maker -> people relationships from CSV files and add to existing records """
+
+    # loop though CSV file and update exiting records for each row based on relationship value
+
+    # s = subject = id
+    # p = predicate = relationship
+    # o = object = thing we are linking to
+
+    s = ""
+    p = "MADE"  # should this be the RDF / Wikidata value?
+    o = "https://collection.sciencemuseumgroup.org.uk/objects/co146411"
+    addRelationship(s, p, o)
+
+    return
+
+
+def loadUserData(csv):
     """Load object -> user -> people relationships from CSV files and add to existing records """
 
     # loop though CSV file and update exiting records for each row based on 'predicate' value
-    id = ""
-    triple = ("", "", "")
-    update(id, triple)
+
+    # s = subject = id
+    # p = predicate = relationship
+    # o = object = thing we are linking to
+
+    s = ""
+    p = "USED"  # should this be the RDF / Wikidata value? What about more granular values?
+    o = "https://collection.sciencemuseumgroup.org.uk/people/cp37182"
+    addRelationship(s, p, o)
 
     return
 
 
-def load_user_data(csv):
-    """Load object -> maker -> people relationships from CSV files and add to existing records """
-
-    # loop though CSV file and update exiting records for each row based on 'predicate' value
-    id = ""
-    triple = ""
-    update(id, triple)
-
-    return
-
-
-def create(collectionName, data):
+def addRecord(collection, record_type, data):
     """Create and store new HC record with a JSON-LD graph"""
 
     # Question: do we want to massage/format some 'additional' data (outside of the JSON-LD)
     # like the collectionName to be stored on the Elastic record?
-    jsonld = serialize(data)
-    datastore.create(data, jsonld)
+    jsonld = serializeToJsonld(record_type, data)
+    datastore.create(collection, record_type, data, jsonld)
 
     return
 
 
-def update(id, triple):
-    """Add a new triple of info to an an existing record"""
+def addRelationship(s, p, o):
+    """Add a new RDF relationship to an an existing record"""
 
-    # Used to add object -> user -> people relationships type loaded seperatly
-    # Question: How do we pass this info? JSON-LD, internal RDFLib format or just a S->P->O tuple?
-    # Question: Or do we load the current record as JSON-LD and update it here? Seems inefficent?
-    datastore.update(id, triple)
+    # s = subject = id
+    # p = predicate = relationship
+    # o = object = thing we are linking to
+
+    # Do we do the lookup agaisnt out config file here? (I think yes)
+    # Do we store multiple entries for both Wikidata and RDF? (I think yes)
+
+    record = datastore.get(id)
+    g = Graph().parse(data=record, format="json-ld")
+
+    g.add(
+        (
+            URIRef(s),
+            URIRef(
+                p
+            ),  # we may need to convert our Wikidata P values and RDF verbs to URLs here
+            URIRef(o),
+        )
+    )
+
+    record.graph = g.serialize(format="json-ld", context=context, indent=4).decode(
+        "utf-8"
+    )
+
+    datastore.update(id, record)
 
     return
 
 
-def serialize(data):
+def serializeToJsonld(record_type, record):
     """Returns a JSON-LD represention of a record"""
 
     g = Graph()
@@ -82,7 +134,7 @@ def serialize(data):
     g.add((record, XSD.birthDate, Literal(data["birth_date"])))
     g.add((record, XSD.deathDate, Literal(data["death_date"])))
 
-    # objectc they made
+    # objects they made
     g.add(
         (
             record,
@@ -99,6 +151,7 @@ def serialize(data):
             URIRef("https://www.wikidata.org/wiki/" + data["wikidata"]),
         )
     )
+    g.add((record, OWL.sameAs, URIRef("https://www.wikidata.org/wiki/1000")))
 
     # if the record is a org
     # --------------------------------
@@ -115,11 +168,6 @@ def serialize(data):
     # if the record is an article (editorial/blog post)
     # --------------------------------
 
-    context = [
-        {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
-        {"@schema": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
-        {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
-    ]
     return g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
 
 
@@ -138,6 +186,6 @@ if __name__ == "__main__":
         "wikidata": "Q46633",
     }
 
-    datastore.create_index()
-    jsonld = create("SMG", data)
+    datastore.createIndex()
+    jsonld = addRecord("SMG", "object", data)
     pprint(jsonld)
