@@ -27,3 +27,24 @@ class TextSearch(ABC):
         """
 
         pass
+
+    def add_score_to_search_results_df(
+        self, res_df: pd.DataFrame, rank_col: str
+    ) -> pd.DataFrame:
+        """
+        Add 'score' column to a dataframe using a column indicating the search result ranking of each item (starting at 1).
+        Pass back the dataframe with the new column.
+        """
+
+        assert res_df[rank_col].min() == 1
+        df = res_df.copy()
+
+        max_rank = len(df)
+        if max_rank == 1:
+            df.at[0, "score"] = 1
+        else:
+            df["score"] = df["rank"].apply(lambda x: max_rank - x)
+            sum_confidence = df["score"].sum()
+            df["score"] = df["score"].apply(lambda x: x / sum_confidence)
+
+        return df

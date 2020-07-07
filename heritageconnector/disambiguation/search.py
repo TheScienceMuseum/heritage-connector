@@ -4,22 +4,28 @@ from heritageconnector.base.disambiguation import TextSearch
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
 import pandas as pd
+import re
 
 
 class wikidata_text_search(TextSearch):
     def __init__(self):
         super().__init__()
 
-    def run_search(self, text: str, limit=100, **kwargs):
+    def run_search(self, text: str, limit=100, **kwargs) -> pd.DataFrame:
         """
-        [summary]
+        Run Wikidata search.
 
         Args:
-            text (str): [description]
-            limit (int, optional): [description]. Defaults to 100.
+            text (str): text to search
+            limit (int, optional): Defaults to 100.
+
+        Kwargs:
+            instanceof_filter (str): the property to filter values by instance of. 
+            include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
+            property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
 
         Returns:
-            [type]: [description]
+            pd.DataFrame: columns rank, item, itemLabel, score
         """
 
         class_tree = "/wdt:P279*" if "include_class_tree" in kwargs else ""
@@ -28,6 +34,8 @@ class wikidata_text_search(TextSearch):
         if "instanceof_filter" in kwargs:
             property_id = kwargs["instanceof_filter"]
             sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id}."
+        else:
+            sparq_instanceof = ""
 
         if "property_filters" in kwargs:
             for prop, value in kwargs["property_filters"].items():
@@ -35,6 +43,7 @@ class wikidata_text_search(TextSearch):
                     raise ValueError(
                         f"Property value {value} is not a valid Wikidata ID"
                     )
+                # TODO: wrap in optional
                 sparq_property_filter += f"\n ?item wdt:{prop} wd:{value} ."
 
         endpoint_url = config.WIKIDATA_SPARQL_ENDPOINT
@@ -43,7 +52,7 @@ class wikidata_text_search(TextSearch):
         WHERE
         {{
             {sparq_instanceof}
-            {sparq_property_filter}
+            {sparq_property_filter} 
             SERVICE wikibase:mwapi {{
                 bd:serviceParam wikibase:api "EntitySearch" .
                 bd:serviceParam wikibase:endpoint "www.wikidata.org" .
@@ -64,15 +73,111 @@ class wikidata_text_search(TextSearch):
         res_df = pd.json_normalize(res)[["item.value", "itemLabel.value"]].rename(
             columns=lambda x: x.replace(".value", "")
         )
+
         res_df = res_df.reset_index().rename(columns={"index": "rank"})
         res_df["rank"] = res_df["rank"] + 1
 
-        max_rank = len(res_df)
-        if max_rank == 1:
-            res_df.at[0, "score"] = 1
+        res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
+
+        return res_df
+
+
+class wikipedia_text_search(TextSearch):
+    def __init__(self):
+        super().__init__()
+
+    def calculate_label_similarity(self, string1: str, string2: str) -> int:
+        """
+        Performs two checks: Levenshtein similarity, and that there is at least one token in common between the two
+        strings. If there are no tokens in common the similarity is set to zero.
+
+        Returns:
+            int: similarity between 0 and 100. 
+        """
+
+        def tokenize(text) -> set:
+            """Ignore text in brackets, and generate set of lowercase tokens"""
+            no_brackets = re.sub(r"\([^)]*\)", "", text.lower())
+            return set(re.findall(r"\w+(?:'\w+)?|[^\w\s,]", no_brackets))
+
+        common_tokens = tokenize(string1).intersection(tokenize(string2))
+
+        if len(common_tokens) == 0:
+            return 0
         else:
-            res_df["score"] = res_df["rank"].apply(lambda x: max_rank - x)
-            sum_confidence = res_df["score"].sum()
-            res_df["score"] = res_df["score"].apply(lambda x: x / sum_confidence)
+            return fuzz.token_set_ratio(string1, string2)
+
+    def run_search(self, text: str, limit=100, similarity_thresh=50, **kwargs):
+        """
+        Run Wikidata search, then rank and limit results based on string similarity. 
+
+        Args:
+            text (str): text to search
+            limit (int, optional): Defaults to 100.
+            similarity_thresh (int, optional): The cut off to exclude items from search results. Defaults to 50. 
+
+        Kwargs:
+            instanceof_filter (str): the property to filter values by instance of. 
+            include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
+            property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
+
+        Returns:
+            pd.DataFrame: columns rank, item, itemLabel, score
+        """
+
+        class_tree = "/wdt:P279*" if "include_class_tree" in kwargs else ""
+        sparq_property_filter = ""
+
+        if "instanceof_filter" in kwargs:
+            property_id = kwargs["instanceof_filter"]
+            sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id}."
+        else:
+            sparq_instanceof = ""
+
+        if "property_filters" in kwargs:
+            for prop, value in kwargs["property_filters"].items():
+                if value[0].lower() != "q":
+                    raise ValueError(
+                        f"Property value {value} is not a valid Wikidata ID"
+                    )
+                sparq_property_filter += f"\n ?item wdt:{prop} wd:{value} ."
+
+        endpoint_url = config.WIKIDATA_SPARQL_ENDPOINT
+        query = f"""
+        SELECT ?item ?wikipedia_title {{
+            SERVICE wikibase:mwapi {{
+                bd:serviceParam wikibase:endpoint "en.wikipedia.org" .
+                bd:serviceParam wikibase:api "Generator" .
+                bd:serviceParam mwapi:generator "search" .
+                bd:serviceParam mwapi:gsrsearch "{text}" .
+                bd:serviceParam mwapi:gsrlimit "max" .
+                ?item wikibase:apiOutputItem mwapi:item . 
+                ?wikipedia_title wikibase:apiOutput mwapi:title .
+            }}
+            hint:Prior hint:runFirst "true".
+            {sparq_instanceof}
+            {sparq_property_filter}
+        }} LIMIT {limit}
+        """
+
+        res = get_sparql_results(endpoint_url, query)["results"]["bindings"]
+
+        res_df = pd.json_normalize(res)[["item.value", "wikipedia_title.value"]].rename(
+            columns=lambda x: x.replace(".value", "")
+        )
+
+        res_df["text_similarity"] = res_df["wikipedia_title"].apply(
+            lambda s: self.calculate_label_similarity(text, s)
+        )
+        res_df = (
+            res_df[res_df["text_similarity"] >= similarity_thresh]
+            .sort_values("text_similarity", ascending=False)
+            .reset_index(drop=True)
+        )
+        res_df = res_df.drop(columns="text_similarity")
+        res_df = res_df.reset_index().rename(columns={"index": "rank"})
+        res_df["rank"] = res_df["rank"] + 1
+
+        res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
 
         return res_df
