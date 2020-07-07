@@ -36,7 +36,6 @@ class TextSearch(ABC):
         Pass back the dataframe with the new column.
         """
 
-        assert res_df[rank_col].min() == 1
         df = res_df.copy()
 
         max_rank = len(df)

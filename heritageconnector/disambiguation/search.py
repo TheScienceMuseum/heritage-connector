@@ -70,14 +70,17 @@ class wikidata_text_search(TextSearch):
 
         res = get_sparql_results(endpoint_url, query)["results"]["bindings"]
 
-        res_df = pd.json_normalize(res)[["item.value", "itemLabel.value"]].rename(
-            columns=lambda x: x.replace(".value", "")
-        )
+        res_df = pd.json_normalize(res)
 
-        res_df = res_df.reset_index().rename(columns={"index": "rank"})
-        res_df["rank"] = res_df["rank"] + 1
+        if len(res_df) > 0:
+            res_df = res_df[["item.value", "itemLabel.value"]].rename(
+                columns=lambda x: x.replace(".value", "")
+            )
 
-        res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
+            res_df = res_df.reset_index().rename(columns={"index": "rank"})
+            res_df["rank"] = res_df["rank"] + 1
+
+            res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
 
         return res_df
 
@@ -109,7 +112,7 @@ class wikipedia_text_search(TextSearch):
 
     def run_search(self, text: str, limit=100, similarity_thresh=50, **kwargs):
         """
-        Run Wikidata search, then rank and limit results based on string similarity. 
+        Run Wikipedia search, then rank and limit results based on string similarity. 
 
         Args:
             text (str): text to search
@@ -162,23 +165,26 @@ class wikipedia_text_search(TextSearch):
 
         res = get_sparql_results(endpoint_url, query)["results"]["bindings"]
 
-        res_df = pd.json_normalize(res)[["item.value", "wikipedia_title.value"]].rename(
-            columns=lambda x: x.replace(".value", "")
-        )
+        res_df = pd.json_normalize(res)
 
-        res_df["text_similarity"] = res_df["wikipedia_title"].apply(
-            lambda s: self.calculate_label_similarity(text, s)
-        )
-        res_df = (
-            res_df[res_df["text_similarity"] >= similarity_thresh]
-            .sort_values("text_similarity", ascending=False)
-            .reset_index(drop=True)
-        )
-        res_df = res_df.drop(columns="text_similarity")
-        res_df = res_df.reset_index().rename(columns={"index": "rank"})
-        res_df["rank"] = res_df["rank"] + 1
+        if len(res_df) > 0:
+            res_df = res_df[["item.value", "wikipedia_title.value"]].rename(
+                columns=lambda x: x.replace(".value", "")
+            )
 
-        res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
+            res_df["text_similarity"] = res_df["wikipedia_title"].apply(
+                lambda s: self.calculate_label_similarity(text, s)
+            )
+            res_df = (
+                res_df[res_df["text_similarity"] >= similarity_thresh]
+                .sort_values("text_similarity", ascending=False)
+                .reset_index(drop=True)
+            )
+            res_df = res_df.drop(columns="text_similarity")
+            res_df = res_df.reset_index().rename(columns={"index": "rank"})
+            res_df["rank"] = res_df["rank"] + 1
+
+            res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
 
         return res_df
 
@@ -196,8 +202,54 @@ def combine_results(search_results: list, topn=20) -> pd.Series:
     """
 
     all_results = pd.concat(search_results)
+
+    if len(all_results) == 0:
+        return pd.Series()
+
     score_series = (
         all_results.groupby("item").sum()["score"] / len(search_results)
     ).sort_values(ascending=False)
 
-    return score_series[0:topn]
+    if topn < len(score_series):
+        score_series = score_series[0:topn]
+
+    return score_series
+
+
+def run(
+    text: str,
+    topn: int,
+    limit=100,
+    similarity_thresh=50,
+    search_objects=[wikidata_text_search, wikipedia_text_search],
+    **kwargs,
+) -> pd.Series:
+    """
+    Run search for all the specified TextSearch objects and combine results.
+
+    Args:
+        text (str): text to search
+        limit (int, optional): Defaults to 100.
+        similarity_thresh (int, optional): The cut off to exclude items from search results. Defaults to 50. 
+
+    Kwargs:
+        instanceof_filter (str): the property to filter values by instance of. 
+        include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
+        property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
+
+    """
+
+    # run all searches
+    search_results = []
+
+    for search in search_objects:
+        s = search()
+        res_df = s.run_search(
+            text, limit, similarity_thresh=similarity_thresh, **kwargs
+        )
+        search_results.append(res_df)
+
+    # concatenate results
+    concat_results = combine_results(search_results, topn)
+
+    return concat_results
