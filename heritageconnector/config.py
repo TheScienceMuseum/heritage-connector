@@ -1,5 +1,6 @@
 from configparser import ConfigParser
 import os
+import json
 
 this_path = os.path.dirname(__file__)
 
@@ -23,4 +24,15 @@ class LoadConfig:
             self.__dict__.update(config_items)
 
 
+class LoadFieldMapping:
+    def __init__(self, file_name):
+        with open(file_name) as f:
+            data = json.load(f)
+
+            self.__dict__.update(data)
+
+
 config = LoadConfig(os.path.join(this_path, "../config/config.ini"))
+field_mapping = LoadFieldMapping(
+    os.path.join(this_path, "../config/field_mapping.json")
+)
