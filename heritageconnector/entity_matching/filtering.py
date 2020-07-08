@@ -2,6 +2,7 @@ from heritageconnector.nlp.string_pairs import fuzzy_match
 from heritageconnector.utils.wikidata import entities
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.generic import add_dicts
+from heritageconnector.config import config
 import pandas as pd
 from tqdm import tqdm
 from fuzzywuzzy import fuzz
@@ -27,7 +28,7 @@ class Filter:
 
         self.df.loc[:, self.qcode_col] = self._clean_qcode_col()
         self.qcodes_unique = list(set(self.df[self.qcode_col].sum()))
-        self.sparql_endpoint_url = "https://query.wikidata.org/sparql"
+        self.sparql_endpoint_url = config.WIKIDATA_SPARQL_ENDPOINT
 
     def _clean_qcode_col(self):
         """
