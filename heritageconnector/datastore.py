@@ -1,26 +1,27 @@
 from elasticsearch import helpers
 from elasticsearch import Elasticsearch
+import json
 
-# Should we implement this as a persistance class esp. for connection pooling???
+# Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
 
 # es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
 es = Elasticsearch()
 
-indexBase = "heritageconnector"
+index = "heritageconnector"
 
 
 def createIndex():
     """Delete the exiting ES index if it exists and create a new index and mappings"""
 
-    print("Wiping existing index: " + indexBase)
-    es.indices.delete(index=indexBase, ignore=[400, 404])
+    print("Wiping existing index: " + index)
+    es.indices.delete(index=index, ignore=[400, 404])
 
     # setup any mappings etc.
     indexSettings = {"settings": {"number_of_shards": 1, "number_of_replicas": 0}}
 
-    print("Creating new index: " + indexBase)
-    es.indices.create(index=indexBase, body=indexSettings)
+    print("Creating new index: " + index)
+    es.indices.create(index=index, body=indexSettings)
 
     return
 
@@ -37,28 +38,52 @@ def batchCreate(data):
 def create(collection, record_type, data, jsonld):
     """Load a new record in ElasticSearch and return it's id"""
 
+    # should we make our own ID using the subject URI?
+
     # create a ES doc
-    doc = {}
-    doc["graph"] = jsonld
+    doc = {
+        "uri": data["uri"],
+        "collection": collection,
+        "type": record_type,
+        "graph": json.loads(jsonld),
+    }
+    es_json = json.dumps(doc)
 
-    # add document to ES index
-    # todo: should we use out own ID/key? Much nicer but what to use as a uniqye value? url?
-    response = es.index(index=indexBase, body=doc)
-    print(response)
+    # add JSON document to ES index
+    response = es.index(index=index, body=es_json)
+    print(es_json)
 
-    return id
+    return response
 
 
-def delete(id):
-    """Overwrite an existing ElasticSearch record"""
+def update(collection, record_type, data, jsonld):
+    """Update an existing ElasticSearch record"""
 
-    # delete
+    # for now htis just mirrors the create method
+    create(collection, record_type, data, jsonld)
 
     return
 
 
-def getAll(id):
-    """Return an list of objects or make this an itterator"""
+def updateGraph(id, jsonld):
+    """Update the JSON-LD graph on an existing ElasticSearch record"""
+
+    # https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-update.html
+
+    doc = {"graph": json.loads(jsonld)}
+    es_json = json.dumps(doc)
+
+    # add JSON document to ES index
+    response = es.update(index=index, id=id, body=es_json)
+    print(response)
+
+    return
+
+
+def delete(id):
+    """Delete an existing ElasticSearch record"""
+
+    es.delete(id)
 
     return
 
@@ -66,11 +91,25 @@ def getAll(id):
 def get(id):
     """Return an existing ElasticSearch record"""
 
-    res = es.get(index=indexBase, id=id)
-    print(res["_source"])
+    document = es.get(index=index, id=id)
 
-    data = res
-    return data
+    return document
+
+
+def getByURI(uri):
+    """Return an existing ElasticSearch record"""
+
+    # https://www.elastic.co/guide/en/elasticsearch/reference/master/search-search.html
+
+    document = es.search(index=index, body={"query": {"match": {"uri": uri}}})
+
+    return document
+
+
+def search(query, filter):
+    """Return an optionally filtered list of matching objects"""
+
+    return
 
 
 def sameAs(id, uri):
@@ -98,5 +137,7 @@ def sameAs(id, uri):
     # ))
 
     # record.graph = g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
+
+    # updateGraph(id, jsonld)
 
     return
