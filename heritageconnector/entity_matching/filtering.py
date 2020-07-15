@@ -2,6 +2,7 @@ from heritageconnector.nlp.string_pairs import fuzzy_match
 from heritageconnector.utils.wikidata import entities
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.generic import add_dicts
+from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.config import config
 import pandas as pd
 from tqdm import tqdm
@@ -327,45 +328,6 @@ class Filter:
 
         return date_dict
 
-    def get_year_from_date_value(self, datestring: str) -> int:
-        """
-        Looks for a year mention in a date-like string by finding a run of 1-4 digits if BCE, 
-        or 4 digits if not BCE.
-
-        Returns None if no date found, the date if only 1 is found, the average of the two if 
-        two dates are found, and the first date if more than 2 dates are found.
-
-        Args:
-            date (str)
-
-        Returns:
-            str:
-        """
-
-        datestring = str(datestring)
-
-        if "BCE" in datestring:
-            datestring = datestring.replace("BCE", "").strip()
-            year_matches = re.findall(r"(\d{1,4})", datestring)
-            # BCE dates are recorded in Wikidata as negative years
-            year_matches = [-1 * int(match) for match in year_matches]
-
-        else:
-            # look for (\d{4)) - avoiding trying to convert "about 1984ish" into
-            # a date format using datetime
-            year_matches = re.findall(r"(\d{4})", datestring)
-
-        try:
-            if len(year_matches) == 0:
-                return None
-            elif len(year_matches) == 1 or len(year_matches) > 2:
-                return int(year_matches[0])
-            elif len(year_matches) == 2:
-                # assume in the format "333-345 BCE" / "1983-1984"
-                return (int(year_matches[0]) + int(year_matches[1])) / 2
-        except ValueError as e:
-            print(e)
-
     def _apply_date_filter(
         self, res_df: pd.DataFrame, row: pd.Series, qcode_col: str, filter_args: dict
     ) -> list:
@@ -387,7 +349,7 @@ class Filter:
             filter_args["wiki_value"],
             filter_args["uncertainty"],
         )
-        record_year = self.get_year_from_date_value(row[date_col])
+        record_year = get_year_from_date_value(row[date_col])
 
         qcodes = row[qcode_col]
         qcode_years = self._get_dates(wiki_value, res_df, qcodes)
@@ -538,7 +500,7 @@ class Filter:
                     self.df[self.new_qcode_col].map(lambda d: len(d)) > 0
                 ]
                 date_filter_args = self.filters[f]
-
+                print(f"Filter: date ({date_filter_args['date_col']})")
                 for idx, row in tqdm(
                     df_to_process.iterrows(), total=df_to_process.shape[0]
                 ):
