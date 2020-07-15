@@ -1,6 +1,7 @@
 import requests
 from typing import List, Union
 from tqdm import tqdm
+import re
 
 
 class entities:
@@ -162,3 +163,19 @@ class entities:
         """
 
         return self.get_property_values("P31", qcodes)
+
+
+def url_to_qid(url: str) -> str:
+    """
+    Maps Wikidata URL of an entity to QID e.g. http://www.wikidata.org/entity/Q7187777 -> Q7187777.
+    """
+
+    return re.findall(r"(Q\d+)", url)[0]
+
+
+def qid_to_url(qid: str) -> str:
+    """
+    Maps QID of an entity to a Wikidata URL e.g. Q7187777 -> http://www.wikidata.org/entity/Q7187777.
+    """
+
+    return f"http://www.wikidata.org/entity/{qid}"

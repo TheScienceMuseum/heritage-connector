@@ -20,7 +20,7 @@ class wikidata_text_search(TextSearch):
             limit (int, optional): Defaults to 100.
 
         Kwargs:
-            instanceof_filter (str): the property to filter values by instance of. 
+            instanceof_filter (str/list): property or properties to filter values by instance of. 
             include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
             property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
 
@@ -33,7 +33,16 @@ class wikidata_text_search(TextSearch):
 
         if "instanceof_filter" in kwargs:
             property_id = kwargs["instanceof_filter"]
-            sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id}."
+            if isinstance(property_id, str):
+                # one instanceof in filter
+                sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id}."
+            elif isinstance(property_id, list):
+                if len(property_id) == 1:
+                    sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id[0]}."
+                else:
+                    ids = ", ".join(["wd:" + x for x in property_id])
+                    sparq_instanceof = f" ?item wdt:P31{class_tree} ?tree. \n FILTER (?tree in ({ids}))"
+
         else:
             sparq_instanceof = ""
 
@@ -120,7 +129,7 @@ class wikipedia_text_search(TextSearch):
             similarity_thresh (int, optional): The cut off to exclude items from search results. Defaults to 50. 
 
         Kwargs:
-            instanceof_filter (str): the property to filter values by instance of. 
+            instanceof_filter (str/list): property or properties to filter values by instance of. 
             include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
             property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
 
@@ -133,7 +142,16 @@ class wikipedia_text_search(TextSearch):
 
         if "instanceof_filter" in kwargs:
             property_id = kwargs["instanceof_filter"]
-            sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id}."
+            if isinstance(property_id, str):
+                # one instanceof in filter
+                sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id}."
+            elif isinstance(property_id, list):
+                if len(property_id) == 1:
+                    sparq_instanceof = f"?item wdt:P31{class_tree} wd:{property_id[0]}."
+                else:
+                    ids = ", ".join(["wd:" + x for x in property_id])
+                    sparq_instanceof = f" ?item wdt:P31{class_tree} ?tree. \n FILTER (?tree in ({ids}))"
+
         else:
             sparq_instanceof = ""
 
