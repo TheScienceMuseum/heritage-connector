@@ -3,6 +3,7 @@ from fuzzywuzzy import fuzz
 from heritageconnector.base.disambiguation import TextSearch
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
+from heritageconnector.utils.data_transformation import assert_qid_format
 import pandas as pd
 import re
 
@@ -48,12 +49,18 @@ class wikidata_text_search(TextSearch):
 
         if "property_filters" in kwargs:
             for prop, value in kwargs["property_filters"].items():
-                if value[0].lower() != "q":
-                    raise ValueError(
-                        f"Property value {value} is not a valid Wikidata ID"
-                    )
-                # TODO: wrap in optional
-                sparq_property_filter += f"\n ?item wdt:{prop} wd:{value} ."
+                if isinstance(value, str):
+                    assert_qid_format(value)
+                    sparq_property_filter += f"\n ?item wdt:{prop} wd:{value} ."
+                elif isinstance(value, list):
+                    if len(value) == 1:
+                        assert_qid_format(value[0])
+                        sparq_property_filter += f"\n ?item wdt:{prop} wd:{value[0]} ."
+                    else:
+                        ids = ", ".join(["wd:" + x for x in value])
+                        sparq_instanceof = (
+                            f" ?item wdt:{prop} ?tree. \n FILTER (?tree in ({ids}))"
+                        )
 
         endpoint_url = config.WIKIDATA_SPARQL_ENDPOINT
         query = f"""
@@ -109,7 +116,7 @@ class wikipedia_text_search(TextSearch):
 
         def tokenize(text) -> set:
             """Ignore text in brackets, and generate set of lowercase tokens"""
-            no_brackets = re.sub(r"\([^)]*\)", "", text.lower())
+            no_brackets = re.sub(r"\([^)]*\)", "", str(text).lower())
             return set(re.findall(r"\w+(?:'\w+)?|[^\w\s,]", no_brackets))
 
         common_tokens = tokenize(string1).intersection(tokenize(string2))
@@ -157,11 +164,18 @@ class wikipedia_text_search(TextSearch):
 
         if "property_filters" in kwargs:
             for prop, value in kwargs["property_filters"].items():
-                if value[0].lower() != "q":
-                    raise ValueError(
-                        f"Property value {value} is not a valid Wikidata ID"
-                    )
-                sparq_property_filter += f"\n ?item wdt:{prop} wd:{value} ."
+                if isinstance(value, str):
+                    assert_qid_format(value)
+                    sparq_property_filter += f"\n ?item wdt:{prop} wd:{value} ."
+                elif isinstance(value, list):
+                    if len(value) == 1:
+                        assert_qid_format(value[0])
+                        sparq_property_filter += f"\n ?item wdt:{prop} wd:{value[0]} ."
+                    else:
+                        ids = ", ".join(["wd:" + x for x in value])
+                        sparq_instanceof = (
+                            f" ?item wdt:{prop} ?tree. \n FILTER (?tree in ({ids}))"
+                        )
 
         endpoint_url = config.WIKIDATA_SPARQL_ENDPOINT
         query = f"""
