@@ -87,7 +87,7 @@ def update_graph(s_uri, p, o_uri):
         # add the new tripple / RDF statement to the existing graph
         g.add((URIRef(s_uri), p, URIRef(o_uri)))
 
-        # re-serialise the graoh and update the reccord
+        # re-serialise the graph and update the reccord
         jsonld = g.serialize(format="json-ld", context=context, indent=4).decode(
             "utf-8"
         )
@@ -117,14 +117,6 @@ def delete(id):
     return
 
 
-def get(id):
-    """Return an existing ElasticSearch record"""
-
-    document = es.get(index=index, id=id)
-
-    return document
-
-
 def get_by_uri(uri):
     """Return an existing ElasticSearch record"""
 
@@ -133,6 +125,43 @@ def get_by_uri(uri):
         return res["hits"]["hits"][0]
     else:
         return
+
+
+def get_by_type(type):
+    """Return an list of matching ElasticSearch record"""
+
+    res = es.search(index=index, body={"query": {"match": {"type": type}}})
+
+    # object
+    # person
+    # organisation
+    # document
+    # article
+
+    return res["hits"]["hits"]
+
+
+def get_graph(uri):
+    """Return an the RDF graph for an ElasticSearch record"""
+
+    record = get_by_uri(uri)
+    if record:
+        jsonld = json.dumps(record["_source"]["graph"])
+        g = Graph().parse(data=jsonld, format="json-ld")
+
+    return g
+
+
+def get_graph_by_type(type):
+    """Return an list of matching ElasticSearch record"""
+
+    g = Graph()
+    records = get_by_type(type)
+    for record in records:
+        jsonld = json.dumps(record["_source"]["graph"])
+        g.parse(data=jsonld, format="json-ld")
+
+    return g
 
 
 def search(query, filter):
@@ -153,7 +182,7 @@ def add_maker(uri, relationship, maker_uri):
     """Adds a maker relationship to an existing record"""
 
     response = update_graph(uri, FOAF.maker, maker_uri)
-    # datastore.update_graph(URIRef(maker_uri), FOAF.made, URIRef(uri))
+    # update_graph(URIRef(maker_uri), FOAF.made, URIRef(uri))
 
     return response
 
@@ -163,6 +192,6 @@ def add_user(uri, relationship, user_uri):
 
     # TODO: need to find a RDF term foor USER/USED?
     response = update_graph(uri, FOAF.maker, user_uri)
-    # datastore.update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
+    # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
 
     return response
