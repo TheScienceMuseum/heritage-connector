@@ -64,3 +64,13 @@ def get_year_from_date_value(datestring: str) -> int:
             return (int(year_matches[0]) + int(year_matches[1])) / 2
     except ValueError as e:
         print(e)
+
+
+def assert_qid_format(qid: str):
+    """
+    Asserts that a string is of a valid QID format. 
+    Raises ValueError if not.
+    """
+
+    if not re.match(r"q\d+", qid.lower()):
+        raise ValueError(f"{qid} is an invalid Wikidata QID.")
