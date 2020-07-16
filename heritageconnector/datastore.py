@@ -137,10 +137,9 @@ def get_by_type(type):
     # organisation
     # document
     # article
-
+    
     return res["hits"]["hits"]
-
-
+  
 def get_graph(uri):
     """Return an the RDF graph for an ElasticSearch record"""
 
@@ -162,7 +161,6 @@ def get_graph_by_type(type):
         g.parse(data=jsonld, format="json-ld")
 
     return g
-
 
 def search(query, filter):
     """Return an optionally filtered list of matching objects"""

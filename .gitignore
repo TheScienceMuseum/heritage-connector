@@ -1,6 +1,7 @@
 # local data folder and config
 GITIGNORE_DATA
 config.ini
+field_mapping.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

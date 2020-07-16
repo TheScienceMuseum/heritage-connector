@@ -7,6 +7,7 @@ from typing import Union
 import pandas as pd
 from ..utils.sparql import get_sparql_results
 from ..utils.generic import extract_json_values, get_redirected_url
+from ..config import config
 
 # methods to exchange URLs for IDs (e.g. wikidata ID)
 
@@ -190,7 +191,7 @@ class wikidata_id:
             qcode: Wikidata qcode in format Q(d+)
         """
 
-        endpoint_url = "https://query.wikidata.org/sparql"
+        endpoint_url = config.WIKIDATA_SPARQL_ENDPOINT
 
         query = f"""
             SELECT ?item ?itemLabel WHERE {{

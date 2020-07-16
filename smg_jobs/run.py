@@ -9,6 +9,7 @@ sys.path.append("..")
 warnings.simplefilter(action="ignore", category=FutureWarning)
 tqdm.pandas()
 
+from heritageconnector.config import config
 from heritageconnector.utils import data_loaders
 from heritageconnector.entity_matching import lookup, filtering
 
@@ -54,7 +55,7 @@ class jobs:
                 (r"doi:10.1093/ref:odnb/(\d{1,6})", "P1415",),
             ],
             "data_model": {"people_freetext": ["DESCRIPTION", "NOTE"]},
-            "wikidata_endpoint": "https://query.wikidata.org/sparql",
+            "wikidata_endpoint": config.WIKIDATA_SPARQL_ENDPOINT,
         }
 
     def load_data(self):
