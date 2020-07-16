@@ -250,7 +250,7 @@ def serialize_to_jsonld(record_type, uri, row):
         if pd.notnull(row["ITEM_NAME"]):
             g.add((record, XSD.additionalType, Literal(row["ITEM_NAME"])))
         if pd.notnull(row["MATERIALS"]):
-            materials = [[x.strip().lower() for x in str(row["MATERIALS"]).split(",")]]
+            materials = [[x.strip().lower() for x in str(row["MATERIALS"]).split(";")]]
             for material in materials:
                 g.add((record, XSD.material, Literal(material)))
 
