@@ -135,6 +135,18 @@ def get_by_uri(uri):
         return
 
 
+def get_by_type(type):
+    """Return an list of matching ElasticSearch record"""
+
+    # object
+    # person
+    # organisation
+    # document
+    # artcile
+
+    return
+
+
 def search(query, filter):
     """Return an optionally filtered list of matching objects"""
 
