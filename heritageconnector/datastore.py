@@ -167,7 +167,7 @@ def add_maker(uri, relationship, maker_uri):
     """Adds a maker relationship to an existing record"""
 
     response = update_graph(uri, FOAF.maker, maker_uri)
-    # datastore.update_graph(URIRef(maker_uri), FOAF.made, URIRef(uri))
+    # update_graph(URIRef(maker_uri), FOAF.made, URIRef(uri))
 
     return response
 
@@ -177,6 +177,6 @@ def add_user(uri, relationship, user_uri):
 
     # TODO: need to find a RDF term foor USER/USED?
     response = update_graph(uri, FOAF.maker, user_uri)
-    # datastore.update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
+    # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
 
     return response
