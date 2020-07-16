@@ -10,6 +10,7 @@ matplotlib = "*"
 black = "*"
 pytest = "*"
 scikit-learn = "*"
+pylint = "*"
 
 [packages]
 flask = "*"
@@ -21,6 +22,10 @@ pandas = "*"
 sparqlwrapper = "*"
 fuzzywuzzy = "*"
 python-levenshtein = "*"
+elasticsearch = "*"
+rdflib = "*"
+rdflib-jsonld = "*"
+pylint = "*"
 
 [requires]
 python_version = "3.7"
