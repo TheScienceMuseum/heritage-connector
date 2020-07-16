@@ -1,5 +1,8 @@
 from elasticsearch import helpers
 from elasticsearch import Elasticsearch
+from rdflib import Graph, Literal, RDF, URIRef
+from rdflib.namespace import XSD, FOAF, OWL
+from rdflib.serializer import Serializer
 import json
 
 # Should we implement this as a persistance class esp. for connection pooling?
@@ -10,8 +13,14 @@ es = Elasticsearch()
 
 index = "heritageconnector"
 
+context = [
+    {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
+    {"@schema": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
+    {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
+]
 
-def createIndex():
+
+def create_index():
     """Delete the exiting ES index if it exists and create a new index and mappings"""
 
     print("Wiping existing index: " + index)
@@ -26,7 +35,7 @@ def createIndex():
     return
 
 
-def batchCreate(data):
+def batch_create(data):
     """Batch load a set of new records into ElasticSearch"""
 
     # todo
@@ -51,33 +60,53 @@ def create(collection, record_type, data, jsonld):
 
     # add JSON document to ES index
     response = es.index(index=index, body=es_json)
-    print(es_json)
+
+    print("Created ES record " + data["uri"])
 
     return response
 
 
-def update(collection, record_type, data, jsonld):
+def update():
     """Update an existing ElasticSearch record"""
 
-    # for now htis just mirrors the create method
-    create(collection, record_type, data, jsonld)
-
     return
 
 
-def updateGraph(id, jsonld):
-    """Update the JSON-LD graph on an existing ElasticSearch record"""
+def update_graph(s_uri, p, o_uri):
+    """Add a new RDF relationship to an an existing record"""
 
-    # https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-update.html
+    # Can we do this more efficently ie. just add the new tripple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
+    # Do we store multiple entries for both Wikidata and RDF? (I think yes)
 
-    doc = {"graph": json.loads(jsonld)}
-    es_json = json.dumps(doc)
+    record = get_by_uri(s_uri)
+    if record:
+        jsonld = json.dumps(record["_source"]["graph"])
+        uid = record["_id"]
+        g = Graph().parse(data=jsonld, format="json-ld")
 
-    # add JSON document to ES index
-    response = es.update(index=index, id=id, body=es_json)
-    print(response)
+        # add the new tripple / RDF statement to the existing graph
+        g.add((URIRef(s_uri), p, URIRef(o_uri)))
 
-    return
+        # re-serialise the graoh and update the reccord
+        jsonld = g.serialize(format="json-ld", context=context, indent=4).decode(
+            "utf-8"
+        )
+
+        # create a ES doc
+        doc = {
+            "uri": record["_source"]["uri"],
+            "collection": record["_source"]["collection"],
+            "type": record["_source"]["type"],
+            "graph": json.loads(jsonld),
+        }
+        es_json = json.dumps(doc)
+
+        # Overwrite existing ES record
+        response = es.index(index=index, id=uid, body=es_json)
+
+        print("Updated ES record" + uid + " : " + record["_source"]["uri"])
+
+    return response
 
 
 def delete(id):
@@ -96,14 +125,14 @@ def get(id):
     return document
 
 
-def getByURI(uri):
+def get_by_uri(uri):
     """Return an existing ElasticSearch record"""
 
-    # https://www.elastic.co/guide/en/elasticsearch/reference/master/search-search.html
-
-    document = es.search(index=index, body={"query": {"match": {"uri": uri}}})
-
-    return document
+    res = es.search(index=index, body={"query": {"match": {"uri": uri}}})
+    if len(res["hits"]["hits"]):
+        return res["hits"]["hits"][0]
+    else:
+        return
 
 
 def search(query, filter):
@@ -112,32 +141,28 @@ def search(query, filter):
     return
 
 
-def sameAs(id, uri):
-    """Update an existing ElasticSearch record with a new relationship"""
+def add_same_as(s_uri, o_uri):
+    """Adds a sameAs relationship to an existing record"""
 
-    # this is effectivly the same method as in the loader module
-    # maybe we should move both to a HC RDF utils module?
-    # def addRelationship(s, p, o):
+    response = update_graph(s_uri, OWL.sameAs, o_uri)
 
-    # "@owl:sameAs": [
-    #     {
-    #         "@id": "https://www.wikidata.org/wiki/1000"
-    #     },
-    #     {
-    #         "@id": "https://www.wikidata.org/wiki/Q46633"
-    #     }
-    # ],
+    return response
 
-    # g = Graph().parse(data=record, format='json-ld')
 
-    # g.add((
-    #     URIRef(s),
-    #     OWL.sameAs,
-    #     URIRef(o),
-    # ))
+def add_maker(uri, relationship, maker_uri):
+    """Adds a maker relationship to an existing record"""
 
-    # record.graph = g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
+    response = update_graph(uri, FOAF.maker, maker_uri)
+    # datastore.update_graph(URIRef(maker_uri), FOAF.made, URIRef(uri))
 
-    # updateGraph(id, jsonld)
+    return response
 
-    return
+
+def add_user(uri, relationship, user_uri):
+    """Adds a user relationship to an existing record"""
+
+    # TODO: need to find a RDF term foor USER/USED?
+    response = update_graph(uri, FOAF.maker, user_uri)
+    # datastore.update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
+
+    return response

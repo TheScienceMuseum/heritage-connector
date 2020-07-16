@@ -4,23 +4,24 @@ sys.path.append("..")
 
 from heritageconnector.config import config
 from heritageconnector import datastore
-
 import pandas as pd
 from logging import getLogger
-
 from rdflib import Graph, Literal, RDF, URIRef
 from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
+import json
 
 logger = getLogger(__file__)
 
 # Locatiom of CSV data to import
 catalogue_data_path = "../" + config.MIMSY_CATALOGUE_PATH
 people_data_path = "../" + config.MIMSY_PEOPLE_PATH
-# maker_data_path = config.MIMSY_MAKER_PATH
-# user_data_path = config.MIMSY_USER_PATH
+maker_data_path = "../" + config.MIMSY_MAKER_PATH
+user_data_path = "../" + config.MIMSY_USER_PATH
 
 collection = "SMG"
+max_records = 1000
+
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
     {"@schema": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
@@ -28,82 +29,86 @@ context = [
 ]
 
 
-def loadObjectData():
+def load_object_data():
     """Load data from CSV files """
 
-    catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=100)
+    catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=max_records)
 
     # Loop though CSV file and create/store records for each row
     # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
 
     record_type = "object"
     for index, row in catalogue_df.iterrows():
-        addRecord(record_type, row)
+        add_record(record_type, row)
 
     return
 
 
-def loadPeopleandOrgsData():
+def load_people_and_orgs_data():
     """Load data from CSV files """
 
-    people_df = pd.read_csv(people_data_path, low_memory=False, nrows=100)
+    people_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
 
     # Loop though CSV file and create/store records for each row
     # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
     for index, row in people_df.iterrows():
         if row["GENDER"] == "M" or row["GENDER"] == "F":
-            addRecord("person", row)
+            add_record("person", row)
         else:
-            addRecord("organisation", row)
+            add_record("organisation", row)
 
     # We should use the isIndividual flag (but need to do a fresh export first)
     # for index, row in people_df.iterrows():
     #     if (row["GENDER"] == 'M' or row["GENDER"] == 'F'):
-    #         addRecord("person", row)
+    #         add_record("person", row)
     #     else:
-    #         addRecord("organisation", row)
+    #         add_record("organisation", row)
     return
 
 
-def loadMakerData():
+def load_maker_data():
     """Load object -> maker -> people relationships from CSV files and add to existing records """
 
+    maker_df = pd.read_csv(maker_data_path, low_memory=False, nrows=max_records)
+
     # Loop though CSV file and update exiting records for each row based on relationship value
-
-    # s = subject = id
-    # p = predicate = relationship
-    # o = object = thing we are linking to
-
-    s = ""
-    p = "MADE"  # should this be the RDF / Wikidata value/verb?
-    o = "https://collection.sciencemuseumgroup.org.uk/objects/co146411"
-    addRelationship(s, p, o)
+    for index, row in maker_df.iterrows():
+        obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
+            row["MKEY"]
+        )
+        maker = "https://collection.sciencemuseumgroup.org.uk/people/cp" + str(
+            row["LINK_ID"]
+        )
+        relationship = (
+            "maker"  # we may want to deal with other sub-classes of maker here later?
+        )
+        datastore.add_maker(obj, relationship, maker)
 
     return
 
 
-def loadUserData():
+def load_user_data():
     """Load object -> user -> people relationships from CSV files and add to existing records """
 
-    # Loop though CSV file and update exiting records for each row based on 'predicate' value
+    user_df = pd.read_csv(user_data_path, low_memory=False, nrows=max_records)
 
-    # s = subject = id
-    # p = predicate = relationship
-    # o = object = thing we are linking to
-
-    # Should the predicate be the RDF / Wikidata value/verb?
-    # What about more granular values like 'designed' do add multiple entries?
-
-    s = ""
-    p = "USED"
-    o = "https://collection.sciencemuseumgroup.org.uk/people/cp37182"
-
-    addRelationship(s, p, o)
+    # Loop though CSV file and update exiting records for each row based on relationship value
+    for index, row in user_df.iterrows():
+        obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
+            row["MKEY"]
+        )
+        maker = "https://collection.sciencemuseumgroup.org.uk/people/cp" + str(
+            row["LINK_ID"]
+        )
+        relationship = (
+            "user"  # we may want to deal with other sub-types of user here later?
+        )
+        datastore.add_user(obj, relationship, maker)
 
     return
 
 
-def addRecord(record_type, row):
+def add_record(record_type, row):
     """Create and store new HC record with a JSON-LD graph"""
 
     uri = ""
@@ -120,7 +125,7 @@ def addRecord(record_type, row):
         )
 
     data = {"uri": uri}
-    jsonld = serializeToJsonLD(record_type, uri, row)
+    jsonld = serialize_to_jsonld(record_type, uri, row)
     datastore.create(collection, record_type, data, jsonld)
 
     # print(data, jsonld)
@@ -128,90 +133,7 @@ def addRecord(record_type, row):
     return
 
 
-def addMade(uri, o):
-    """Adds a made relationship to an existing record"""
-
-    # Objects made by this person
-    # g.add(
-    #     (
-    #         record,
-    #         FOAF.made,
-    #         URIRef("https://collection.sciencemuseumgroup.org.uk/objects/co8084947"),
-    #     )
-    # )
-    # addRelationship(s, p, o):
-
-    return
-
-
-def addUsed(uri, o):
-    """Adds a used ralationship to an existin record"""
-
-    # Objects used by this person
-    # g.add(
-    #     (
-    #         record,
-    #         FOAF.used,
-    #         URIRef("https://collection.sciencemuseumgroup.org.uk/objects/co8084947"),
-    #     )
-    # )
-    # addRelationship(s, p, o):
-
-    return
-
-
-def addSameAs(uri, o):
-    """Adds a sameAs relationship to an existing record"""
-
-    # Add a sameAs record to this record
-    # g.add(
-    #     (
-    #         record,
-    #         FOAF.sameAs,
-    #         URIRef("https://collection.sciencemuseumgroup.org.uk/objects/co8084947"),
-    #     )
-    # )
-    # addRelationship(s, p, o):
-
-    return
-
-
-def addRelationship(s, p, o):
-
-    """Add a new RDF relationship to an an existing record"""
-
-    # s = subject = id
-    # p = predicate = relationship
-    # o = object = thing we are linking to
-
-    # Can we do this more efficently ie. just add the new tripple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
-    # Do we store multiple entries for both Wikidata and RDF? (I think yes)
-
-    record = datastore.findByURI(s)
-    json_ld = record["_source"]["graph"]
-
-    g = Graph().parse(data=json_ld, format="json-ld")
-
-    g.add(
-        (
-            URIRef(s),
-            URIRef(
-                p
-            ),  # We may need to convert our Wikidata P values and RDF verbs to URLs here
-            URIRef(o),
-        )
-    )
-
-    record["_source"]["graph"] = g.serialize(
-        format="json-ld", context=context, indent=4
-    ).decode("utf-8")
-
-    datastore.update(id, record)
-
-    return
-
-
-def serializeToJsonLD(record_type, uri, row):
+def serialize_to_jsonld(record_type, uri, row):
     """Returns a JSON-LD represention of a record"""
 
     g = Graph()
@@ -252,27 +174,28 @@ def serializeToJsonLD(record_type, uri, row):
         # 25  UPDATE_DATE
 
         # Add any personal details as FOAF / Scehema attributes
-        if isinstance(row["PREFERRED_NAME"], object):
+        if pd.notnull(row["PREFERRED_NAME"]):
             g.add((record, FOAF.givenName, Literal(row["PREFERRED_NAME"])))
-        if isinstance(row["GENDER"], object):
+        if pd.notnull(row["SUFFIX_NAME"]):
             g.add((record, FOAF.familyName, Literal(row["SUFFIX_NAME"])))
         if row["GENDER"] == "M":
             g.add((record, XSD.gender, Literal("Male")))
         if row["GENDER"] == "F":
             g.add((record, XSD.gender, Literal("Female")))
-        if isinstance(row["BIRTH_DATE"], object):
-            g.add((record, XSD.birthDate, Literal(row["BIRTH_DATE"])))
-        if isinstance(row["DEATH_DATE"], object):
-            g.add((record, XSD.deathDate, Literal(row["DEATH_DATE"])))
-        if isinstance(row["BIRTH_PLACE"], object):
+        # Need to convert to date format or 4 digit year to keep ElasticSearch happy
+        # if pd.notnull(row["BIRTH_DATE"]):
+        #     g.add((record, XSD.birthDate, Literal(row["BIRTH_DATE"])))
+        # if pd.notnull(row["DEATH_DATE"]):
+        #     g.add((record, XSD.deathDate, Literal(row["DEATH_DATE"])))
+        if pd.notnull(row["BIRTH_PLACE"]):
             g.add((record, XSD.birthPlace, Literal(row["BIRTH_PLACE"])))
-        if isinstance(row["DEATH_PLACE"], object):
+        if pd.notnull(row["DEATH_PLACE"]):
             g.add((record, XSD.deathPlace, Literal(row["DEATH_PLACE"])))
-        if isinstance(row["OCCUPATION"], object):
+        if pd.notnull(row["OCCUPATION"]):
             g.add((record, XSD.ocupation, Literal(row["OCCUPATION"])))
-        if isinstance(row["DESCRIPTION"], object):
+        if pd.notnull(row["DESCRIPTION"]):
             g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
-        if isinstance(row["BRIEF_BIO"], object):
+        if pd.notnull(row["BRIEF_BIO"]):
             g.add((record, XSD.disambiguatingDescription, Literal(row["BRIEF_BIO"])))
 
     # ========================================================================
@@ -284,11 +207,11 @@ def serializeToJsonLD(record_type, uri, row):
         # Maybe we should use Agent rather than People/Orgs?
         # https://schema.org/agent
         # Add any personal details as FOAF / Schema attributes
-        if isinstance(row["PREFERRED_NAME"], object):
+        if pd.notnull(row["PREFERRED_NAME"]):
             g.add((record, FOAF.givenName, Literal(row["PREFERRED_NAME"])))
-        if isinstance(row["DESCRIPTION"], object):
+        if pd.notnull(row["DESCRIPTION"]):
             g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
-        if isinstance(row["BRIEF_BIO"], object):
+        if pd.notnull(row["BRIEF_BIO"]):
             g.add((record, XSD.disambiguatingDescription, Literal(row["BRIEF_BIO"])))
 
         next
@@ -320,13 +243,13 @@ def serializeToJsonLD(record_type, uri, row):
         # 18  ARRANGEMENT           0 non-null      float64
         # 19  LANGUAGE_OF_MATERIAL  10 non-null     object
 
-        if isinstance(row["TITLE"], object):
+        if pd.notnull(row["TITLE"]):
             g.add((record, XSD.name, Literal(row["TITLE"])))
-        if isinstance(row["DESCRIPTION"], object):
+        if pd.notnull(row["DESCRIPTION"]):
             g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
-        if isinstance(row["ITEM_NAME"], object):
+        if pd.notnull(row["ITEM_NAME"]):
             g.add((record, XSD.additionalType, Literal(row["ITEM_NAME"])))
-        if isinstance(row["MATERIALS"], object):
+        if pd.notnull(row["MATERIALS"]):
             materials = [[x.strip().lower() for x in str(row["MATERIALS"]).split(",")]]
             for material in materials:
                 g.add((record, XSD.material, Literal(material)))
@@ -369,6 +292,8 @@ def serializeToJsonLD(record_type, uri, row):
 
 if __name__ == "__main__":
 
-    datastore.createIndex()
-    loadPeopleandOrgsData()
-    loadObjectData()
+    datastore.create_index()
+    load_people_and_orgs_data()
+    load_object_data()
+    load_maker_data()
+    load_user_data()
