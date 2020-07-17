@@ -192,7 +192,7 @@ def serialize_to_jsonld(record_type, uri, row):
         if pd.notnull(row["DEATH_PLACE"]):
             g.add((record, XSD.deathPlace, Literal(row["DEATH_PLACE"])))
         if pd.notnull(row["OCCUPATION"]):
-            g.add((record, XSD.ocupation, Literal(row["OCCUPATION"])))
+            g.add((record, XSD.occupation, Literal(row["OCCUPATION"])))
         if pd.notnull(row["DESCRIPTION"]):
             g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
         if pd.notnull(row["BRIEF_BIO"]):
