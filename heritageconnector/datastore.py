@@ -104,7 +104,7 @@ def update_graph(s_uri, p, o_uri):
         # Overwrite existing ES record
         response = es.index(index=index, id=uid, body=es_json)
 
-        print("Updated ES record" + uid + " : " + record["_source"]["uri"])
+        # print("Updated ES record" + uid + " : " + record["_source"]["uri"])
 
     return response
 
