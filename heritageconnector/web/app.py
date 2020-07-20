@@ -17,6 +17,7 @@ def startup():
     logger.info(f"{len(data['graph'])} triples loaded into RDF store")
 
 
+@app.post("/query")
 @app.get("/query")
 def query(sparql: str):
     res = data["graph"].query(sparql)
