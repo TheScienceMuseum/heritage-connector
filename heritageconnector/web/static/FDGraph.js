@@ -39,7 +39,7 @@ function triplesToGraph(triples){
 }
 
 
-function update(graph){
+function update(graph,color){
     // ==================== Add Marker ====================
     svg.append("svg:defs").selectAll("marker")
         .data(["end"])
@@ -109,18 +109,19 @@ function update(graph){
                         .data(graph.nodes)
                         .enter()
                         .append("circle")
-                            .attr("class", function (d) {
+                            .attr("class","node")
+                            .attr("fill", function (d) {
                                 if (d.label.startsWith(smg_person)){
-                                    return "node-smg-person"
+                                    return color("node-smg-person")
                                 } 
                                 else if (d.label.startsWith(smg_object)) {
-                                    return "node-smg-object"
+                                    return color("node-smg-object")
                                 }
                                 else if (d.label.startsWith(wikidata_entity)) {
-                                    return "node-wikidata"
+                                    return color("node-wikidata")
                                 }
                                  else {
-                                    return "node"
+                                    return color("node")
                                 }
                             })
                             .attr("r", 4)
@@ -160,7 +161,7 @@ function update(graph){
       .nodes(graph.nodes)
       .links(graph.links)
       .charge(-5/k)
-      .gravity(20*k)
+      .gravity(15*k)
       .linkDistance(4)
       .start()
       ;

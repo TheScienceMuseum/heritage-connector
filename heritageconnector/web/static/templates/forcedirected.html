@@ -18,9 +18,9 @@
         <textarea name="sparql_query" rows = "10" cols = "100" placeholder="Enter SPARQL query"></textarea>
         <input type="submit" value="Submit" class="submitButton">
     </form>
-    
+    <div id="legend"></div>
     <div id="svg-body" class="panel-body"></div>
-    <script>
+    <script>        
         var w = 800;
         var h = 500;
         var svg = d3.select("#svg-body").append("svg")
@@ -46,8 +46,9 @@
 
 
         d3.json('/get_latest_response', function (err, triples) {
+            var color = d3.scale.category10();
             var graph = triplesToGraph(triples);
-            update(graph);
+            update(graph, color);
         });
 
     </script>

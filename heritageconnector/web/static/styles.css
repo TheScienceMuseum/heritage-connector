@@ -3,22 +3,6 @@
     stroke-width: 1.5px;
 }
 
-.node {
-  fill:#ddd;
-}
-
-.node-smg-person {
-  fill:blue;
-}
-
-.node-smg-object {
-  fill:orange;
-}
-
-.node-wikidata {
-  fill:green;
-}
-
 .link {
   stroke: #999;
   stroke-opacity: .4;
