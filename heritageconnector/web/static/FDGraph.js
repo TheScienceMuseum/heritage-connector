@@ -126,6 +126,20 @@ function update(graph,color){
                             })
                             .attr("r", 4)
                             .call(force.drag)
+                            .on("mouseover", function(d) {
+                                tooltip.transition()
+                                    .duration(300)
+                                    .style("opacity", 1) // show the tooltip
+                                tooltip.html(d.label)
+                                .style("left", (d3.event.pageX - d3.select('.tooltip').node().offsetWidth - 5) + "px")
+                                .style("top", (d3.event.pageY - d3.select('.tooltip').node().offsetHeight) + "px");
+                                    })
+                                    .on("mouseleave", function(d) {
+                                        tooltip.transition()
+                                            .duration(200)
+                                            .style("opacity", 0)
+                                    })
+                            .on("click", function(d) { window.open(d.label); })
                     ;//nodes
 
     // ==================== Force ====================
