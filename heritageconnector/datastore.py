@@ -135,16 +135,16 @@ def get_by_uri(uri):
         return
 
 
-def get_by_type(type):
+def get_by_type(type, size=1000):
     """Return an list of matching ElasticSearch record"""
 
-    hits = es.search(index=index, body={"query": {"match": {"type": type}}})
+    hits = es.search(index=index, body={"query": {"match": {"type": type}}}, size=size)
 
     # object
     # person
     # organisation
     # document
-    # artcile
+    # article
 
     return hits
 
