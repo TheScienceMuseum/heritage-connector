@@ -11,6 +11,14 @@
   fill:blue;
 }
 
+.node-smg-object {
+  fill:orange;
+}
+
+.node-wikidata {
+  fill:green;
+}
+
 .link {
   stroke: #999;
   stroke-opacity: .4;

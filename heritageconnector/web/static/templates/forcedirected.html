@@ -26,9 +26,24 @@
         var svg = d3.select("#svg-body").append("svg")
             .attr("viewBox", "0 0 " + w + " " + h)
             .attr("preserveAspectRatio", "xMidYMid meet")
+            .call(d3.behavior.zoom().on("zoom", redraw))
+            .append('svg:g');
             ;
 
+        function redraw() {
+            svg.attr("transform",
+                "translate(" + d3.event.translate + ")"
+                + " scale(" + d3.event.scale + ")");
+            }   
+
         var force = d3.layout.force().size([w, h]);
+        var drag = force.stop().drag()
+        .on("dragstart", function(d) {
+            d3.event.sourceEvent.stopPropagation(); // to prevent pan functionality from 
+                                                    //overriding node drag functionality.
+            // put any other 'dragstart' actions here
+        });
+
 
         d3.json('/get_latest_response', function (err, triples) {
             var graph = triplesToGraph(triples);

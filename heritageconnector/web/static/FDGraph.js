@@ -1,4 +1,6 @@
-var smg_url = "https://collection.sciencemuseumgroup.org.uk"
+var smg_person = "https://collection.sciencemuseumgroup.org.uk/people/";
+var smg_object = "https://collection.sciencemuseumgroup.org.uk/objects/";
+var wikidata_entity = "http://www.wikidata.org/entity";
 
 function filterNodesById(nodes,id){
     return nodes.filter(function(n) { return n.id === id; });
@@ -81,20 +83,22 @@ function update(graph){
                 .enter()
                 .append("text")
                     .attr("class", function (d) {
-                        if (d.label.startsWith(smg_url)) {
+                        if (d.label.startsWith(smg_person) | d.label.startsWith(smg_object) | d.label.startsWith(wikidata_entity)) {
                             return "node-text-item"
                         } else{
                             return "node-text"
                         }
                     })
                     .text( function (d) { 
-                        if (d.label.startsWith(smg_url)){
-                            var regex = /cp\d+/g;
-                            return regex.exec(d.label)
+                        if (d.label.startsWith(smg_person) | d.label.startsWith(smg_object) | d.label.startsWith(wikidata_entity)){
+                            // var regex = /cp\d+/g;
+                            // return regex.exec(d.label)
+                            return ""
                         } else {
                             return d.label
                         }
                      })
+                    // .text("")
                 ;
 
         //nodeTexts.append("title")
@@ -106,9 +110,16 @@ function update(graph){
                         .enter()
                         .append("circle")
                             .attr("class", function (d) {
-                                if (d.label.startsWith(smg_url)){
+                                if (d.label.startsWith(smg_person)){
                                     return "node-smg-person"
-                                } else {
+                                } 
+                                else if (d.label.startsWith(smg_object)) {
+                                    return "node-smg-object"
+                                }
+                                else if (d.label.startsWith(wikidata_entity)) {
+                                    return "node-wikidata"
+                                }
+                                 else {
                                     return "node"
                                 }
                             })
@@ -148,9 +159,9 @@ function update(graph){
     force
       .nodes(graph.nodes)
       .links(graph.links)
-      .charge(-10/k)
-      .gravity(60*k)
-      .linkDistance(50)
+      .charge(-5/k)
+      .gravity(20*k)
+      .linkDistance(4)
       .start()
       ;
 }
