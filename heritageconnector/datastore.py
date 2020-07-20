@@ -180,3 +180,28 @@ def add_user(uri, relationship, user_uri):
     # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
 
     return response
+
+
+def es_to_rdflib_graph(return_format=None, size=10000):
+    """
+    Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
+    format is specified, else an object with the specified format which could be written
+    to a file.
+    """
+
+    # get dump
+    res = es.search(
+        index=index, body={"_source": "graph.*", "query": {"match_all": {}}}, size=size
+    )
+
+    hits = res["hits"]["hits"]
+
+    # create graph
+    g = Graph()
+    for item in hits:
+        g += Graph().parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
+
+    if return_format is None:
+        return g
+    else:
+        return g.serialize(format=return_format)
