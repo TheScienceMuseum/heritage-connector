@@ -34,6 +34,7 @@ Run `python -m pytest`.
 We use `pytest` for tests, and all tests are in *./test*. 
 
 ## Running
+To run web app (in development): `python -m heritageconnector.web.app`
 
 ## Deployment
 
