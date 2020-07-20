@@ -13,7 +13,6 @@ scikit-learn = "*"
 pylint = "*"
 
 [packages]
-flask = "*"
 pre-commit = "*"
 flake8 = "*"
 spacy = "*"
