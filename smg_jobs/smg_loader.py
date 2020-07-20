@@ -14,10 +14,10 @@ import json
 logger = getLogger(__file__)
 
 # Locatiom of CSV data to import
-catalogue_data_path = "../" + config.MIMSY_CATALOGUE_PATH
-people_data_path = "../" + config.MIMSY_PEOPLE_PATH
-maker_data_path = "../" + config.MIMSY_MAKER_PATH
-user_data_path = "../" + config.MIMSY_USER_PATH
+catalogue_data_path = config.MIMSY_CATALOGUE_PATH
+people_data_path = config.MIMSY_PEOPLE_PATH
+maker_data_path = config.MIMSY_MAKER_PATH
+user_data_path = config.MIMSY_USER_PATH
 
 collection = "SMG"
 max_records = 1000
@@ -192,7 +192,13 @@ def serialize_to_jsonld(record_type, uri, row):
         if pd.notnull(row["DEATH_PLACE"]):
             g.add((record, XSD.deathPlace, Literal(row["DEATH_PLACE"])))
         if pd.notnull(row["OCCUPATION"]):
-            g.add((record, XSD.ocupation, Literal(row["OCCUPATION"])))
+            occupations = [
+                x.strip().lower()
+                for x in str(row["OCCUPATION"]).replace(";", ",").split(",")
+            ]
+            for occupation in occupations:
+                g.add((record, XSD.occupation, Literal(occupation)))
+
         if pd.notnull(row["DESCRIPTION"]):
             g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
         if pd.notnull(row["BRIEF_BIO"]):
@@ -250,7 +256,10 @@ def serialize_to_jsonld(record_type, uri, row):
         if pd.notnull(row["ITEM_NAME"]):
             g.add((record, XSD.additionalType, Literal(row["ITEM_NAME"])))
         if pd.notnull(row["MATERIALS"]):
-            materials = [[x.strip().lower() for x in str(row["MATERIALS"]).split(",")]]
+            materials = [
+                x.strip().lower()
+                for x in str(row["MATERIALS"]).replace(";", ",").split(",")
+            ]
             for material in materials:
                 g.add((record, XSD.material, Literal(material)))
 

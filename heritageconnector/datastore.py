@@ -127,17 +127,10 @@ def get_by_uri(uri):
         return
 
 
-def get_by_type(type):
+def get_by_type(type, size=1000):
     """Return an list of matching ElasticSearch record"""
 
-    res = es.search(index=index, body={"query": {"match": {"type": type}}})
-
-    # object
-    # person
-    # organisation
-    # document
-    # article
-    
+    hits = es.search(index=index, body={"query": {"match": {"type": type}}}, size=size)    
     return res["hits"]["hits"]
   
 def get_graph(uri):
@@ -149,7 +142,6 @@ def get_graph(uri):
         g = Graph().parse(data=jsonld, format="json-ld")
 
     return g
-
 
 def get_graph_by_type(type):
     """Return an list of matching ElasticSearch record"""
