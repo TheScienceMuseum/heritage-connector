@@ -27,6 +27,9 @@ rdflib-jsonld = "*"
 pylint = "*"
 fastapi = "*"
 uvicorn = "*"
+jinja2 = "*"
+aiofiles = "*"
+python-multipart = "*"
 
 [requires]
 python_version = "3.7"

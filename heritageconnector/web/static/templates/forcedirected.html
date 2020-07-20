@@ -1,0 +1,40 @@
+<!DOCTYPE html
+    PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <!-- <link rel="stylesheet" type="text/css" href="../styles.css"> -->
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+    <script src="https://d3js.org/d3.v3.min.js"></script>
+
+    <script src="{{ url_for('static', path='/FDgraph.js') }}"></script>
+</head>
+
+<body style="margin:20px;">
+    <form id="queryForm" method="POST">
+        <textarea name="sparql_query" rows = "10" cols = "100" placeholder="Enter SPARQL query"></textarea>
+        <input type="submit" value="Submit" class="submitButton">
+    </form>
+    
+    <div id="svg-body" class="panel-body"></div>
+    <script>
+        var w = 800;
+        var h = 500;
+        var svg = d3.select("#svg-body").append("svg")
+            .attr("viewBox", "0 0 " + w + " " + h)
+            .attr("preserveAspectRatio", "xMidYMid meet")
+            ;
+
+        var force = d3.layout.force().size([w, h]);
+
+        d3.json('/get_latest_response', function (err, triples) {
+            var graph = triplesToGraph(triples);
+            update(graph);
+        });
+
+    </script>
+
+</body>
