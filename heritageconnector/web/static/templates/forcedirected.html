@@ -45,17 +45,17 @@
             }
             ]
 
-        const tooltip = d3.select('#svg-body').append("div")
+        const tooltip = d3.select('#tooltip').append("div")
                                       .classed("tooltip", true)
                                       .style("opacity", 0) // start invisible
 
                                       
-                                      var svg = d3.select("#svg-body").append("svg")
-                                      .attr("viewBox", "0 0 " + w + " " + h)
-                                      .attr("preserveAspectRatio", "xMidYMid meet")
-                                      .call(d3.behavior.zoom().on("zoom", redraw))
-                                      .append('svg:g');
-                                      ;
+        var svg = d3.select("#svg-body").append("svg")
+                        .attr("viewBox", "0 0 " + w + " " + h)
+                        .attr("preserveAspectRatio", "xMidYMid meet")
+                        .call(d3.behavior.zoom().on("zoom", redraw))
+                        .append('svg:g');
+                        ;
                                       
         function redraw() {
             svg.attr("transform",
