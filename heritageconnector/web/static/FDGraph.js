@@ -139,7 +139,10 @@ function update(graph,color){
                                             .duration(200)
                                             .style("opacity", 0)
                                     })
-                            .on("click", function(d) { window.open(d.label); })
+                            .on("click", function(d) { 
+                                if (d.label.startsWith("http")) {
+                                    window.open(d.label); 
+                                }})
                     ;//nodes
 
     // ==================== Force ====================
