@@ -54,6 +54,10 @@
                         .attr("viewBox", "0 0 " + w + " " + h)
                         .attr("preserveAspectRatio", "xMidYMid meet")
                         .call(d3.behavior.zoom().on("zoom", redraw))
+                        .on("contextmenu", function (d, i) {
+                            d3.event.preventDefault();
+                        // react on right-clicking
+                        })
                         .append('svg:g');
                         ;
                                       
