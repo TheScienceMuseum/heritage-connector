@@ -1,7 +1,3 @@
-var smg_person = "https://collection.sciencemuseumgroup.org.uk/people/";
-var smg_object = "https://collection.sciencemuseumgroup.org.uk/objects/";
-var wikidata_entity = "http://www.wikidata.org/entity";
-
 function filterNodesById(nodes,id){
     return nodes.filter(function(n) { return n.id === id; });
 }
@@ -39,7 +35,7 @@ function triplesToGraph(triples){
 }
 
 
-function update(graph,color){
+function update(graph,colormap){
     // ==================== Add Marker ====================
     svg.append("svg:defs").selectAll("marker")
         .data(["end"])
@@ -111,18 +107,13 @@ function update(graph,color){
                         .append("circle")
                             .attr("class","node")
                             .attr("fill", function (d) {
-                                if (d.label.startsWith(smg_person)){
-                                    return color("node-smg-person")
-                                } 
-                                else if (d.label.startsWith(smg_object)) {
-                                    return color("node-smg-object")
-                                }
-                                else if (d.label.startsWith(wikidata_entity)) {
-                                    return color("node-wikidata")
-                                }
-                                 else {
-                                    return color("node")
-                                }
+                                var col = "#999";
+                                colormap.forEach((item) => {
+                                    if (d.label.indexOf(item.url) > -1) {
+                                        col = item.color();
+                                    }
+                                });
+                                return col
                             })
                             .attr("r", 4)
                             .call(force.drag)

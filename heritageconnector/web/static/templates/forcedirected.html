@@ -18,41 +18,76 @@
         <textarea name="sparql_query" rows = "10" cols = "100" placeholder="Enter SPARQL query"></textarea>
         <input type="submit" value="Submit" class="submitButton">
     </form>
+    <div id="legend"></div>
     <div id="tooltip"></div>
     <div id="svg-body" class="panel-body"></div>
     <script>        
         var w = 800;
         var h = 500;
+        var smg_person = "https://collection.sciencemuseumgroup.org.uk/people/";
+        var smg_object = "https://collection.sciencemuseumgroup.org.uk/objects/";
+        var wikidata_entity = "http://www.wikidata.org/entity";
+        
+        var color = d3.scale.category10();
+        
+        var colormap = [
+            {
+                url: "https://collection.sciencemuseumgroup.org.uk/people/",
+                color: function(){ return color(this.url);}
+            },
+            {
+                url: "https://collection.sciencemuseumgroup.org.uk/objects/",
+                color: function(){ return color(this.url);}
+            },
+            {
+                url: "http://www.wikidata.org/entity",
+                color: function(){return color(this.url);}
+            }
+            ]
+
         const tooltip = d3.select('#svg-body').append("div")
                                       .classed("tooltip", true)
                                       .style("opacity", 0) // start invisible
 
-        var svg = d3.select("#svg-body").append("svg")
-            .attr("viewBox", "0 0 " + w + " " + h)
-            .attr("preserveAspectRatio", "xMidYMid meet")
-            .call(d3.behavior.zoom().on("zoom", redraw))
-            .append('svg:g');
-            ;
-
+                                      
+                                      var svg = d3.select("#svg-body").append("svg")
+                                      .attr("viewBox", "0 0 " + w + " " + h)
+                                      .attr("preserveAspectRatio", "xMidYMid meet")
+                                      .call(d3.behavior.zoom().on("zoom", redraw))
+                                      .append('svg:g');
+                                      ;
+                                      
         function redraw() {
             svg.attr("transform",
-                "translate(" + d3.event.translate + ")"
-                + " scale(" + d3.event.scale + ")");
-            }   
-
+            "translate(" + d3.event.translate + ")"
+            + " scale(" + d3.event.scale + ")");
+        }   
+        
         var force = d3.layout.force().size([w, h]);
         var drag = force.stop().drag()
         .on("dragstart", function(d) {
             d3.event.sourceEvent.stopPropagation(); // to prevent pan functionality from 
-                                                    //overriding node drag functionality.
+            //overriding node drag functionality.
             // put any other 'dragstart' actions here
         });
-
+        
         d3.json('/get_latest_response', function (err, triples) {
-            var color = d3.scale.category10();
             var graph = triplesToGraph(triples);
-            update(graph, color);
+            update(graph, colormap);
         });
+        
+        const legend = d3.select('#svg-body').append("div").classed("legend", true)
+
+        legend.selectAll("text")
+            .data(colormap)
+            .enter()
+            .append("text")
+                .attr("x", 120)
+                .attr("y", function(d,i){ return 100 + i*25}) // 100 is where the first dot appears. 25 is the distance between dots
+                .style("color", function(d){ return d.color()})
+                .text(function(d){ return d.url + "    "})
+                .attr("text-anchor", "left")
+                .style("alignment-baseline", "middle")
 
     </script>
 
