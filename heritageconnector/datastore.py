@@ -182,7 +182,7 @@ def add_user(uri, relationship, user_uri):
     return response
 
 
-def es_to_rdflib_graph(return_format=None, size=10000):
+def es_to_rdflib_graph(return_format=None):
     """
     Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
     format is specified, else an object with the specified format which could be written
@@ -190,15 +190,15 @@ def es_to_rdflib_graph(return_format=None, size=10000):
     """
 
     # get dump
-    res = es.search(
-        index=index, body={"_source": "graph.*", "query": {"match_all": {}}}, size=size
+    res = helpers.scan(
+        client=es, index=index, query={"_source": "graph.*", "query": {"match_all": {}}}
     )
 
-    hits = res["hits"]["hits"]
+    # hits = res["hits"]["hits"]
 
     # create graph
     g = Graph()
-    for item in hits:
+    for item in res:
         g += Graph().parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
 
     if return_format is None:
