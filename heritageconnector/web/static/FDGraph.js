@@ -73,68 +73,69 @@ function update(graph,colormap){
         //linkTexts.append("title")
         //		.text(function(d) { return d.predicate; });
                 
-    // ==================== Add Link Names =====================
-    var nodeTexts = svg.selectAll(".node-text")
-                .data(graph.nodes)
-                .enter()
-                .append("text")
-                    .attr("class", function (d) {
-                        if (d.label.startsWith(smg_person) | d.label.startsWith(smg_object) | d.label.startsWith(wikidata_entity)) {
-                            return "node-text-item"
-                        } else{
-                            return "node-text"
-                        }
-                    })
-                    .text( function (d) { 
-                        if (d.label.startsWith(smg_person) | d.label.startsWith(smg_object) | d.label.startsWith(wikidata_entity)){
-                            // var regex = /cp\d+/g;
-                            // return regex.exec(d.label)
-                            return ""
-                        } else {
-                            return d.label
-                        }
-                     })
-                    // .text("")
-                ;
-
-        //nodeTexts.append("title")
-        //		.text(function(d) { return d.label; });
-    
-    // ==================== Add Node =====================
-    var nodes = svg.selectAll(".node")
-                        .data(graph.nodes)
-                        .enter()
-                        .append("circle")
-                            .attr("class","node")
-                            .attr("fill", function (d) {
-                                var col = "#999";
-                                colormap.forEach((item) => {
-                                    if (d.label.indexOf(item.url) > -1) {
-                                        col = item.color();
-                                    }
-                                });
-                                return col
-                            })
-                            .attr("r", 4)
-                            .call(force.drag)
-                            .on("mouseover", function(d) {
-                                tooltip.transition()
-                                    .duration(300)
-                                    .style("opacity", 1) // show the tooltip
-                                tooltip.html(d.label)
-                                .style("left", (d3.event.pageX - d3.select('.tooltip').node().offsetWidth - 5) + "px")
-                                .style("top", (d3.event.pageY - d3.select('.tooltip').node().offsetHeight) + "px");
-                                    })
-                                    .on("mouseleave", function(d) {
+        
+        // ==================== Add Node =====================
+        var nodes = svg.selectAll(".node")
+        .data(graph.nodes)
+        .enter()
+        .append("circle")
+        .attr("class","node")
+        .attr("fill", function (d) {
+            var col = "#999";
+            colormap.forEach((item) => {
+                if (d.label.indexOf(item.url) > -1) {
+                    col = item.color();
+                }
+            });
+            return col
+        })
+        .attr("r", 4)
+        .call(force.drag)
+        .on("mouseover", function(d) {
+            tooltip.transition()
+            .duration(300)
+            .style("opacity", 1) // show the tooltip
+            tooltip.html(d.label)
+            .style("left", (d3.event.pageX - d3.select('.tooltip').node().offsetWidth - 5) + "px")
+            .style("top", (d3.event.pageY - d3.select('.tooltip').node().offsetHeight) + "px");
+        })
+        .on("mouseleave", function(d) {
                                         tooltip.transition()
-                                            .duration(200)
-                                            .style("opacity", 0)
+                                        .duration(200)
+                                        .style("opacity", 0)
                                     })
-                            .on("click", function(d) { 
-                                if (d.label.startsWith("http")) {
-                                    window.open(d.label); 
-                                }})
-                    ;//nodes
+                                    .on("click", function(d) { 
+                                        if (d.label.startsWith("http")) {
+                                            window.open(d.label); 
+                                        }})
+                                        ;//nodes
+                                        
+        // ==================== Add Link Names =====================
+        var nodeTexts = svg.selectAll(".node-text")
+                    .data(graph.nodes)
+                    .enter()
+                    .append("text")
+                        .attr("class", function (d) {
+                            if (d.label.startsWith(smg_person) | d.label.startsWith(smg_object) | d.label.startsWith(wikidata_entity)) {
+                                return "node-text-item"
+                            } else{
+                                return "node-text"
+                            }
+                        })
+                        .text( function (d) { 
+                            if (d.label.startsWith(smg_person) | d.label.startsWith(smg_object) | d.label.startsWith(wikidata_entity)){
+                                // var regex = /cp\d+/g;
+                                // return regex.exec(d.label)
+                                return ""
+                            } else {
+                                return d.label
+                            }
+                            })
+                        // .text("")
+                    ;
+    
+            //nodeTexts.append("title")
+            //		.text(function(d) { return d.label; });
 
     // ==================== Force ====================
     force.on("tick", function() {

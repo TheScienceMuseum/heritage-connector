@@ -15,7 +15,16 @@
 
 <body style="margin:20px;">
     <form id="queryForm" method="POST">
-        <textarea name="sparql_query" rows = "10" cols = "100" placeholder="Enter SPARQL query"></textarea>
+        <textarea name="sparql_query" rows = "10" cols = "100" placeholder="Enter SPARQL query">
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+SELECT ?s ?p ?o WHERE {
+    VALUES ?p {xsd:gender owl:sameAs}
+    ?s ?p ?o.
+    ?s xsd:gender ?o
+}     
+        </textarea>
         <input type="submit" value="Submit" class="submitButton">
     </form>
     <div id="legend"></div>

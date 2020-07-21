@@ -54,9 +54,17 @@ def query(sparql: str):
             {"subject": i[0], "predicate": i[1], "object": i[2]} for i in res
         ]
         return data["latest_response"]
+
+    elif "select ?s ?p ?o" in sparql.lower():
+        data["latest_response"] = [
+            {"subject": i[0], "predicate": i[1], "object": i[2]} for i in res
+        ]
+        return data["latest_response"]
+
     else:
         # e.g. SELECT
         data["latest_response"] = [i for i in res]
+
         return data["latest_response"]
 
 

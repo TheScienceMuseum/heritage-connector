@@ -19,8 +19,11 @@ marker {
 }
 
 .node-text {
-  font: 7px sans-serif;
-  fill:grey;
+  font: 15px sans-serif;
+  font-weight: 600;
+  fill:black;
+  stroke: white;
+  stroke-width: 0.7px;
 }
 
 .node-text-item {
