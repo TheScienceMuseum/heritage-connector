@@ -1,0 +1,51 @@
+body {
+  font-family: 'helvetica neue', helvetica, arial, georgia, times;
+}
+
+.node .node-smg-person {
+    stroke: #ffffff;
+    stroke-width: 1.5px;
+}
+
+.link {
+  stroke: #999;
+  stroke-opacity: .4;
+  stroke-width: 1px;
+}
+
+marker {
+    stroke: #999;
+    fill:rgba(124,240,10,0);
+}
+
+.node-text {
+  font: 15px sans-serif;
+  font-weight: 600;
+  fill:black;
+  stroke: white;
+  stroke-width: 0.7px;
+}
+
+.node-text-item {
+  font: 8px sans-serif;
+  fill:darkblue;
+}
+
+.link-text {
+  font: 5px sans-serif;
+  fill:lightgrey;
+}
+
+svg{
+    border:1px solid grey;
+    display: block;
+    width: 80%;
+    height: 80%;
+    margin: auto;
+}
+
+.legend {
+  height: 20px;
+  text-align: center;
+  margin-top: 10px;
+}
