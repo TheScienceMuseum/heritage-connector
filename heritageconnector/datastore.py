@@ -3,13 +3,17 @@ from elasticsearch import Elasticsearch
 from rdflib import Graph, Literal, RDF, URIRef
 from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
+from heritageconnector.config import config
 import json
 
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
 
-# es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
-es = Elasticsearch()
+elastic_cluster = config.ELASTIC_SEARCH_CLUSTER
+elastic_user = config.ELASTIC_SEARCH_USER
+elastic_password = config.ELASTIC_SEARCH_PASSWORD
+
+es = Elasticsearch(cloud_id=elastic_cluster, http_auth=(elastic_user, elastic_password))
 
 index = "heritageconnector"
 
@@ -130,9 +134,10 @@ def get_by_uri(uri):
 def get_by_type(type, size=1000):
     """Return an list of matching ElasticSearch record"""
 
-    hits = es.search(index=index, body={"query": {"match": {"type": type}}}, size=size)    
+    res = es.search(index=index, body={"query": {"match": {"type": type}}}, size=size)
     return res["hits"]["hits"]
-  
+
+
 def get_graph(uri):
     """Return an the RDF graph for an ElasticSearch record"""
 
@@ -142,6 +147,7 @@ def get_graph(uri):
         g = Graph().parse(data=jsonld, format="json-ld")
 
     return g
+
 
 def get_graph_by_type(type):
     """Return an list of matching ElasticSearch record"""
@@ -153,6 +159,7 @@ def get_graph_by_type(type):
         g.parse(data=jsonld, format="json-ld")
 
     return g
+
 
 def search(query, filter):
     """Return an optionally filtered list of matching objects"""
