@@ -104,7 +104,7 @@ def update_graph(s_uri, p, o_uri):
         # Overwrite existing ES record
         response = es.index(index=index, id=uid, body=es_json)
 
-        print("Updated ES record" + uid + " : " + record["_source"]["uri"])
+        # print("Updated ES record" + uid + " : " + record["_source"]["uri"])
 
     return response
 
@@ -185,3 +185,28 @@ def add_user(uri, relationship, user_uri):
     # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
 
     return response
+
+
+def es_to_rdflib_graph(return_format=None):
+    """
+    Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
+    format is specified, else an object with the specified format which could be written
+    to a file.
+    """
+
+    # get dump
+    res = helpers.scan(
+        client=es, index=index, query={"_source": "graph.*", "query": {"match_all": {}}}
+    )
+
+    # hits = res["hits"]["hits"]
+
+    # create graph
+    g = Graph()
+    for item in res:
+        g += Graph().parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
+
+    if return_format is None:
+        return g
+    else:
+        return g.serialize(format=return_format)

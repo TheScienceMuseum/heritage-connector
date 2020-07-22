@@ -1,0 +1,27 @@
+{
+  "name": "heritage-connector",
+  "version": "1.0.0",
+  "description": "Transforming text into data to extract meaning and make connections",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "eslint": "^7.5.0",
+    "eslint-plugin-html": "^6.0.2"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheScienceMuseum/heritage-connector.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/TheScienceMuseum/heritage-connector/issues"
+  },
+  "homepage": "https://github.com/TheScienceMuseum/heritage-connector#readme"
+}

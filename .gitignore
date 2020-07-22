@@ -3,6 +3,8 @@ GITIGNORE_DATA
 config.ini
 field_mapping.json
 
+node_modules/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
