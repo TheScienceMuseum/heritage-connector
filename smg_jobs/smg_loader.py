@@ -38,7 +38,7 @@ def load_object_data():
     # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
 
     record_type = "object"
-    for index, row in catalogue_df.iterrows():
+    for dummy, row in catalogue_df.iterrows():
         add_record(record_type, row)
 
     return
@@ -51,7 +51,7 @@ def load_people_and_orgs_data():
 
     # Loop though CSV file and create/store records for each row
     # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
-    for index, row in people_df.iterrows():
+    for dummy, row in people_df.iterrows():
         if row["GENDER"] == "M" or row["GENDER"] == "F":
             add_record("person", row)
         else:
@@ -72,7 +72,7 @@ def load_maker_data():
     maker_df = pd.read_csv(maker_data_path, low_memory=False, nrows=max_records)
 
     # Loop though CSV file and update exiting records for each row based on relationship value
-    for index, row in maker_df.iterrows():
+    for dummy, row in maker_df.iterrows():
         obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
             row["MKEY"]
         )
@@ -93,7 +93,7 @@ def load_user_data():
     user_df = pd.read_csv(user_data_path, low_memory=False, nrows=max_records)
 
     # Loop though CSV file and update exiting records for each row based on relationship value
-    for index, row in user_df.iterrows():
+    for dummy, row in user_df.iterrows():
         obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
             row["MKEY"]
         )
