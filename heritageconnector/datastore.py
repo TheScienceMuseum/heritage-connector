@@ -9,11 +9,13 @@ import json
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
 
-elastic_cluster = config.ELASTIC_SEARCH_CLUSTER
-elastic_user = config.ELASTIC_SEARCH_USER
-elastic_password = config.ELASTIC_SEARCH_PASSWORD
-
-es = Elasticsearch(cloud_id=elastic_cluster, http_auth=(elastic_user, elastic_password))
+if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
+    es = Elasticsearch(
+        cloud_id=config.ELASTIC_SEARCH_CLUSTER,
+        http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
+    )
+else:
+    es = Elasticsearch()
 
 index = "heritageconnector"
 

@@ -14,10 +14,10 @@ import json
 logger = getLogger(__file__)
 
 # Locatiom of CSV data to import
-catalogue_data_path = config.MIMSY_CATALOGUE_PATH
-people_data_path = config.MIMSY_PEOPLE_PATH
-maker_data_path = config.MIMSY_MAKER_PATH
-user_data_path = config.MIMSY_USER_PATH
+catalogue_data_path = "../" + config.MIMSY_CATALOGUE_PATH
+people_data_path = "../" + config.MIMSY_PEOPLE_PATH
+maker_data_path = "../" + config.MIMSY_MAKER_PATH
+user_data_path = "../" + config.MIMSY_USER_PATH
 
 collection = "SMG"
 max_records = 1000
