@@ -110,7 +110,7 @@ def update_graph(s_uri, p, o_uri):
         # Overwrite existing ES record
         response = es.index(index=index, id=uid, body=es_json)
 
-        # print("Updated ES record" + uid + " : " + record["_source"]["uri"])
+        print("Updated ES record" + uid + " : " + record["_source"]["uri"])
 
     return response
 
@@ -190,7 +190,7 @@ def add_user(uri, relationship, user_uri):
     """Adds a user relationship to an existing record"""
 
     # TODO: need to find a RDF term foor USER/USED?
-    response = update_graph(uri, FOAF.maker, user_uri)
+    response = update_graph(uri, FOAF.knows, user_uri)
     # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
 
     return response

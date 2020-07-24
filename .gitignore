@@ -1,7 +1,7 @@
 # local data folder and config
 GITIGNORE_DATA
 config.ini
-field_mapping.json
+field_mapping.py
 
 node_modules/
 
