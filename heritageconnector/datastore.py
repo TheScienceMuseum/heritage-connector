@@ -108,11 +108,9 @@ def update_graph(s_uri, p, o_uri):
         es_json = json.dumps(doc)
 
         # Overwrite existing ES record
-        response = es.index(index=index, id=uid, body=es_json)
+        es.index(index=index, id=uid, body=es_json)
 
         print("Updated ES record" + uid + " : " + record["_source"]["uri"])
-
-    return response
 
 
 def delete(id):
@@ -126,7 +124,7 @@ def delete(id):
 def get_by_uri(uri):
     """Return an existing ElasticSearch record"""
 
-    res = es.search(index=index, body={"query": {"match": {"uri": uri}}})
+    res = es.search(index=index, body={"query": {"term": {"uri.keyword": uri}}})
     if len(res["hits"]["hits"]):
         return res["hits"]["hits"][0]
     else:

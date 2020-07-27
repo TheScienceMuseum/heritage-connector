@@ -13,7 +13,7 @@ from rdflib.serializer import Serializer
 import json
 
 logger = getLogger(__file__)
-max_records = 500
+max_records = 1000
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
