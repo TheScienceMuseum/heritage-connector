@@ -13,7 +13,7 @@ from rdflib.serializer import Serializer
 import json
 
 logger = getLogger(__file__)
-max_records = 1000
+max_records = 500
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -29,6 +29,8 @@ context = [
     {"@schema": "http://schema.org/", "@language": "en"},
     {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
     {"@xsd": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
+    {"@wd": "http://www.wikidata.org/entity/", "@language": "en"},
+    {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
 ]
 
 
@@ -105,42 +107,53 @@ def load_orgs_data():
 
 def load_maker_data():
     """Load object -> maker -> people relationships from CSV files and add to existing records """
-
+    # identifier in field mapping
     maker_df = pd.read_csv(maker_data_path, low_memory=False, nrows=max_records)
 
-    # Loop though CSV file and update exiting records for each row based on relationship value
-    for dummy, row in maker_df.iterrows():
-        obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
-            row["MKEY"]
-        )
-        maker = "https://collection.sciencemuseumgroup.org.uk/people/cp" + str(
-            row["LINK_ID"]
-        )
-        relationship = (
-            "maker"  # we may want to deal with other sub-classes of maker here later?
-        )
-        datastore.add_maker(obj, relationship, maker)
+    maker_df[
+        "MKEY"
+    ] = "https://collection.sciencemuseumgroup.org.uk/objects/co" + maker_df[
+        "MKEY"
+    ].astype(
+        str
+    )
+    maker_df[
+        "LINK_ID"
+    ] = "https://collection.sciencemuseumgroup.org.uk/people/cp" + maker_df[
+        "LINK_ID"
+    ].astype(
+        str
+    )
+    maker_df = maker_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
+
+    for _, row in maker_df.iterrows():
+        datastore.update_graph(row["SUBJECT"], FOAF.maker, row["OBJECT"])
 
     return
 
 
 def load_user_data():
     """Load object -> user -> people relationships from CSV files and add to existing records """
-
     user_df = pd.read_csv(user_data_path, low_memory=False, nrows=max_records)
 
-    # Loop though CSV file and update exiting records for each row based on relationship value
-    for dummy, row in user_df.iterrows():
-        obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
-            row["MKEY"]
-        )
-        maker = "https://collection.sciencemuseumgroup.org.uk/people/cp" + str(
-            row["LINK_ID"]
-        )
-        relationship = (
-            "user"  # we may want to deal with other sub-types of user here later?
-        )
-        datastore.add_user(obj, relationship, maker)
+    user_df[
+        "MKEY"
+    ] = "https://collection.sciencemuseumgroup.org.uk/objects/co" + user_df[
+        "MKEY"
+    ].astype(
+        str
+    )
+    user_df[
+        "LINK_ID"
+    ] = "https://collection.sciencemuseumgroup.org.uk/people/cp" + user_df[
+        "LINK_ID"
+    ].astype(
+        str
+    )
+    user_df = user_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
+
+    for _, row in user_df.iterrows():
+        datastore.update_graph(row["SUBJECT"], FOAF.knows, row["OBJECT"])
 
     return
 
@@ -162,38 +175,34 @@ def add_record(table_name, row):
     return
 
 
-def serialize_to_jsonld(record_type, uri, row):
+def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series):
     """Returns a JSON-LD represention of a record"""
 
     g = Graph()
     record = URIRef(uri)
 
     # This code is effectivly the mapping from source data to the data we care about
+    table_mapping = field_mapping.mapping[table_name]
 
-    if record_type in ["PERSON", "ORGANISATION", "OBJECT"]:
-        table_mapping = field_mapping.mapping[record_type]
-        # TODO: notes has no predicate, description has issues with loading into ES (escape chars in URLs?)
-        keys = [
-            k
-            for k in table_mapping.keys()
-            if k not in ["ID", "PREFIX", "NOTES", "DESCRIPTION"]
-        ]
+    keys = {
+        k for k, v in table_mapping.items() if k not in ["ID", "PREFIX"] and "RDF" in v
+    }
 
-        for col in keys:
-            # this will trigger for the first row in the dataframe
-            #  TODO: put this in a separate checker function that checks each table against config on loading
-            if col not in row.index:
-                raise KeyError(f"column {col} not in data for table {record_type}")
+    for col in keys:
+        # this will trigger for the first row in the dataframe
+        #  TODO: put this in a separate checker function that checks each table against config on loading
+        if col not in row.index:
+            raise KeyError(f"column {col} not in data for table {table_name}")
 
-            if bool(row[col]) and (str(row[col]) != "nan"):
-                if isinstance(row[col], list):
-                    [
-                        g.add((record, table_mapping[col]["RDF"], Literal(val)))
-                        for val in row[col]
-                        if str(val) != "nan"
-                    ]
-                else:
-                    g.add((record, table_mapping[col]["RDF"], Literal(row[col])))
+        if bool(row[col]) and (str(row[col]) != "nan"):
+            if isinstance(row[col], list):
+                [
+                    g.add((record, table_mapping[col]["RDF"], Literal(val)))
+                    for val in row[col]
+                    if str(val) != "nan"
+                ]
+            else:
+                g.add((record, table_mapping[col]["RDF"], Literal(row[col])))
 
     return g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
 
