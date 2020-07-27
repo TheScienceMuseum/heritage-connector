@@ -102,4 +102,17 @@ mapping = {
         "ITEM_NAME": {"PID": WDT.P31, "RDF": XSD.additionalType, "type": "list"},
         "MATERIALS": {"PID": WDT.P186, "RDF": XSD.material, "type": "list"},
     },
+    # NOTE: not being used at the moment
+    "MAKERS": {
+        # triples type has SUBJECT and OBJECT columns
+        "TYPE": "triples",
+        "PREDICATE": {"RDF": FOAF.maker},
+    },
+    "USERS": {
+        "TYPE": "triples",
+        "PREDICATE": {
+            # TODO: need to find RDF term for user
+            "RDF": FOAF.knows
+        },
+    },
 }
