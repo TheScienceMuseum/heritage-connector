@@ -81,7 +81,7 @@ def update():
 def update_graph(s_uri, p, o_uri):
     """Add a new RDF relationship to an an existing record"""
 
-    # Can we do this more efficently ie. just add the new tripple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
+    # Can we do this more efficently ie. just add the new triple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
     # Do we store multiple entries for both Wikidata and RDF? (I think yes)
 
     record = get_by_uri(s_uri)
@@ -90,10 +90,10 @@ def update_graph(s_uri, p, o_uri):
         uid = record["_id"]
         g = Graph().parse(data=jsonld, format="json-ld")
 
-        # add the new tripple / RDF statement to the existing graph
+        # add the new triple / RDF statement to the existing graph
         g.add((URIRef(s_uri), p, URIRef(o_uri)))
 
-        # re-serialise the graph and update the reccord
+        # re-serialise the graph and update the record
         jsonld = g.serialize(format="json-ld", context=context, indent=4).decode(
             "utf-8"
         )
