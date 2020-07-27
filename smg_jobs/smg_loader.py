@@ -33,6 +33,9 @@ context = [
     {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
 ]
 
+collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
+people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
+
 
 def load_object_data():
     """Load data from CSV files """
@@ -40,7 +43,7 @@ def load_object_data():
     table_name = "OBJECT"
     catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=max_records)
     catalogue_df = catalogue_df.rename(columns={"MKEY": "ID"})
-    catalogue_df["PREFIX"] = "https://collection.sciencemuseumgroup.org.uk/objects/co"
+    catalogue_df["PREFIX"] = collection_prefix
     catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(
         lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
     )
@@ -69,7 +72,7 @@ def load_people_data():
 
     # PREPROCESS
     people_df = people_df.rename(columns={"LINK_ID": "ID"})
-    people_df["PREFIX"] = "https://collection.sciencemuseumgroup.org.uk/people/cp"
+    people_df["PREFIX"] = people_prefix
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
@@ -96,7 +99,7 @@ def load_orgs_data():
 
     # PREPROCESS
     org_df = org_df.rename(columns={"LINK_ID": "ID"})
-    org_df["PREFIX"] = "https://collection.sciencemuseumgroup.org.uk/people/cp"
+    org_df["PREFIX"] = people_prefix
 
     # TODO: use Elasticsearch batch mechanism for loading
     for _, row in org_df.iterrows():
@@ -110,20 +113,8 @@ def load_maker_data():
     # identifier in field mapping
     maker_df = pd.read_csv(maker_data_path, low_memory=False, nrows=max_records)
 
-    maker_df[
-        "MKEY"
-    ] = "https://collection.sciencemuseumgroup.org.uk/objects/co" + maker_df[
-        "MKEY"
-    ].astype(
-        str
-    )
-    maker_df[
-        "LINK_ID"
-    ] = "https://collection.sciencemuseumgroup.org.uk/people/cp" + maker_df[
-        "LINK_ID"
-    ].astype(
-        str
-    )
+    maker_df["MKEY"] = collection_prefix + maker_df["MKEY"].astype(str)
+    maker_df["LINK_ID"] = people_prefix + maker_df["LINK_ID"].astype(str)
     maker_df = maker_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
 
     for _, row in maker_df.iterrows():
@@ -136,20 +127,8 @@ def load_user_data():
     """Load object -> user -> people relationships from CSV files and add to existing records """
     user_df = pd.read_csv(user_data_path, low_memory=False, nrows=max_records)
 
-    user_df[
-        "MKEY"
-    ] = "https://collection.sciencemuseumgroup.org.uk/objects/co" + user_df[
-        "MKEY"
-    ].astype(
-        str
-    )
-    user_df[
-        "LINK_ID"
-    ] = "https://collection.sciencemuseumgroup.org.uk/people/cp" + user_df[
-        "LINK_ID"
-    ].astype(
-        str
-    )
+    user_df["MKEY"] = collection_prefix + user_df["MKEY"].astype(str)
+    user_df["LINK_ID"] = people_prefix + user_df["LINK_ID"].astype(str)
     user_df = user_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
 
     for _, row in user_df.iterrows():
