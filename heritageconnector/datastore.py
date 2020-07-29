@@ -11,7 +11,7 @@ import json
 
 if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
     es = Elasticsearch(
-        cloud_id=config.ELASTIC_SEARCH_CLUSTER,
+        [config.ELASTIC_SEARCH_CLUSTER],
         http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
     )
 else:
