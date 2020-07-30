@@ -2,8 +2,9 @@ import sys
 
 sys.path.append("..")
 
-from heritageconnector.config import config
+from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
+from heritageconnector.utils.data_transformation import get_year_from_date_value
 import pandas as pd
 from logging import getLogger
 from rdflib import Graph, Literal, RDF, URIRef
@@ -12,297 +13,184 @@ from rdflib.serializer import Serializer
 import json
 
 logger = getLogger(__file__)
+max_records = 1000
 
-# Locatiom of CSV data to import
-catalogue_data_path = "../" + config.MIMSY_CATALOGUE_PATH
-people_data_path = "../" + config.MIMSY_PEOPLE_PATH
-maker_data_path = "../" + config.MIMSY_MAKER_PATH
-user_data_path = "../" + config.MIMSY_USER_PATH
+#  =============== LOADING SMG DATA ===============
+# Location of CSV data to import
+catalogue_data_path = config.MIMSY_CATALOGUE_PATH
+people_data_path = config.MIMSY_PEOPLE_PATH
+maker_data_path = config.MIMSY_MAKER_PATH
+user_data_path = config.MIMSY_USER_PATH
 
 collection = "SMG"
-max_records = 1000
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
-    {"@schema": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
+    {"@schema": "http://schema.org/", "@language": "en"},
     {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
+    {"@xsd": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
+    {"@wd": "http://www.wikidata.org/entity/", "@language": "en"},
+    {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
 ]
+
+collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
+people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 
 
 def load_object_data():
     """Load data from CSV files """
 
+    table_name = "OBJECT"
     catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=max_records)
+    catalogue_df = catalogue_df.rename(columns={"MKEY": "ID"})
+    catalogue_df["PREFIX"] = collection_prefix
+    catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(
+        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
+    )
+    catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(
+        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
+    )
 
     # Loop though CSV file and create/store records for each row
     # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
 
-    record_type = "object"
     for dummy, row in catalogue_df.iterrows():
-        add_record(record_type, row)
+        add_record(table_name, row)
 
     return
 
 
-def load_people_and_orgs_data():
+def load_people_data():
     """Load data from CSV files """
 
+    # identifier in field_mapping
+    table_name = "PERSON"
+
     people_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
+    # TODO: use isIndividual flag here
+    people_df = people_df[people_df["GENDER"].isin(["M", "F"])]
 
-    # Loop though CSV file and create/store records for each row
-    # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
-    for dummy, row in people_df.iterrows():
-        if row["GENDER"] == "M" or row["GENDER"] == "F":
-            add_record("person", row)
-        else:
-            add_record("organisation", row)
+    # PREPROCESS
+    people_df = people_df.rename(columns={"LINK_ID": "ID"})
+    people_df["PREFIX"] = people_prefix
+    people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
+    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
+        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
+    )
+    people_df.loc[:, "BIOGRAPHY"] = people_df.loc[:, "DESCRIPTION"]
+    people_df.loc[:, "NOTES"] = (
+        str(people_df.loc[:, "DESCRIPTION"]) + " \n " + str(people_df.loc[:, "NOTE"])
+    )
+    # TODO: map gender to Wikidata QIDs
 
-    # We should use the isIndividual flag (but need to do a fresh export first)
-    # for index, row in people_df.iterrows():
-    #     if (row["GENDER"] == 'M' or row["GENDER"] == 'F'):
-    #         add_record("person", row)
-    #     else:
-    #         add_record("organisation", row)
+    # TODO: use Elasticsearch batch mechanism for loading
+    for _, row in people_df.iterrows():
+        add_record(table_name, row)
+
+
+def load_orgs_data():
+    # identifier in field_mapping
+    table_name = "ORGANISATION"
+
+    org_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
+    # TODO: use isIndividual flag here
+    org_df = org_df[org_df["GENDER"] == "N"]
+
+    # PREPROCESS
+    org_df = org_df.rename(columns={"LINK_ID": "ID"})
+    org_df["PREFIX"] = people_prefix
+
+    # TODO: use Elasticsearch batch mechanism for loading
+    for _, row in org_df.iterrows():
+        add_record(table_name, row)
+
     return
 
 
 def load_maker_data():
     """Load object -> maker -> people relationships from CSV files and add to existing records """
-
+    # identifier in field mapping
     maker_df = pd.read_csv(maker_data_path, low_memory=False, nrows=max_records)
 
-    # Loop though CSV file and update exiting records for each row based on relationship value
-    for dummy, row in maker_df.iterrows():
-        obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
-            row["MKEY"]
-        )
-        maker = "https://collection.sciencemuseumgroup.org.uk/people/cp" + str(
-            row["LINK_ID"]
-        )
-        relationship = (
-            "maker"  # we may want to deal with other sub-classes of maker here later?
-        )
-        datastore.add_maker(obj, relationship, maker)
+    maker_df["MKEY"] = collection_prefix + maker_df["MKEY"].astype(str)
+    maker_df["LINK_ID"] = people_prefix + maker_df["LINK_ID"].astype(str)
+    maker_df = maker_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
+
+    for _, row in maker_df.iterrows():
+        datastore.update_graph(row["SUBJECT"], FOAF.maker, row["OBJECT"])
 
     return
 
 
 def load_user_data():
     """Load object -> user -> people relationships from CSV files and add to existing records """
-
     user_df = pd.read_csv(user_data_path, low_memory=False, nrows=max_records)
 
-    # Loop though CSV file and update exiting records for each row based on relationship value
-    for dummy, row in user_df.iterrows():
-        obj = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
-            row["MKEY"]
-        )
-        maker = "https://collection.sciencemuseumgroup.org.uk/people/cp" + str(
-            row["LINK_ID"]
-        )
-        relationship = (
-            "user"  # we may want to deal with other sub-types of user here later?
-        )
-        datastore.add_user(obj, relationship, maker)
+    user_df["MKEY"] = collection_prefix + user_df["MKEY"].astype(str)
+    user_df["LINK_ID"] = people_prefix + user_df["LINK_ID"].astype(str)
+    user_df = user_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
+
+    for _, row in user_df.iterrows():
+        datastore.update_graph(row["SUBJECT"], FOAF.knows, row["OBJECT"])
 
     return
 
 
-def add_record(record_type, row):
+#  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
+
+
+def add_record(table_name, row):
     """Create and store new HC record with a JSON-LD graph"""
 
-    uri = ""
-    if record_type == "object":
-        uri = "https://collection.sciencemuseumgroup.org.uk/objects/co" + str(
-            row["MKEY"]
-        )
-    if record_type == "person" or record_type == "organisation":
-        # AdLib
-        # uri = "https://collection.sciencemuseumgroup.org.uk/people/ap")
-        # Mimsy
-        uri = "https://collection.sciencemuseumgroup.org.uk/people/cp" + str(
-            row["LINK_ID"]
-        )
+    uri_prefix = row["PREFIX"]
+    uri = uri_prefix + str(row["ID"])
 
     data = {"uri": uri}
-    jsonld = serialize_to_jsonld(record_type, uri, row)
-    datastore.create(collection, record_type, data, jsonld)
+    jsonld = serialize_to_jsonld(table_name, uri, row)
 
-    # print(data, jsonld)
+    datastore.create(collection, table_name, data, jsonld)
 
     return
 
 
-def serialize_to_jsonld(record_type, uri, row):
+def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series):
     """Returns a JSON-LD represention of a record"""
 
     g = Graph()
     record = URIRef(uri)
 
     # This code is effectivly the mapping from source data to the data we care about
+    table_mapping = field_mapping.mapping[table_name]
 
-    # ========================================================================
-    # (1a) If the record is a person
-    # http://xmlns.com/foaf/spec/#term_Person
-    # ========================================================================
-    if record_type == "person":
+    keys = {
+        k for k, v in table_mapping.items() if k not in ["ID", "PREFIX"] and "RDF" in v
+    }
 
-        # 1   PREFERRED_NAME    10 non-null     object
-        # 2   TITLE_NAME        0 non-null      float64
-        # 3   FIRSTMID_NAME     6 non-null      object
-        # 4   LASTSUFF_NAME     10 non-null     object
-        # 5   SUFFIX_NAME       0 non-null      float64
-        # 6   HONORARY_SUFFIX   0 non-null      float64
-        # 7   GENDER            10 non-null     object
-        # 8   BRIEF_BIO         10 non-null     object
-        # 9   DESCRIPTION       5 non-null      object
-        # 10  NOTE              8 non-null      object
-        # 11  BIRTH_DATE        6 non-null      object
-        # 12  BIRTH_PLACE       8 non-null      object
-        # 13  DEATH_DATE        6 non-null      object
-        # 14  DEATH_PLACE       3 non-null      object
-        # 15  CAUSE_OF_DEATH    2 non-null      object
-        # 16  NATIONALITY       9 non-null      object
-        # 17  OCCUPATION        10 non-null     object
-        # 18  WEBSITE           0 non-null      float64
-        # 19  AFFILIATION       0 non-null      float64
-        # 20  LINGUISTIC_GROUP  0 non-null      float64
-        # 21  TYPE              0 non-null      float64
-        # 22  REFERENCE_NUMBER  0 non-null      float64
-        # 23  SOURCE            10 non-null     object
-        # 24  CREATE_DATE       10 non-null     object
-        # 25  UPDATE_DATE
+    for col in keys:
+        # this will trigger for the first row in the dataframe
+        #  TODO: put this in a separate checker function that checks each table against config on loading
+        if col not in row.index:
+            raise KeyError(f"column {col} not in data for table {table_name}")
 
-        # Add any personal details as FOAF / Scehema attributes
-        if pd.notnull(row["PREFERRED_NAME"]):
-            g.add((record, FOAF.givenName, Literal(row["PREFERRED_NAME"])))
-        if pd.notnull(row["SUFFIX_NAME"]):
-            g.add((record, FOAF.familyName, Literal(row["SUFFIX_NAME"])))
-        if row["GENDER"] == "M":
-            g.add((record, XSD.gender, Literal("Male")))
-        if row["GENDER"] == "F":
-            g.add((record, XSD.gender, Literal("Female")))
-        # Need to convert to date format or 4 digit year to keep ElasticSearch happy
-        # if pd.notnull(row["BIRTH_DATE"]):
-        #     g.add((record, XSD.birthDate, Literal(row["BIRTH_DATE"])))
-        # if pd.notnull(row["DEATH_DATE"]):
-        #     g.add((record, XSD.deathDate, Literal(row["DEATH_DATE"])))
-        if pd.notnull(row["BIRTH_PLACE"]):
-            g.add((record, XSD.birthPlace, Literal(row["BIRTH_PLACE"])))
-        if pd.notnull(row["DEATH_PLACE"]):
-            g.add((record, XSD.deathPlace, Literal(row["DEATH_PLACE"])))
-        if pd.notnull(row["OCCUPATION"]):
-            occupations = [
-                x.strip().lower()
-                for x in str(row["OCCUPATION"]).replace(";", ",").split(",")
-            ]
-            for occupation in occupations:
-                g.add((record, XSD.occupation, Literal(occupation)))
-
-        if pd.notnull(row["DESCRIPTION"]):
-            g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
-        if pd.notnull(row["BRIEF_BIO"]):
-            g.add((record, XSD.disambiguatingDescription, Literal(row["BRIEF_BIO"])))
-
-    # ========================================================================
-    # (1b) If the record is a organisation
-    # http://xmlns.com/foaf/spec/#term_Organization
-    # ========================================================================
-    if record_type == "organisation":
-
-        # Maybe we should use Agent rather than People/Orgs?
-        # https://schema.org/agent
-        # Add any personal details as FOAF / Schema attributes
-        if pd.notnull(row["PREFERRED_NAME"]):
-            g.add((record, FOAF.givenName, Literal(row["PREFERRED_NAME"])))
-        if pd.notnull(row["DESCRIPTION"]):
-            g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
-        if pd.notnull(row["BRIEF_BIO"]):
-            g.add((record, XSD.disambiguatingDescription, Literal(row["BRIEF_BIO"])))
-
-        next
-
-    # ========================================================================
-    # (2) If the record is a object
-    # http://xmlns.com/foaf/spec/#term_SpatialThing
-    # ========================================================================
-    if record_type == "object":
-
-        # 0   MKEY                  10 non-null     int64
-        # 1   TITLE                 10 non-null     object
-        # 2   ITEM_NAME             10 non-null     object
-        # 3   CATEGORY1             10 non-null     object
-        # 4   COLLECTOR             0 non-null      float64
-        # 5   PLACE_COLLECTED       0 non-null      float64
-        # 6   DATE_COLLECTED        0 non-null      float64
-        # 7   PLACE_MADE            3 non-null      object
-        # 8   CULTURE               0 non-null      float64
-        # 9   DATE_MADE             3 non-null      object
-        # 10  MATERIALS             5 non-null      object
-        # 11  MEASUREMENTS          5 non-null      object
-        # 12  EXTENT                0 non-null      float64
-        # 13  DESCRIPTION           10 non-null     object
-        # 14  ITEM_COUNT            10 non-null     int64
-        # 15  PARENT_KEY            0 non-null      float64
-        # 16  BROADER_TEXT          0 non-null      float64
-        # 17  WHOLE_PART            10 non-null     object
-        # 18  ARRANGEMENT           0 non-null      float64
-        # 19  LANGUAGE_OF_MATERIAL  10 non-null     object
-
-        if pd.notnull(row["TITLE"]):
-            g.add((record, XSD.name, Literal(row["TITLE"])))
-        if pd.notnull(row["DESCRIPTION"]):
-            g.add((record, XSD.description, Literal(row["DESCRIPTION"])))
-        if pd.notnull(row["ITEM_NAME"]):
-            g.add((record, XSD.additionalType, Literal(row["ITEM_NAME"])))
-        if pd.notnull(row["MATERIALS"]):
-            materials = [
-                x.strip().lower()
-                for x in str(row["MATERIALS"]).replace(";", ",").split(",")
-            ]
-            for material in materials:
-                g.add((record, XSD.material, Literal(material)))
-
-        # To add / what JSON-LD onotology do we use?
-        # ------------------------------------------
-        # ????DATE_MADE????
-        # ????PLACE_MADE????
-        # ????PLACE_COLLECTED????
-        # ????DATE_COLLECTED????
-
-        # if (row["CATEGORY1"]):
-        #     g.add((record, XSD.category, Literal(row["CATEGORY1"])))
-        # need to add a new quantitativeValue node for MEASUREMENTS
-        # if (row["MEASUREMENTS"]):
-        #     g.add((record, XSD.quantitativeValue, Literal(row["MEASUREMENTS"])))
-
-        # Specific types ie. Artworks
-        # https://schema.org/CreativeWork
-
-        # g.add((record, FOAF.maker, URIRef('https://collection.sciencemuseumgroup.org.uk/objects/co8084947')
-
-    # ========================================================================
-    # (3) If the record is an archive document
-    # --------------------------------
-    # if (record_type == "document"):
-    #     next
-
-    # ========================================================================
-    # (4) If the record is an article (editorial/blog post)
-    # ========================================================================
-    # if (record_type == "article"):
-    #     next
+        if bool(row[col]) and (str(row[col]) != "nan"):
+            if isinstance(row[col], list):
+                [
+                    g.add((record, table_mapping[col]["RDF"], Literal(val)))
+                    for val in row[col]
+                    if str(val) != "nan"
+                ]
+            else:
+                g.add((record, table_mapping[col]["RDF"], Literal(row[col])))
 
     return g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
-
-
-# --------------------------------------------------------------------------------
 
 
 if __name__ == "__main__":
 
     datastore.create_index()
-    load_people_and_orgs_data()
+    load_people_data()
+    load_orgs_data()
     load_object_data()
     load_maker_data()
     load_user_data()

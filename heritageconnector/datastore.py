@@ -81,7 +81,7 @@ def update():
 def update_graph(s_uri, p, o_uri):
     """Add a new RDF relationship to an an existing record"""
 
-    # Can we do this more efficently ie. just add the new tripple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
+    # Can we do this more efficently ie. just add the new triple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
     # Do we store multiple entries for both Wikidata and RDF? (I think yes)
 
     record = get_by_uri(s_uri)
@@ -90,10 +90,10 @@ def update_graph(s_uri, p, o_uri):
         uid = record["_id"]
         g = Graph().parse(data=jsonld, format="json-ld")
 
-        # add the new tripple / RDF statement to the existing graph
+        # add the new triple / RDF statement to the existing graph
         g.add((URIRef(s_uri), p, URIRef(o_uri)))
 
-        # re-serialise the graph and update the reccord
+        # re-serialise the graph and update the record
         jsonld = g.serialize(format="json-ld", context=context, indent=4).decode(
             "utf-8"
         )
@@ -108,11 +108,9 @@ def update_graph(s_uri, p, o_uri):
         es_json = json.dumps(doc)
 
         # Overwrite existing ES record
-        response = es.index(index=index, id=uid, body=es_json)
+        es.index(index=index, id=uid, body=es_json)
 
-        # print("Updated ES record" + uid + " : " + record["_source"]["uri"])
-
-    return response
+        print("Updated ES record" + uid + " : " + record["_source"]["uri"])
 
 
 def delete(id):
@@ -126,7 +124,7 @@ def delete(id):
 def get_by_uri(uri):
     """Return an existing ElasticSearch record"""
 
-    res = es.search(index=index, body={"query": {"match": {"uri": uri}}})
+    res = es.search(index=index, body={"query": {"term": {"uri.keyword": uri}}})
     if len(res["hits"]["hits"]):
         return res["hits"]["hits"][0]
     else:
@@ -190,7 +188,7 @@ def add_user(uri, relationship, user_uri):
     """Adds a user relationship to an existing record"""
 
     # TODO: need to find a RDF term foor USER/USED?
-    response = update_graph(uri, FOAF.maker, user_uri)
+    response = update_graph(uri, FOAF.knows, user_uri)
     # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
 
     return response
