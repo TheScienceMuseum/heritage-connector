@@ -85,8 +85,6 @@ def create(collection, record_type, data, jsonld):
     # add JSON document to ES index
     response = es.index(index=index, id=data["uri"], body=es_json)
 
-    # print("Created ES record " + data["uri"])
-
     return response
 
 
@@ -164,28 +162,20 @@ def search(query, filter):
 def add_same_as(s_uri, o_uri):
     """Adds a sameAs relationship to an existing record"""
 
-    response = update_graph(s_uri, OWL.sameAs, o_uri)
-
-    return response
+    update_graph(s_uri, OWL.sameAs, o_uri)
 
 
 def add_maker(uri, relationship, maker_uri):
     """Adds a maker relationship to an existing record"""
 
-    response = update_graph(uri, FOAF.maker, maker_uri)
-    # update_graph(URIRef(maker_uri), FOAF.made, URIRef(uri))
-
-    return response
+    update_graph(uri, FOAF.maker, maker_uri)
 
 
 def add_user(uri, relationship, user_uri):
     """Adds a user relationship to an existing record"""
 
-    # TODO: need to find a RDF term foor USER/USED?
-    response = update_graph(uri, FOAF.knows, user_uri)
-    # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
-
-    return response
+    # TODO: need to find a RDF term for USER/USED?
+    update_graph(uri, FOAF.knows, user_uri)
 
 
 def es_to_rdflib_graph(return_format=None):
@@ -199,8 +189,6 @@ def es_to_rdflib_graph(return_format=None):
     res = helpers.scan(
         client=es, index=index, query={"_source": "graph.*", "query": {"match_all": {}}}
     )
-
-    # hits = res["hits"]["hits"]
 
     # create graph
     g = Graph()
