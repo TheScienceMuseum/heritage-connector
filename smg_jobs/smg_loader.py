@@ -59,13 +59,8 @@ def load_object_data():
         lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
     )
 
-    # Loop though CSV file and create/store records for each row
-    # Note: We may want to optimise and send a bunch of new records to Elastic Search to process as a batch
-
     print("loading object data")
     add_records(table_name, catalogue_df)
-    # for dummy, row in tqdm(catalogue_df.iterrows(), total=len(catalogue_df)):
-    #     add_record(table_name, row)
 
     return
 
@@ -94,11 +89,8 @@ def load_people_data():
     )
     # TODO: map gender to Wikidata QIDs
 
-    # TODO: use Elasticsearch batch mechanism for loading
     print("loading people data")
     add_records(table_name, people_df)
-    # for _, row in tqdm(people_df.iterrows(), total=len(people_df)):
-    #     add_record(table_name, row)
 
 
 def load_orgs_data():
@@ -116,8 +108,6 @@ def load_orgs_data():
     # TODO: use Elasticsearch batch mechanism for loading
     print("loading orgs data")
     add_records(table_name, org_df)
-    # for _, row in tqdm(org_df.iterrows(), total=len(org_df)):
-    #     add_record(table_name, row)
 
     return
 
