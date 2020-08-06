@@ -21,7 +21,7 @@ pd.options.mode.chained_assignment = None
 logger = getLogger(__file__)
 
 # set to None for no limit
-max_records = 50000
+max_records = None
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
