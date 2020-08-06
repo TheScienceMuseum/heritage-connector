@@ -5,6 +5,7 @@ from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
 from heritageconnector.config import config
 import json
+from tqdm.auto import tqdm
 
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
@@ -18,6 +19,8 @@ else:
     es = Elasticsearch()
 
 index = "heritageconnector"
+
+es_config = {"chunk_size": 1000, "queue_size": 8}
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
@@ -41,17 +44,31 @@ def create_index():
     return
 
 
-def batch_create(data):
+def batch_create(action_generator, total_iterations=None):
     """Batch load a set of new records into ElasticSearch"""
 
-    # todo
-    # https://elasticsearch-py.readthedocs.io/en/master/helpers.html#helpers
+    successes = 0
+    errors = []
 
-    return
+    for ok, action in tqdm(
+        helpers.parallel_bulk(
+            client=es,
+            index=index,
+            actions=action_generator,
+            chunk_size=es_config["chunk_size"],
+            queue_size=es_config["queue_size"],
+        ),
+        total=total_iterations,
+    ):
+        if not ok:
+            errors.append(action)
+        successes += ok
+
+    return successes, errors
 
 
 def create(collection, record_type, data, jsonld):
-    """Load a new record in ElasticSearch and return it's id"""
+    """Load a new record in ElasticSearch and return its id"""
 
     # should we make our own ID using the subject URI?
 
@@ -67,7 +84,7 @@ def create(collection, record_type, data, jsonld):
     # add JSON document to ES index
     response = es.index(index=index, body=es_json)
 
-    print("Created ES record " + data["uri"])
+    # print("Created ES record " + data["uri"])
 
     return response
 
@@ -110,7 +127,7 @@ def update_graph(s_uri, p, o_uri):
         # Overwrite existing ES record
         es.index(index=index, id=uid, body=es_json)
 
-        print("Updated ES record" + uid + " : " + record["_source"]["uri"])
+        # print("Updated ES record" + uid + " : " + record["_source"]["uri"])
 
 
 def delete(id):
