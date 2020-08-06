@@ -21,7 +21,7 @@ pd.options.mode.chained_assignment = None
 logger = getLogger(__file__)
 
 # set to None for no limit
-max_records = 50000
+max_records = 5000
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -255,6 +255,6 @@ if __name__ == "__main__":
     load_people_data()
     load_orgs_data()
     load_object_data()
-    # load_maker_data()
-    # load_user_data()
+    load_maker_data()
+    load_user_data()
     # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")

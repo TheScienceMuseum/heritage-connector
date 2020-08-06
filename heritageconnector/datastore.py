@@ -98,36 +98,18 @@ def update():
 def update_graph(s_uri, p, o_uri):
     """Add a new RDF relationship to an an existing record"""
 
-    # Can we do this more efficently ie. just add the new triple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
-    # Do we store multiple entries for both Wikidata and RDF? (I think yes)
+    # create graph containing just the new triple
+    g = Graph()
+    g.add((URIRef(s_uri), p, URIRef(o_uri)))
 
-    record = get_by_uri(s_uri)
-    if record:
-        jsonld = json.dumps(record["_source"]["graph"])
-        uid = record["_id"]
-        g = Graph().parse(data=jsonld, format="json-ld")
+    # export triple as JSON-LD and remove ID, context
+    jsonld_dict = json.loads(g.serialize(format="json-ld", context=context, indent=4))
+    _ = jsonld_dict.pop("@id")
+    _ = jsonld_dict.pop("@context")
 
-        # add the new triple / RDF statement to the existing graph
-        g.add((URIRef(s_uri), p, URIRef(o_uri)))
+    body = {"doc": {"doc": {"graph": jsonld_dict}}}
 
-        # re-serialise the graph and update the record
-        jsonld = g.serialize(format="json-ld", context=context, indent=4).decode(
-            "utf-8"
-        )
-
-        # create a ES doc
-        doc = {
-            "uri": record["_source"]["uri"],
-            "collection": record["_source"]["collection"],
-            "type": record["_source"]["type"],
-            "graph": json.loads(jsonld),
-        }
-        es_json = json.dumps(doc)
-
-        # Overwrite existing ES record
-        es.index(index=index, id=uid, body=es_json)
-
-        # print("Updated ES record" + uid + " : " + record["_source"]["uri"])
+    es.update(index=index, id=s_uri, body=body, ignore=404)
 
 
 def delete(id):
