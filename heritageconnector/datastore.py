@@ -82,7 +82,7 @@ def create(collection, record_type, data, jsonld):
     es_json = json.dumps(doc)
 
     # add JSON document to ES index
-    response = es.index(index=index, body=es_json)
+    response = es.index(index=index, id=data["uri"], body=es_json)
 
     # print("Created ES record " + data["uri"])
 

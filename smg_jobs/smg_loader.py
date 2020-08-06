@@ -176,10 +176,13 @@ def record_generator(table_name, df):
         jsonld = serialize_to_jsonld(table_name, uri, row)
 
         doc = {
-            "uri": uri,
-            "collection": collection,
-            "type": table_name,
-            "graph": json.loads(jsonld),
+            "_id": uri,
+            "doc": {
+                "uri": uri,
+                "collection": collection,
+                "type": table_name,
+                "graph": json.loads(jsonld),
+            },
         }
 
         yield doc
