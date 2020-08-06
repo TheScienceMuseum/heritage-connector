@@ -21,7 +21,7 @@ pd.options.mode.chained_assignment = None
 logger = getLogger(__file__)
 
 # set to None for no limit
-max_records = 5000
+max_records = 50000
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -122,8 +122,7 @@ def load_maker_data():
     maker_df = maker_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
 
     print("loading maker data")
-    for _, row in tqdm(maker_df.iterrows(), total=len(maker_df)):
-        datastore.update_graph(row["SUBJECT"], FOAF.maker, row["OBJECT"])
+    add_triples(maker_df, FOAF.maker, subject_col="SUBJECT", object_col="OBJECT")
 
     return
 
@@ -137,8 +136,7 @@ def load_user_data():
     user_df = user_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
 
     print("loading user data")
-    for _, row in tqdm(user_df.iterrows(), total=len(user_df)):
-        datastore.update_graph(row["SUBJECT"], FOAF.knows, row["OBJECT"])
+    add_triples(user_df, FOAF.knows, subject_col="SUBJECT", object_col="OBJECT")
 
     return
 
@@ -162,11 +160,11 @@ def add_record(table_name, row):
 
 def add_records(table_name, df):
     """Use ES parallel_bulk mechanism to add records from a table"""
-    generator = record_generator(table_name, df)
-    datastore.batch_create(generator, len(df))
+    generator = record_create_generator(table_name, df)
+    datastore.es_bulk(generator, len(df))
 
 
-def record_generator(table_name, df):
+def record_create_generator(table_name, df):
     """Yields jsonld for a row for use with ES bulk helpers"""
 
     for _, row in df.iterrows():
@@ -184,6 +182,33 @@ def record_generator(table_name, df):
                 "graph": json.loads(jsonld),
             },
         }
+
+        yield doc
+
+
+def add_triples(df, predicate, subject_col="SUBJECT", object_col="OBJECT"):
+    """Add triples with RDF predicate and dataframe containing subject and object columns"""
+
+    generator = record_update_generator(df, predicate, subject_col, object_col)
+    datastore.es_bulk(generator, len(df))
+
+
+def record_update_generator(df, predicate, subject_col="SUBJECT", object_col="OBJECT"):
+    """Yields jsonld docs to update existing records with new triples"""
+
+    for _, row in df.iterrows():
+        g = Graph()
+        g.add((URIRef(row[subject_col]), predicate, URIRef(row[object_col])))
+
+        jsonld_dict = json.loads(
+            g.serialize(format="json-ld", context=context, indent=4)
+        )
+        _ = jsonld_dict.pop("@id")
+        _ = jsonld_dict.pop("@context")
+
+        body = {"doc": {"graph": jsonld_dict}}
+
+        doc = {"_id": row[subject_col], "_op_type": "update", "doc": body}
 
         yield doc
 
@@ -241,8 +266,8 @@ def load_sameas_people_orgs(pickle_path):
         df_links["QID"] = df_links["QID"].apply(qid_to_url)
 
         print("adding sameAs relationships for people & orgs")
-        for _, row in tqdm(df_links.iterrows(), total=len(df_links)):
-            datastore.add_same_as(row["LINK_ID"], row["QID"])
+        add_triples(df_links, OWL.sameAs, subject_col="LINK_ID", object_col="QID")
+
     else:
         print(
             f"Path {pickle_path} does not exist. No sameAs relationships loaded for people & orgs."
@@ -257,4 +282,4 @@ if __name__ == "__main__":
     load_object_data()
     load_maker_data()
     load_user_data()
-    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")

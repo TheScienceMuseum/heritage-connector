@@ -44,7 +44,7 @@ def create_index():
     return
 
 
-def batch_create(action_generator, total_iterations=None):
+def es_bulk(action_generator, total_iterations=None):
     """Batch load a set of new records into ElasticSearch"""
 
     successes = 0
@@ -57,6 +57,7 @@ def batch_create(action_generator, total_iterations=None):
             actions=action_generator,
             chunk_size=es_config["chunk_size"],
             queue_size=es_config["queue_size"],
+            raise_on_error=False,
         ),
         total=total_iterations,
     ):
