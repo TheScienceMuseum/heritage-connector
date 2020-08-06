@@ -89,12 +89,6 @@ def create(collection, record_type, data, jsonld):
     return response
 
 
-def update():
-    """Update an existing ElasticSearch record"""
-
-    return
-
-
 def update_graph(s_uri, p, o_uri):
     """Add a new RDF relationship to an an existing record"""
 
