@@ -52,8 +52,6 @@ def process_text(text: str):
     """
     newstr = str(text)
     newstr = newstr.replace("\n", " ")
-    # newstr = newstr.replace("\r\n", " ")
-    # newstr = newstr.replace("\r", " ")
     newstr = newstr.replace("\t", " ")
 
     return newstr
@@ -93,8 +91,11 @@ def load_people_data():
     # PREPROCESS
     people_df = people_df.rename(columns={"LINK_ID": "ID"})
     people_df["PREFIX"] = people_prefix
+    # remove punctuation and capitalise first letter
     people_df["TITLE_NAME"] = people_df["TITLE_NAME"].apply(
-        lambda i: str(i).translate(str.maketrans("", "", string.punctuation))
+        lambda i: str(i)
+        .capitalize()
+        .translate(str.maketrans("", "", string.punctuation))
     )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
