@@ -5,6 +5,7 @@ from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
 from heritageconnector.config import config
 import json
+from tqdm.auto import tqdm
 
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
@@ -18,6 +19,8 @@ else:
     es = Elasticsearch()
 
 index = "heritageconnector"
+
+es_config = {"chunk_size": 1000, "queue_size": 8}
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
@@ -41,17 +44,32 @@ def create_index():
     return
 
 
-def batch_create(data):
+def es_bulk(action_generator, total_iterations=None):
     """Batch load a set of new records into ElasticSearch"""
 
-    # todo
-    # https://elasticsearch-py.readthedocs.io/en/master/helpers.html#helpers
+    successes = 0
+    errors = []
 
-    return
+    for ok, action in tqdm(
+        helpers.parallel_bulk(
+            client=es,
+            index=index,
+            actions=action_generator,
+            chunk_size=es_config["chunk_size"],
+            queue_size=es_config["queue_size"],
+            raise_on_error=False,
+        ),
+        total=total_iterations,
+    ):
+        if not ok:
+            errors.append(action)
+        successes += ok
+
+    return successes, errors
 
 
 def create(collection, record_type, data, jsonld):
-    """Load a new record in ElasticSearch and return it's id"""
+    """Load a new record in ElasticSearch and return its id"""
 
     # should we make our own ID using the subject URI?
 
@@ -65,52 +83,26 @@ def create(collection, record_type, data, jsonld):
     es_json = json.dumps(doc)
 
     # add JSON document to ES index
-    response = es.index(index=index, body=es_json)
-
-    print("Created ES record " + data["uri"])
+    response = es.index(index=index, id=data["uri"], body=es_json)
 
     return response
-
-
-def update():
-    """Update an existing ElasticSearch record"""
-
-    return
 
 
 def update_graph(s_uri, p, o_uri):
     """Add a new RDF relationship to an an existing record"""
 
-    # Can we do this more efficently ie. just add the new triple to the graph and add the updates in batches    # Do we do the lookup against out config file here? (I think yes)
-    # Do we store multiple entries for both Wikidata and RDF? (I think yes)
+    # create graph containing just the new triple
+    g = Graph()
+    g.add((URIRef(s_uri), p, URIRef(o_uri)))
 
-    record = get_by_uri(s_uri)
-    if record:
-        jsonld = json.dumps(record["_source"]["graph"])
-        uid = record["_id"]
-        g = Graph().parse(data=jsonld, format="json-ld")
+    # export triple as JSON-LD and remove ID, context
+    jsonld_dict = json.loads(g.serialize(format="json-ld", context=context, indent=4))
+    _ = jsonld_dict.pop("@id")
+    _ = jsonld_dict.pop("@context")
 
-        # add the new triple / RDF statement to the existing graph
-        g.add((URIRef(s_uri), p, URIRef(o_uri)))
+    body = {"doc": {"graph": jsonld_dict}}
 
-        # re-serialise the graph and update the record
-        jsonld = g.serialize(format="json-ld", context=context, indent=4).decode(
-            "utf-8"
-        )
-
-        # create a ES doc
-        doc = {
-            "uri": record["_source"]["uri"],
-            "collection": record["_source"]["collection"],
-            "type": record["_source"]["type"],
-            "graph": json.loads(jsonld),
-        }
-        es_json = json.dumps(doc)
-
-        # Overwrite existing ES record
-        es.index(index=index, id=uid, body=es_json)
-
-        print("Updated ES record" + uid + " : " + record["_source"]["uri"])
+    es.update(index=index, id=s_uri, body=body, ignore=404)
 
 
 def delete(id):
@@ -170,28 +162,20 @@ def search(query, filter):
 def add_same_as(s_uri, o_uri):
     """Adds a sameAs relationship to an existing record"""
 
-    response = update_graph(s_uri, OWL.sameAs, o_uri)
-
-    return response
+    update_graph(s_uri, OWL.sameAs, o_uri)
 
 
 def add_maker(uri, relationship, maker_uri):
     """Adds a maker relationship to an existing record"""
 
-    response = update_graph(uri, FOAF.maker, maker_uri)
-    # update_graph(URIRef(maker_uri), FOAF.made, URIRef(uri))
-
-    return response
+    update_graph(uri, FOAF.maker, maker_uri)
 
 
 def add_user(uri, relationship, user_uri):
     """Adds a user relationship to an existing record"""
 
-    # TODO: need to find a RDF term foor USER/USED?
-    response = update_graph(uri, FOAF.knows, user_uri)
-    # update_graph(URIRef(user_uri), FOAF.made, URIRef(uri))
-
-    return response
+    # TODO: need to find a RDF term for USER/USED?
+    update_graph(uri, FOAF.knows, user_uri)
 
 
 def es_to_rdflib_graph(return_format=None):
@@ -205,12 +189,11 @@ def es_to_rdflib_graph(return_format=None):
     res = helpers.scan(
         client=es, index=index, query={"_source": "graph.*", "query": {"match_all": {}}}
     )
-
-    # hits = res["hits"]["hits"]
+    total = es.count(index=index)["count"]
 
     # create graph
     g = Graph()
-    for item in res:
+    for item in tqdm(res, total=total):
         g += Graph().parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
 
     if return_format is None:
