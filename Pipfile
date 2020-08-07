@@ -32,6 +32,8 @@ uvicorn = "*"
 jinja2 = "*"
 aiofiles = "*"
 python-multipart = "*"
+tensorflow = ">=1.14.0,<2.0"
+ampligraph = "*"
 
 [requires]
 python_version = "3.7"
