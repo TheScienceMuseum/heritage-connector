@@ -45,6 +45,19 @@ collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 
 
+def process_text(text: str):
+    """
+    Remove newlines/other problematic characters
+    """
+    newstr = str(text)
+    newstr = newstr.replace("\n", " ")
+    # newstr = newstr.replace("\r\n", " ")
+    # newstr = newstr.replace("\r", " ")
+    newstr = newstr.replace("\t", " ")
+
+    return newstr
+
+
 def load_object_data():
     """Load data from CSV files """
 
@@ -58,6 +71,7 @@ def load_object_data():
     catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(
         lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
     )
+    catalogue_df["DESCRIPTION"] = catalogue_df["DESCRIPTION"].apply(process_text)
 
     print("loading object data")
     add_records(table_name, catalogue_df)
@@ -83,9 +97,15 @@ def load_people_data():
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
         lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
     )
+    # remove newlines and tab chars
+    people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
+        process_text
+    )
+    people_df.loc[:, "NOTE"] = people_df.loc[:, "NOTE"].apply(process_text)
+    # create combined text fields
     people_df.loc[:, "BIOGRAPHY"] = people_df.loc[:, "DESCRIPTION"]
     people_df.loc[:, "NOTES"] = (
-        str(people_df.loc[:, "DESCRIPTION"]) + " \n " + str(people_df.loc[:, "NOTE"])
+        str(people_df.loc[:, "DESCRIPTION"]) + " " + str(people_df.loc[:, "NOTE"])
     )
     # TODO: map gender to Wikidata QIDs
 
@@ -104,6 +124,9 @@ def load_orgs_data():
     # PREPROCESS
     org_df = org_df.rename(columns={"LINK_ID": "ID"})
     org_df["PREFIX"] = people_prefix
+
+    org_df["DESCRIPTION"] = org_df["DESCRIPTION"].apply(process_text)
+    org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
 
     # TODO: use Elasticsearch batch mechanism for loading
     print("loading orgs data")
@@ -175,12 +198,10 @@ def record_create_generator(table_name, df):
 
         doc = {
             "_id": uri,
-            "doc": {
-                "uri": uri,
-                "collection": collection,
-                "type": table_name,
-                "graph": json.loads(jsonld),
-            },
+            "uri": uri,
+            "collection": collection,
+            "type": table_name,
+            "graph": json.loads(jsonld),
         }
 
         yield doc
@@ -206,7 +227,7 @@ def record_update_generator(df, predicate, subject_col="SUBJECT", object_col="OB
         _ = jsonld_dict.pop("@id")
         _ = jsonld_dict.pop("@context")
 
-        body = {"doc": {"graph": jsonld_dict}}
+        body = {"graph": jsonld_dict}
 
         doc = {"_id": row[subject_col], "_op_type": "update", "doc": body}
 

@@ -100,7 +100,7 @@ def update_graph(s_uri, p, o_uri):
     _ = jsonld_dict.pop("@id")
     _ = jsonld_dict.pop("@context")
 
-    body = {"doc": {"doc": {"graph": jsonld_dict}}}
+    body = {"doc": {"graph": jsonld_dict}}
 
     es.update(index=index, id=s_uri, body=body, ignore=404)
 
@@ -189,10 +189,11 @@ def es_to_rdflib_graph(return_format=None):
     res = helpers.scan(
         client=es, index=index, query={"_source": "graph.*", "query": {"match_all": {}}}
     )
+    total = es.count(index=index)["count"]
 
     # create graph
     g = Graph()
-    for item in res:
+    for item in tqdm(res, total=total):
         g += Graph().parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
 
     if return_format is None:
