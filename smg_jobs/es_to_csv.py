@@ -19,5 +19,5 @@ SELECT ?s ?p ?o WHERE {?s ?p ?o}
 )
 
 with open(file_path, "w", newline="") as f:
-    writer = csv.writer(f)
+    writer = csv.writer(f, delimiter="\t", quotechar='"')
     writer.writerows(res)
