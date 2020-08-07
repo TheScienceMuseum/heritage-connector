@@ -12,6 +12,7 @@ from rdflib import Graph, Literal, RDF, URIRef
 from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
 import json
+import string
 import os
 from tqdm.auto import tqdm
 
@@ -92,6 +93,9 @@ def load_people_data():
     # PREPROCESS
     people_df = people_df.rename(columns={"LINK_ID": "ID"})
     people_df["PREFIX"] = people_prefix
+    people_df["TITLE_NAME"] = people_df["TITLE_NAME"].apply(
+        lambda i: str(i).translate(str.maketrans("", "", string.punctuation))
+    )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(

@@ -70,6 +70,7 @@ mapping = {
         "ID": {"type": "index"},
         # TODO: make PREFIX field when loading data
         "PREFIX": {"type": "prefix"},
+        "TITLE_NAME": {"RDF": FOAF.title},
         "PREFERRED_NAME": {"PID": "label", "RDF": XSD.name, "type": "str"},
         "FIRSTMID_NAME": {"PID": WDT.P735, "RDF": FOAF.givenName, "type": "str"},
         "LASTSUFF_NAME": {"PID": WDT.P734, "RDF": FOAF.familyName, "type": "str"},
