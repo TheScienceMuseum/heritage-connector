@@ -178,12 +178,14 @@ def add_record(table_name, row):
     uri_prefix = row["PREFIX"]
     uri = uri_prefix + str(row["ID"])
 
-    data = {"uri": uri}
-    jsonld = serialize_to_jsonld(table_name, uri, row)
+    table_mapping = field_mapping.mapping[table_name]
+    data_fields = [k for k, v in table_mapping.items() if v.get("PID") == "description"]
+
+    data = serialize_to_json(table_name, row, data_fields)
+    data["uri"] = uri
+    jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=["description"])
 
     datastore.create(collection, table_name, data, jsonld)
-
-    return
 
 
 def add_records(table_name, df):
@@ -253,7 +255,11 @@ def serialize_to_json(table_name: str, row: pd.Series, columns: list):
     data = {}
 
     for col in columns:
-        if "RDF" in table_mapping[col]:
+        if (
+            "RDF" in table_mapping[col]
+            and bool(row[col])
+            and (str(row[col]).lower() != "nan")
+        ):
             data.update({table_mapping[col]["RDF"]: row[col]})
 
     return data

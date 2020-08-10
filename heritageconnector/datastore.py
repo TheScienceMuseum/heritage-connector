@@ -71,13 +71,12 @@ def es_bulk(action_generator, total_iterations=None):
 def create(collection, record_type, data, jsonld):
     """Load a new record in ElasticSearch and return its id"""
 
-    # should we make our own ID using the subject URI?
-
     # create a ES doc
     doc = {
         "uri": data["uri"],
         "collection": collection,
         "type": record_type,
+        "data": {i: data[i] for i in data if i != "uri"},
         "graph": json.loads(jsonld),
     }
     es_json = json.dumps(doc)
