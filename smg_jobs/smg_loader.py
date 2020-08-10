@@ -260,6 +260,9 @@ def serialize_to_json(table_name: str, row: pd.Series, columns: list):
             and bool(row[col])
             and (str(row[col]).lower() != "nan")
         ):
+            # TODO: these lines load description in as https://collection.sciencemuseumgroup.org.uk/objects/co__#<field_name> but for some reason they cause an Elasticsearch timeout
+            # key = row['PREFIX'] + str(row['ID']) + "#" + col.lower()
+            # data[key] = row[col]
             data.update({table_mapping[col]["RDF"]: row[col]})
 
     return data
