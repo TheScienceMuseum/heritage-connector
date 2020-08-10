@@ -178,12 +178,14 @@ def add_record(table_name, row):
     uri_prefix = row["PREFIX"]
     uri = uri_prefix + str(row["ID"])
 
-    data = {"uri": uri}
-    jsonld = serialize_to_jsonld(table_name, uri, row)
+    table_mapping = field_mapping.mapping[table_name]
+    data_fields = [k for k, v in table_mapping.items() if v.get("PID") == "description"]
+
+    data = serialize_to_json(table_name, row, data_fields)
+    data["uri"] = uri
+    jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=["description"])
 
     datastore.create(collection, table_name, data, jsonld)
-
-    return
 
 
 def add_records(table_name, df):
@@ -195,17 +197,23 @@ def add_records(table_name, df):
 def record_create_generator(table_name, df):
     """Yields jsonld for a row for use with ES bulk helpers"""
 
+    table_mapping = field_mapping.mapping[table_name]
+
+    data_fields = [k for k, v in table_mapping.items() if v.get("PID") == "description"]
+
     for _, row in df.iterrows():
         uri_prefix = row["PREFIX"]
         uri = uri_prefix + str(row["ID"])
 
-        jsonld = serialize_to_jsonld(table_name, uri, row)
+        data = serialize_to_json(table_name, row, data_fields)
+        jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=["description"])
 
         doc = {
             "_id": uri,
             "uri": uri,
             "collection": collection,
             "type": table_name,
+            "data": data,
             "graph": json.loads(jsonld),
         }
 
@@ -239,7 +247,28 @@ def record_update_generator(df, predicate, subject_col="SUBJECT", object_col="OB
         yield doc
 
 
-def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series):
+def serialize_to_json(table_name: str, row: pd.Series, columns: list):
+    """Return a JSON representation of data fields to exist outside of the graph."""
+
+    table_mapping = field_mapping.mapping[table_name]
+
+    data = {}
+
+    for col in columns:
+        if (
+            "RDF" in table_mapping[col]
+            and bool(row[col])
+            and (str(row[col]).lower() != "nan")
+        ):
+            # TODO: these lines load description in as https://collection.sciencemuseumgroup.org.uk/objects/co__#<field_name> but for some reason they cause an Elasticsearch timeout
+            # key = row['PREFIX'] + str(row['ID']) + "#" + col.lower()
+            # data[key] = row[col]
+            data.update({table_mapping[col]["RDF"]: row[col]})
+
+    return data
+
+
+def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series, ignore_types: list):
     """Returns a JSON-LD represention of a record"""
 
     g = Graph()
@@ -249,7 +278,9 @@ def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series):
     table_mapping = field_mapping.mapping[table_name]
 
     keys = {
-        k for k, v in table_mapping.items() if k not in ["ID", "PREFIX"] and "RDF" in v
+        k
+        for k, v in table_mapping.items()
+        if k not in ["ID", "PREFIX"] and "RDF" in v and v.get("PID") not in ignore_types
     }
 
     for col in keys:
@@ -258,7 +289,7 @@ def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series):
         if col not in row.index:
             raise KeyError(f"column {col} not in data for table {table_name}")
 
-        if bool(row[col]) and (str(row[col]) != "nan"):
+        if bool(row[col]) and (str(row[col]).lower() != "nan"):
             if isinstance(row[col], list):
                 [
                     g.add((record, table_mapping[col]["RDF"], Literal(val)))
