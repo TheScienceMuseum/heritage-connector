@@ -249,7 +249,9 @@ def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series):
     table_mapping = field_mapping.mapping[table_name]
 
     keys = {
-        k for k, v in table_mapping.items() if k not in ["ID", "PREFIX"] and "RDF" in v
+        k
+        for k, v in table_mapping.items()
+        if k not in ["ID", "PREFIX"] and "RDF" in v and v.get("PID") != "description"
     }
 
     for col in keys:
@@ -258,7 +260,7 @@ def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series):
         if col not in row.index:
             raise KeyError(f"column {col} not in data for table {table_name}")
 
-        if bool(row[col]) and (str(row[col]) != "nan"):
+        if bool(row[col]) and (str(row[col]).lower() != "nan"):
             if isinstance(row[col], list):
                 [
                     g.add((record, table_mapping[col]["RDF"], Literal(val)))
