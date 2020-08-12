@@ -111,6 +111,7 @@ mapping = {
         "DESCRIPTION": {"PID": "description", "RDF": XSD.description, "type": "str"},
         "ITEM_NAME": {"PID": WDT.P31, "RDF": XSD.additionalType, "type": "list"},
         "MATERIALS": {"PID": WDT.P186, "RDF": XSD.material, "type": "list"},
+        "DATE_MADE": {"PID": WDT.P571, "RDF": SCHEMA.dateCreated, "type": "date"},
     },
     # NOTE: not being used at the moment
     "MAKERS": {

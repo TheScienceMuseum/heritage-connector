@@ -22,7 +22,7 @@ pd.options.mode.chained_assignment = None
 logger = getLogger(__file__)
 
 # set to None for no limit
-max_records = None
+max_records = 10000
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -81,6 +81,9 @@ def load_object_data():
         lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
     )
     catalogue_df["DESCRIPTION"] = catalogue_df["DESCRIPTION"].apply(process_text)
+    catalogue_df["DATE_MADE"] = catalogue_df["DATE_MADE"].apply(
+        get_year_from_date_value
+    )
 
     print("loading object data")
     add_records(table_name, catalogue_df)
