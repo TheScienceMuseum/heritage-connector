@@ -83,7 +83,7 @@ mapping = {
         # TODO: add list formatting guidance in docs
         "OCCUPATION": {"PID": WDT.P106, "RDF": XSD.occupation, "type": "list (str)"},
         # TODO: combine description & note to refer to Wikidata description field
-        "BIOGRAPHY": {"type": "str", "RDF": XSD.description},
+        "BIOGRAPHY": {"PID": "description", "type": "str", "RDF": XSD.description},
         "NOTES": {"type": "str"},
     },
     "ORGANISATION": {
@@ -92,7 +92,11 @@ mapping = {
         "PREFIX": {"type": "prefix"},
         "PREFERRED_NAME": {"PID": "label", "RDF": FOAF.givenName, "type": "str"},
         "DESCRIPTION": {"PID": "description", "RDF": XSD.description, "type": "str"},
-        "BRIEF_BIO": {"PID": "", "RDF": XSD.disambiguatingDescription, "type": "str"},
+        "BRIEF_BIO": {
+            "PID": "description",
+            "RDF": XSD.disambiguatingDescription,
+            "type": "str",
+        },
     },
     "OBJECT": {
         "ID": {"type": "index"},
