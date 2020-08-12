@@ -51,6 +51,8 @@ non_graph_pids = [
     "label",
     field_mapping.WDT.P735,
     field_mapping.WDT.P734,
+    field_mapping.WDT.P19,
+    field_mapping.WDT.P20,
 ]
 
 
