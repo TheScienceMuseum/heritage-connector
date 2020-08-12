@@ -32,6 +32,9 @@ uvicorn = "*"
 jinja2 = "*"
 aiofiles = "*"
 python-multipart = "*"
+torch = "*"
+dgl = "==0.4.3"
+dglke = "*"
 
 [requires]
 python_version = "3.7"
