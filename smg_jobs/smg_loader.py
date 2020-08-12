@@ -22,7 +22,7 @@ pd.options.mode.chained_assignment = None
 logger = getLogger(__file__)
 
 # set to None for no limit
-max_records = None
+max_records = 10000
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -44,6 +44,14 @@ context = [
 
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
+
+# PIDs from field_mapping to store in ES separate to the graph object
+non_graph_pids = [
+    "description",
+    "label",
+    field_mapping.WDT.P735,
+    field_mapping.WDT.P734,
+]
 
 
 def process_text(text: str):
@@ -179,11 +187,13 @@ def add_record(table_name, row):
     uri = uri_prefix + str(row["ID"])
 
     table_mapping = field_mapping.mapping[table_name]
-    data_fields = [k for k, v in table_mapping.items() if v.get("PID") == "description"]
+    data_fields = [
+        k for k, v in table_mapping.items() if v.get("PID") in non_graph_pids
+    ]
 
     data = serialize_to_json(table_name, row, data_fields)
     data["uri"] = uri
-    jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=["description"])
+    jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=non_graph_pids)
 
     datastore.create(collection, table_name, data, jsonld)
 
@@ -199,14 +209,16 @@ def record_create_generator(table_name, df):
 
     table_mapping = field_mapping.mapping[table_name]
 
-    data_fields = [k for k, v in table_mapping.items() if v.get("PID") == "description"]
+    data_fields = [
+        k for k, v in table_mapping.items() if v.get("PID") in non_graph_pids
+    ]
 
     for _, row in df.iterrows():
         uri_prefix = row["PREFIX"]
         uri = uri_prefix + str(row["ID"])
 
         data = serialize_to_json(table_name, row, data_fields)
-        jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=["description"])
+        jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=non_graph_pids)
 
         doc = {
             "_id": uri,
