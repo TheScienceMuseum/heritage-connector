@@ -140,6 +140,12 @@ def load_orgs_data():
 
     org_df["DESCRIPTION"] = org_df["DESCRIPTION"].apply(process_text)
     org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
+    org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(
+        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
+    )
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
+        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
+    )
 
     # TODO: use Elasticsearch batch mechanism for loading
     print("loading orgs data")
