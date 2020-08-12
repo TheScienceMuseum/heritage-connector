@@ -3,6 +3,7 @@ from rdflib import Namespace
 
 WD = Namespace("http://www.wikidata.org/entity/")
 WDT = Namespace("http://www.wikidata.org/prop/direct/")
+SCHEMA = Namespace("http://schema.org/")
 
 # Objects
 # ----------------
@@ -82,7 +83,7 @@ mapping = {
         "DEATH_PLACE": {"PID": WDT.P20, "RDF": XSD.deathPlace, "type": "place"},
         # TODO: add list formatting guidance in docs
         "OCCUPATION": {"PID": WDT.P106, "RDF": XSD.occupation, "type": "list (str)"},
-        # TODO: combine description & note to refer to Wikidata description field
+        "NATIONALITY": {"RDF": SCHEMA.nationality, "type": "list (str)"},
         "BIOGRAPHY": {"PID": "description", "type": "str", "RDF": XSD.description},
         "NOTES": {"type": "str"},
     },
@@ -97,6 +98,10 @@ mapping = {
             "RDF": XSD.disambiguatingDescription,
             "type": "str",
         },
+        "OCCUPATION": {"RDF": XSD.occupation, "type": "list (str)"},
+        "NATIONALITY": {"RDF": SCHEMA.nationality, "type": "list (str)"},
+        "BIRTH_DATE": {"PID": WDT.P571, "RDF": SCHEMA.foundingDate, "type": "date"},
+        "DEATH_DATE": {"PID": WDT.P576, "RDF": SCHEMA.dissolutionDate, "type": "date"},
     },
     "OBJECT": {
         "ID": {"type": "index"},
