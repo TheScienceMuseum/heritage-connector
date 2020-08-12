@@ -110,6 +110,9 @@ def load_people_data():
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
         lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
     )
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
+        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
+    )
     # remove newlines and tab chars
     people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
         process_text
