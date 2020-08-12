@@ -143,6 +143,9 @@ def load_orgs_data():
     org_df = org_df.rename(columns={"LINK_ID": "ID"})
     org_df["PREFIX"] = people_prefix
 
+    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
+
     org_df["DESCRIPTION"] = org_df["DESCRIPTION"].apply(process_text)
     org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
     org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(
