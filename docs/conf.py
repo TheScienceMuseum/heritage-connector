@@ -21,6 +21,11 @@ project = "Heritage Connector"
 copyright = "2020, Science Museum Group"
 author = "Science Museum Group"
 
+links = {
+    "Project site": "https://www.sciencemuseumgroup.org.uk/project/heritage-connector/",
+    "Blog": "https://thesciencemuseum.github.io/heritageconnector/",
+}
+
 
 # -- General configuration ---------------------------------------------------
 
@@ -49,3 +54,14 @@ html_theme = "alabaster"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+
+html_theme_options = {
+    "logo": "header.jpg",
+    "logo_name": True,
+    "github_user": "theScienceMuseum",
+    "github_repo": "heritage-connector",
+    "github_type": "star",
+    "github_count": False,
+    "sidebar_collapse": False,
+    "extra_nav_links": links,
+}
