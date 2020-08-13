@@ -67,6 +67,18 @@ def process_text(text: str):
     return newstr
 
 
+def split_list_string(l: list):
+    """
+    Splits string separated by either commas or semicolons into a lowercase list.
+    """
+
+    return [
+        x.strip().lower()
+        for x in str(l).replace(";", ",").split(",")
+        if x.strip() != ""
+    ]
+
+
 def load_object_data():
     """Load data from CSV files """
 
@@ -74,12 +86,8 @@ def load_object_data():
     catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=max_records)
     catalogue_df = catalogue_df.rename(columns={"MKEY": "ID"})
     catalogue_df["PREFIX"] = collection_prefix
-    catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
-    catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
+    catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(split_list_string)
+    catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(split_list_string)
     catalogue_df["DESCRIPTION"] = catalogue_df["DESCRIPTION"].apply(process_text)
     catalogue_df["DATE_MADE"] = catalogue_df["DATE_MADE"].apply(
         get_year_from_date_value
@@ -112,12 +120,8 @@ def load_people_data():
     )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
-    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
-    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
+    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(split_list_string)
     # remove newlines and tab chars
     people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
         process_text
@@ -151,12 +155,8 @@ def load_orgs_data():
 
     org_df["DESCRIPTION"] = org_df["DESCRIPTION"].apply(process_text)
     org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
-    org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
-    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
+    org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
 
     # TODO: use Elasticsearch batch mechanism for loading
     print("loading orgs data")
