@@ -30,11 +30,9 @@ Useful links
 .. _project blog: https://thesciencemuseum.github.io/heritageconnector/
 .. _github: https://github.com/TheScienceMuseum/heritage-connector
 
-Contents
---------
-
 .. toctree::
    :maxdepth: 2
+   :hidden:
 
    why
    developer_guide

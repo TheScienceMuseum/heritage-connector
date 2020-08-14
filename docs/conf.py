@@ -64,4 +64,5 @@ html_theme_options = {
     "github_count": False,
     "sidebar_collapse": False,
     "extra_nav_links": links,
+    "sidebar_includehidden": True,
 }
