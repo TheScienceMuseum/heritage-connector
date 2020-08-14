@@ -1,4 +1,4 @@
 Why?
 ===========
 
-**TODO**
+(a manifesto)

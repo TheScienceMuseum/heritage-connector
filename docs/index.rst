@@ -22,18 +22,21 @@ The Heritage Connector is a framework for automatically connecting items within 
 Useful links
 ------------
 
+- our `GitHub`_
 - `Main project page`_ on the Science Museum Group website
 - `Project blog`_ for project updates and technical explainers
-- our `Github`_
 
+.. _github: https://github.com/TheScienceMuseum/heritage-connector
 .. _main project page: https://www.sciencemuseumgroup.org.uk/project/heritage-connector/
 .. _project blog: https://thesciencemuseum.github.io/heritageconnector/
-.. _github: https://github.com/TheScienceMuseum/heritage-connector
 
 .. toctree::
    :maxdepth: 2
    :hidden:
 
    why
-   developer_guide
+   api
+   tutorials
+   bibliography
+   about
 

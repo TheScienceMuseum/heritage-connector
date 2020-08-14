@@ -22,6 +22,7 @@ copyright = "2020, Science Museum Group"
 author = "Science Museum Group"
 
 links = {
+    "GitHub": "https://github.com/TheScienceMuseum/heritage-connector",
     "Project site": "https://www.sciencemuseumgroup.org.uk/project/heritage-connector/",
     "Blog": "https://thesciencemuseum.github.io/heritageconnector/",
 }
@@ -58,11 +59,11 @@ html_static_path = ["_static"]
 html_theme_options = {
     "logo": "header.jpg",
     "logo_name": True,
-    "github_user": "theScienceMuseum",
-    "github_repo": "heritage-connector",
-    "github_type": "star",
-    "github_count": False,
-    "sidebar_collapse": False,
+    # "github_user": "theScienceMuseum",
+    # "github_repo": "heritage-connector",
+    # "github_type": "star",
+    # "github_count": False,
+    "sidebar_collapse": True,
     "extra_nav_links": links,
     "sidebar_includehidden": True,
 }
