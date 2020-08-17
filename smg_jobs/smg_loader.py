@@ -243,7 +243,7 @@ def record_create_generator(table_name, df):
             "collection": collection,
             "type": table_name,
             "data": data,
-            "graph": json.loads(jsonld),
+            "graph": jsonld,
         }
 
         yield doc
@@ -276,7 +276,7 @@ def record_update_generator(df, predicate, subject_col="SUBJECT", object_col="OB
         yield doc
 
 
-def serialize_to_json(table_name: str, row: pd.Series, columns: list):
+def serialize_to_json(table_name: str, row: pd.Series, columns: list) -> dict:
     """Return a JSON representation of data fields to exist outside of the graph."""
 
     table_mapping = field_mapping.mapping[table_name]
@@ -297,7 +297,9 @@ def serialize_to_json(table_name: str, row: pd.Series, columns: list):
     return data
 
 
-def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series, ignore_types: list):
+def serialize_to_jsonld(
+    table_name: str, uri: str, row: pd.Series, ignore_types: list
+) -> dict:
     """Returns a JSON-LD represention of a record"""
 
     g = Graph()
@@ -328,7 +330,16 @@ def serialize_to_jsonld(table_name: str, uri: str, row: pd.Series, ignore_types:
             else:
                 g.add((record, table_mapping[col]["RDF"], Literal(row[col])))
 
-    return g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
+    json_ld_dict = json.loads(
+        g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
+    )
+
+    # "'@graph': []" appears when there are no linked objects to the document, which breaks the RDF conversion.
+    # There is also no @id field in the graph when this happens.
+    json_ld_dict.pop("@graph", None)
+    json_ld_dict["@id"] = uri
+
+    return json_ld_dict
 
 
 def load_sameas_people_orgs(pickle_path):
