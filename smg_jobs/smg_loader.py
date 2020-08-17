@@ -45,6 +45,16 @@ context = [
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 
+# PIDs from field_mapping to store in ES separate to the graph object
+non_graph_pids = [
+    "description",
+    "label",
+    field_mapping.WDT.P735,
+    field_mapping.WDT.P734,
+    field_mapping.WDT.P19,
+    field_mapping.WDT.P20,
+]
+
 
 def process_text(text: str):
     """
@@ -57,6 +67,18 @@ def process_text(text: str):
     return newstr
 
 
+def split_list_string(l: list):
+    """
+    Splits string separated by either commas or semicolons into a lowercase list.
+    """
+
+    return [
+        x.strip().lower()
+        for x in str(l).replace(";", ",").split(",")
+        if x.strip() != ""
+    ]
+
+
 def load_object_data():
     """Load data from CSV files """
 
@@ -64,13 +86,12 @@ def load_object_data():
     catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=max_records)
     catalogue_df = catalogue_df.rename(columns={"MKEY": "ID"})
     catalogue_df["PREFIX"] = collection_prefix
-    catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
-    catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
+    catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(split_list_string)
+    catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(split_list_string)
     catalogue_df["DESCRIPTION"] = catalogue_df["DESCRIPTION"].apply(process_text)
+    catalogue_df["DATE_MADE"] = catalogue_df["DATE_MADE"].apply(
+        get_year_from_date_value
+    )
 
     print("loading object data")
     add_records(table_name, catalogue_df)
@@ -99,9 +120,8 @@ def load_people_data():
     )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
-    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
-        lambda i: [x.strip().lower() for x in str(i).replace(";", ",").split(",")]
-    )
+    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(split_list_string)
     # remove newlines and tab chars
     people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
         process_text
@@ -130,8 +150,13 @@ def load_orgs_data():
     org_df = org_df.rename(columns={"LINK_ID": "ID"})
     org_df["PREFIX"] = people_prefix
 
+    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
+
     org_df["DESCRIPTION"] = org_df["DESCRIPTION"].apply(process_text)
     org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
+    org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
 
     # TODO: use Elasticsearch batch mechanism for loading
     print("loading orgs data")
@@ -179,11 +204,13 @@ def add_record(table_name, row):
     uri = uri_prefix + str(row["ID"])
 
     table_mapping = field_mapping.mapping[table_name]
-    data_fields = [k for k, v in table_mapping.items() if v.get("PID") == "description"]
+    data_fields = [
+        k for k, v in table_mapping.items() if v.get("PID") in non_graph_pids
+    ]
 
     data = serialize_to_json(table_name, row, data_fields)
     data["uri"] = uri
-    jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=["description"])
+    jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=non_graph_pids)
 
     datastore.create(collection, table_name, data, jsonld)
 
@@ -199,14 +226,16 @@ def record_create_generator(table_name, df):
 
     table_mapping = field_mapping.mapping[table_name]
 
-    data_fields = [k for k, v in table_mapping.items() if v.get("PID") == "description"]
+    data_fields = [
+        k for k, v in table_mapping.items() if v.get("PID") in non_graph_pids
+    ]
 
     for _, row in df.iterrows():
         uri_prefix = row["PREFIX"]
         uri = uri_prefix + str(row["ID"])
 
         data = serialize_to_json(table_name, row, data_fields)
-        jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=["description"])
+        jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=non_graph_pids)
 
         doc = {
             "_id": uri,
