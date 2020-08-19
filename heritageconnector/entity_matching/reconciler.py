@@ -21,7 +21,7 @@ class reconciler:
         Retrieves the column PID from field mapping config. Returns None if one is not present.
         """
 
-        config_table = field_mapping.__dict__[self.table]
+        config_table = field_mapping.mapping[self.table]
 
         if column not in config_table:
             raise KeyError(
@@ -43,8 +43,18 @@ class reconciler:
     def get_subject_items_from_pid(pid: str) -> list:
         """
         Gets a list of subject items from a Wikidata property ID using 'subject
-        item of this property (P1629)'.
+        item of this property (P1629)'. If a URL is passed extracts the PID from 
+        it if it exists, else raises a ValueError.
         """
+
+        if pid.startswith("http"):
+            # print("WARNING: URL instead of PID entered. Converting to PID")
+            pids = re.findall(r"(P\d+)", pid)
+
+            if len(pids) == 1:
+                pid = pids[0]
+            else:
+                raise ValueError("URL not a valid property URL.")
 
         query = f"""
         SELECT ?property WHERE {{
@@ -113,5 +123,5 @@ class reconciler:
             )
         else:
             return self.df[column].apply(
-                lambda x: map_df.loc[x, "qid"].values if x != "" else []
+                lambda x: map_df.loc[x, "qid"] if x != "" else []
             )
