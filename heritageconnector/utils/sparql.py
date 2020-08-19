@@ -21,16 +21,14 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
     sparql.setMethod("POST")
     sparql.setReturnFormat(JSON)
     sparql.addCustomHttpHeader(
-        "User-Agent",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36",
+        "User-Agent", "Heritage Connector/0.1 (Science Museum Group)",
     )
     try:
         return sparql.query().convert()
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            if "retry-after" in e.headers:
-                if isinstance(e.headers["retry-after"], int):
-                    time.sleep(e.headers["retry-after"])
+            if isinstance(e.headers.get("retry-after", None), int):
+                time.sleep(e.headers["retry-after"])
             else:
                 time.sleep(10)
             return get_sparql_results(endpoint_url, query)
