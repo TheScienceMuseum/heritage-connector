@@ -123,5 +123,5 @@ class reconciler:
             )
         else:
             return self.df[column].apply(
-                lambda x: map_df.loc[x, "qid"].values if x != "" else []
+                lambda x: map_df.loc[x, "qid"] if x != "" else []
             )
