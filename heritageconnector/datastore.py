@@ -16,11 +16,14 @@ if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
         http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
     )
 else:
+    # use localhost
     es = Elasticsearch()
 
-index = "heritageconnector"
-
-es_config = {"chunk_size": 1000, "queue_size": 8}
+index = config.ELASTIC_SEARCH_INDEX
+es_config = {
+    "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
+    "queue_size": int(config.ES_BULK_QUEUE_SIZE),
+}
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
@@ -40,8 +43,6 @@ def create_index():
 
     print("Creating new index: " + index)
     es.indices.create(index=index, body=indexSettings)
-
-    return
 
 
 def es_bulk(action_generator, total_iterations=None):
@@ -109,8 +110,6 @@ def delete(id):
 
     es.delete(id)
 
-    return
-
 
 def get_by_uri(uri):
     """Return an existing ElasticSearch record"""
@@ -118,8 +117,6 @@ def get_by_uri(uri):
     res = es.search(index=index, body={"query": {"term": {"uri.keyword": uri}}})
     if len(res["hits"]["hits"]):
         return res["hits"]["hits"][0]
-    else:
-        return
 
 
 def get_by_type(type, size=1000):
