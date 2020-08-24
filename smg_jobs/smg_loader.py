@@ -8,8 +8,8 @@ from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
 from logging import getLogger
-from rdflib import Graph, Literal, RDF, URIRef
-from rdflib.namespace import XSD, FOAF, OWL
+from rdflib import Graph, Literal, URIRef
+from rdflib.namespace import XSD, FOAF, OWL, RDF
 from rdflib.serializer import Serializer
 import json
 import string
@@ -298,12 +298,31 @@ def serialize_to_json(table_name: str, row: pd.Series, columns: list) -> dict:
 
 
 def serialize_to_jsonld(
-    table_name: str, uri: str, row: pd.Series, ignore_types: list
+    table_name: str, uri: str, row: pd.Series, ignore_types: list, add_type: bool = True
 ) -> dict:
-    """Returns a JSON-LD represention of a record"""
+    """
+    Returns a JSON-LD represention of a record
+
+    Args:
+        table_name (str): given name of the table being imported
+        uri (str): URI of subject
+        row (pd.Series): DataFrame row (record) to serialize
+        ignore_types (list): PIDs to ignore when importing
+        add_type (bool, optional): whether to add @type field with the table_name. Defaults to True.
+
+    Raises:
+        KeyError: [description]
+
+    Returns:
+        dict: [description]
+    """
 
     g = Graph()
     record = URIRef(uri)
+
+    # Add RDF:type
+    if add_type:
+        g.add((record, RDF.type, Literal(table_name.lower())))
 
     # This code is effectivly the mapping from source data to the data we care about
     table_mapping = field_mapping.mapping[table_name]
