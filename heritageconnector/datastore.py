@@ -174,7 +174,7 @@ def add_user(uri, relationship, user_uri):
     update_graph(uri, FOAF.knows, user_uri)
 
 
-def es_to_rdflib_graph(return_format=None):
+def es_to_rdflib_graph(g=None, return_format=None):
     """
     Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
     format is specified, else an object with the specified format which could be written
@@ -188,9 +188,17 @@ def es_to_rdflib_graph(return_format=None):
     total = es.count(index=index)["count"]
 
     # create graph
-    g = Graph()
-    for item in tqdm(res, total=total):
-        g += Graph().parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
+    if g is None:
+        g = Graph()
+
+        for item in tqdm(res, total=total):
+            g += Graph().parse(
+                data=json.dumps(item["_source"]["graph"]), format="json-ld"
+            )
+    else:
+        print("Using existing graph")
+        for item in tqdm(res, total=total):
+            g.parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
 
     if return_format is None:
         return g
