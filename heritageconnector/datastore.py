@@ -149,12 +149,6 @@ def get_graph_by_type(type):
     return g
 
 
-def search(query, filter):
-    """Return an optionally filtered list of matching objects"""
-
-    return
-
-
 def add_same_as(s_uri, o_uri):
     """Adds a sameAs relationship to an existing record"""
 
