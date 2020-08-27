@@ -35,7 +35,6 @@ python-multipart = "*"
 torch = "*"
 dgl = "==0.4.3"
 dglke = "*"
-elastic-wikidata = "*"
 
 [requires]
 python_version = "3.7"

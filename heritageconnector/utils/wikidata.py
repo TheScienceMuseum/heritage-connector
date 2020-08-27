@@ -179,3 +179,19 @@ def qid_to_url(qid: str) -> str:
     """
 
     return f"http://www.wikidata.org/entity/{qid}"
+
+
+def url_to_pid(url: str) -> str:
+    """
+    Maps Wikidata URL of an entity to PID e.g. http://www.wikidata.org/prop/direct/P570 -> P570.
+    """
+
+    return re.findall(r"(P\d+)", url)[0]
+
+
+def pid_to_url(pid: str) -> str:
+    """
+    Maps PID of an entity to a Wikidata URL e.g. P570 -> http://www.wikidata.org/prop/direct/P570.
+    """
+
+    return f"http://www.wikidata.org/prop/direct/{pid}"
