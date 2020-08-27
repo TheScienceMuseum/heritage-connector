@@ -1,5 +1,6 @@
 from fuzzywuzzy import fuzz
 from typing import Union
+from itertools import product
 
 # Similarity measures to compare fields of different types
 # Each function should use the following template:
@@ -11,13 +12,16 @@ from typing import Union
 # ```
 
 
-def similarity_string(val1: str, val2: str, scorer=fuzz.token_set_ratio) -> float:
+def similarity_string(
+    val1: Union[str, list], val2: Union[str, list], scorer=fuzz.token_set_ratio
+) -> float:
     """
-    Calculate string similarity.
+    Calculate string similarity. If val1 and val2 are lists or tuples, the similarity of the most similar pair
+        of values between the lists is returned.
 
     Args:
-        val1 (str)
-        val2 (str)
+        val1 (Union[str, list])
+        val2 (Union[str, list])
         scorer (optional): Takes two strings and outputs an integer between 1 and 100. 
             Defaults to fuzz.token_set_ratio.
 
@@ -25,7 +29,22 @@ def similarity_string(val1: str, val2: str, scorer=fuzz.token_set_ratio) -> floa
         float: 0 <= f <= 1
     """
 
-    return scorer(val1, val2) / 100
+    if isinstance(val1, str) and isinstance(val2, str):
+        return scorer(val1, val2) / 100
+
+    elif (isinstance(val1, str) or isinstance(val2, str)) and (
+        isinstance(val1, list) or isinstance(val2, list)
+    ):
+        # one is a string and one is a list
+
+        str_val = [i for i in [val1, val2] if isinstance(i, (str))][0]
+        list_val = [i for i in [val1, val2] if isinstance(i, (list, tuple))][0]
+
+        return max([scorer(str_val, i) for i in list_val]) / 100
+
+    elif isinstance(val1, list) and isinstance(val2, list):
+
+        return max(scorer(i[0], i[1]) for i in product(val1, val2)) / 100
 
 
 def similarity_numeric(
