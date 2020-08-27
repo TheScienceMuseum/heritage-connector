@@ -1,0 +1,97 @@
+from fuzzywuzzy import fuzz
+from typing import Union
+
+# Similarity measures to compare fields of different types
+# Each function should use the following template:
+# ```
+# def similarity_<type>(val1, val2, **kwargs) -> float:
+#   ...
+#   # 0 <= sim <= 1
+#   return sim
+# ```
+
+
+def similarity_string(val1: str, val2: str, scorer=fuzz.token_set_ratio) -> float:
+    """
+    Calculate string similarity.
+
+    Args:
+        val1 (str)
+        val2 (str)
+        scorer (optional): Takes two strings and outputs an integer between 1 and 100. 
+            Defaults to fuzz.token_set_ratio.
+
+    Returns:
+        float: 0 <= f <= 1
+    """
+
+    return scorer(val1, val2) / 100
+
+
+def similarity_numeric(
+    val1: Union[int, float], val2: Union[int, float], normalize: bool = True
+) -> float:
+    """
+    Calculate numeric similarity as positive difference between the values divided by their average. 
+        Normalize==False returns only the difference between the values.
+
+    Args:
+        val1 (Union[int, float])
+        val2 (Union[int, float]) 
+        normalize (bool, optional): Whether to divide |val1 - val2| by mean(val1, val2). Defaults to True.
+
+    Returns:
+        float: 0 <= f <= 1
+    """
+
+    if normalize:
+        return abs(val1 - val2) / (0.5 * (val1 + val2))
+    else:
+        return abs(val1 - val2)
+
+
+def similarity_categorical(
+    val1: Union[list, tuple, int, float, str],
+    val2: Union[list, tuple, int, float, str],
+    raise_on_diff_types=True,
+) -> float:
+    """
+    Returns binary score of whether two items match. If lists are passed, returns positive (=1) if any item in List1
+        is the same as any item in List2. 
+
+    Args:
+        val1 (Union[list, tuple, int, float, str]): item or list of items
+        val2 (Union[list, tuple, int, float, str]): item or list of items
+        raise_on_diff_types (bool): whether to raise a ValueError if one of val1 is list-like and the other is a single value.
+            If False, treats the single-value val as a single-element list, e.g. 'apple' -> ['apple'].
+
+    Returns:
+        float: 0 <= f <= 1
+    """
+
+    if isinstance(val1, (list, tuple)) and isinstance(val2, (list, tuple)):
+        intersection_size = len(set(val1).intersection(set(val2)))
+
+        return 1 * (intersection_size > 0)
+
+    elif isinstance(val1, (int, float, str)) and isinstance(val2, (int, float, str)):
+        # True -> 1, False -> 0
+        return 1 * (val1 == val2)
+
+    else:
+        # one of val1/val2 is list-like and the other is not
+
+        if raise_on_diff_types:
+            raise ValueError(
+                """One of the provided values is list-like and the other is not. 
+                To calculate similarity as if both values are lists set raise_on_diff_types=False."""
+            )
+
+        else:
+            # converts int/float/str to one-element
+            val_a1 = [i for i in [val1, val2] if isinstance(i, (int, float, str))]
+            val_a2 = [i for i in [val1, val2] if isinstance(i, (list, tuple))][0]
+
+            intersection_size = len(set(val_a1).intersection(set(val_a2)))
+
+            return 1 * (intersection_size > 0)
