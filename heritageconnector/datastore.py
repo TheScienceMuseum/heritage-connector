@@ -1,8 +1,8 @@
 from elasticsearch import helpers
 from elasticsearch import Elasticsearch
 from rdflib import Graph, Literal, RDF, URIRef
-from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
+from heritageconnector.namespace import XSD, FOAF, OWL
 from heritageconnector.config import config
 import json
 from tqdm.auto import tqdm

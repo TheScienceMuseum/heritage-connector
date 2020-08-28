@@ -4,12 +4,12 @@ sys.path.append("..")
 
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
 from logging import getLogger
 from rdflib import Graph, Literal, URIRef
-from rdflib.namespace import XSD, FOAF, OWL, RDF, PROV
 from rdflib.serializer import Serializer
 import json
 import string
