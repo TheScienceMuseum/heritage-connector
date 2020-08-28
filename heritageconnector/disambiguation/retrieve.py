@@ -5,24 +5,24 @@ import pandas as pd
 
 def get_wikidata_fields(qcodes: list, column_pid_mapping: dict) -> pd.DataFrame:
     """
-    [summary]
+    Get information for Wikidata items specified for `qcodes`, specified by `column_pid_mapping`.
 
     Args:
-        qcodes (list): [description]
-        column_pid_mapping (dict): [description]
+        qcodes (list): list of Wikidata QIDs
+        column_pid_mapping (dict): {'internal_name': 'pid', ...}
 
     Returns:
-        pd.DataFrame: [description]
+        pd.DataFrame:
     """
 
     endpoint = config.WIKIDATA_SPARQL_ENDPOINT
 
     sparq_qids = " ".join([f"(wd:{i})" for i in qcodes])
 
-    select_slug = "?" + " ?".join(map("{0}Label".format, column_pid_mapping.keys()))
-    # select_slug = "?" + " ?".join(column_pid_mapping.keys())
+    select_slug = "?" + " ?".join(map("{0}Label".format, column_pid_mapping.values()))
+
     body_exp = "\n".join(
-        [f"OPTIONAL{{ ?item wdt:{v} ?{k} .}}" for k, v in column_pid_mapping.items()]
+        [f"OPTIONAL{{ ?item wdt:{v} ?{v} .}}" for k, v in column_pid_mapping.items()]
     )
 
     query = f"""
@@ -75,8 +75,11 @@ def get_wikidata_fields(qcodes: list, column_pid_mapping: dict) -> pd.DataFrame:
 
         condensed = condensed[
             ["item", "itemLabel", "itemDescription", "altLabel"]
-            + list(map("{0}Label".format, column_pid_mapping.keys()))
+            + list(map("{0}Label".format, column_pid_mapping.values()))
         ]
-        # condensed = condensed[['item', 'itemLabel', 'itemDescription', 'altLabel'] + list(column_pid_mapping.keys())]
+
+        condensed = condensed.rename(
+            columns=lambda x: x.strip("Label") if x.startswith("P") else x
+        )
 
     return condensed
