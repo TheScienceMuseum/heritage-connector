@@ -35,7 +35,7 @@ collection = "SMG"
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
-    {"@schema": "http://schema.org/", "@language": "en"},
+    {"@sdo": "http://schema.org/", "@language": "en"},
     {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
     {"@xsd": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
     {"@wd": "http://www.wikidata.org/entity/", "@language": "en"},
