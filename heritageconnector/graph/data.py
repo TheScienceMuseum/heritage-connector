@@ -136,7 +136,6 @@ def numpy_array_to_csv(
 
     output_path = os.path.join(output_folder, file_name)
 
-    # TODO: can we write without using np.savetxt or reloading the whole array into a dataframe?
     df = pd.DataFrame(array)
     df.to_csv(output_path, sep=sep, index=False, header=False)
 

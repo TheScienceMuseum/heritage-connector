@@ -2,7 +2,7 @@ from elasticsearch import helpers
 from elasticsearch import Elasticsearch
 from rdflib import Graph, Literal, RDF, URIRef
 from rdflib.serializer import Serializer
-from heritageconnector.namespace import XSD, FOAF, OWL
+from heritageconnector.namespace import XSD, FOAF, OWL, PROV
 from heritageconnector.config import config
 import json
 from tqdm.auto import tqdm
@@ -164,8 +164,7 @@ def add_maker(uri, relationship, maker_uri):
 def add_user(uri, relationship, user_uri):
     """Adds a user relationship to an existing record"""
 
-    # TODO: need to find a RDF term for USER/USED?
-    update_graph(uri, FOAF.knows, user_uri)
+    update_graph(user_uri, PROV.used, uri)
 
 
 def es_to_rdflib_graph(return_format=None):

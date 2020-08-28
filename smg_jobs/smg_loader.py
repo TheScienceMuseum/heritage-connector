@@ -161,7 +161,6 @@ def load_orgs_data():
     org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
 
-    # TODO: use Elasticsearch batch mechanism for loading
     print("loading orgs data")
     add_records(table_name, org_df)
 
@@ -338,7 +337,6 @@ def serialize_to_jsonld(
 
     for col in keys:
         # this will trigger for the first row in the dataframe
-        #  TODO: put this in a separate checker function that checks each table against config on loading
         if col not in row.index:
             raise KeyError(f"column {col} not in data for table {table_name}")
 
