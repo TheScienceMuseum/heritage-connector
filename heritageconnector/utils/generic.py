@@ -49,3 +49,11 @@ def add_dicts(dict1, dict2) -> dict:
     Return a dictionary with the sum of the values for each key in both dicts. 
     """
     return {x: dict1.get(x, 0) + dict2.get(x, 0) for x in set(dict1).union(dict2)}
+
+
+def flatten_list_of_lists(l: list) -> list:
+    """
+    [[1, 2], [3]] -> [1, 2, 3]
+    """
+
+    return [item for sublist in l for item in sublist]
