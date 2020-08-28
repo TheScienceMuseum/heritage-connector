@@ -1,8 +1,8 @@
-from rdflib.namespace import XSD, FOAF, OWL, SDO, PROV
-from rdflib import Namespace
+import sys
 
-WD = Namespace("http://www.wikidata.org/entity/")
-WDT = Namespace("http://www.wikidata.org/prop/direct/")
+sys.path.append("..")
+
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
 
 mapping = {
     "PERSON": {
