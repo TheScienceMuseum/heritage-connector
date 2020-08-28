@@ -9,7 +9,7 @@ from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
 from logging import getLogger
 from rdflib import Graph, Literal, URIRef
-from rdflib.namespace import XSD, FOAF, OWL, RDF
+from rdflib.namespace import XSD, FOAF, OWL, RDF, PROV
 from rdflib.serializer import Serializer
 import json
 import string
@@ -35,11 +35,12 @@ collection = "SMG"
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
-    {"@sdo": "http://schema.org/", "@language": "en"},
+    {"@sdo": "https://schema.org/", "@language": "en"},
     {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
     {"@xsd": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
     {"@wd": "http://www.wikidata.org/entity/", "@language": "en"},
     {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
+    {"@prov": "http://www.w3.org/ns/prov#", "@language": "en"},
 ]
 
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
@@ -186,10 +187,10 @@ def load_user_data():
 
     user_df["MKEY"] = collection_prefix + user_df["MKEY"].astype(str)
     user_df["LINK_ID"] = people_prefix + user_df["LINK_ID"].astype(str)
-    user_df = user_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
+    user_df = user_df.rename(columns={"MKEY": "OBJECT", "LINK_ID": "SUBJECT"})
 
     print("loading user data")
-    add_triples(user_df, FOAF.knows, subject_col="SUBJECT", object_col="OBJECT")
+    add_triples(user_df, PROV.used, subject_col="SUBJECT", object_col="OBJECT")
 
     return
 

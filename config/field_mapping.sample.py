@@ -1,4 +1,4 @@
-from rdflib.namespace import XSD, FOAF, OWL, SDO
+from rdflib.namespace import XSD, FOAF, OWL, SDO, PROV
 from rdflib import Namespace
 
 WD = Namespace("http://www.wikidata.org/entity/")
@@ -56,11 +56,5 @@ mapping = {
         "TYPE": "triples",
         "PREDICATE": {"RDF": FOAF.maker},
     },
-    "USERS": {
-        "TYPE": "triples",
-        "PREDICATE": {
-            # TODO: need to find RDF term for user
-            "RDF": FOAF.knows
-        },
-    },
+    "USERS": {"TYPE": "triples", "PREDICATE": {"RDF": PROV.used}},
 }
