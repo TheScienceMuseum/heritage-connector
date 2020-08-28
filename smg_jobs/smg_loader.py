@@ -4,7 +4,7 @@ sys.path.append("..")
 
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
@@ -133,7 +133,9 @@ def load_people_data():
     people_df.loc[:, "NOTES"] = (
         str(people_df.loc[:, "DESCRIPTION"]) + " " + str(people_df.loc[:, "NOTE"])
     )
-    # TODO: map gender to Wikidata QIDs
+    people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
+        {"F": WD.Q6581072, "M": WD.Q6581097}
+    )
 
     print("loading people data")
     add_records(table_name, people_df)
@@ -347,6 +349,9 @@ def serialize_to_jsonld(
                     for val in row[col]
                     if str(val) != "nan"
                 ]
+            elif isinstance(row[col], URIRef):
+                g.add((record, table_mapping[col]["RDF"], row[col]))
+
             else:
                 g.add((record, table_mapping[col]["RDF"], Literal(row[col])))
 
