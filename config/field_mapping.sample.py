@@ -2,7 +2,7 @@ import sys
 
 sys.path.append("..")
 
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, WD, WDT
 
 mapping = {
     "PERSON": {
@@ -10,7 +10,7 @@ mapping = {
         # TODO: make PREFIX field when loading data
         "PREFIX": {"type": "prefix"},
         "TITLE_NAME": {"RDF": FOAF.title},
-        "PREFERRED_NAME": {"PID": "label", "RDF": XSD.name, "type": "string"},
+        "PREFERRED_NAME": {"PID": "label", "RDF": RDFS.label, "type": "string"},
         "FIRSTMID_NAME": {"PID": WDT.P735, "RDF": FOAF.givenName, "type": "string"},
         "LASTSUFF_NAME": {"PID": WDT.P734, "RDF": FOAF.familyName, "type": "string"},
         "GENDER": {"PID": WDT.P21, "RDF": XSD.gender, "type": "categorical"},
@@ -28,7 +28,7 @@ mapping = {
         "ID": {"type": "index"},
         # TODO: make PREFIX field when loading data
         "PREFIX": {"type": "prefix"},
-        "PREFERRED_NAME": {"PID": "label", "RDF": FOAF.givenName, "type": "str"},
+        "PREFERRED_NAME": {"PID": "label", "RDF": RDFS.label, "type": "str"},
         "DESCRIPTION": {"PID": "description", "RDF": XSD.description, "type": "str"},
         "BRIEF_BIO": {
             "PID": "description",
@@ -44,7 +44,7 @@ mapping = {
         "ID": {"type": "index"},
         # TODO: make PREFIX field when loading data
         "PREFIX": {"type": "prefix"},
-        "TITLE": {"PID": "label", "RDF": XSD.name, "type": "str"},
+        "TITLE": {"PID": "label", "RDF": RDFS.label, "type": "str"},
         "DESCRIPTION": {"PID": "description", "RDF": XSD.description, "type": "str"},
         "ITEM_NAME": {"PID": WDT.P31, "RDF": XSD.additionalType, "type": "list"},
         "MATERIALS": {"PID": WDT.P186, "RDF": XSD.material, "type": "list"},

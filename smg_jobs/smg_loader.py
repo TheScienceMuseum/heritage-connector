@@ -41,6 +41,7 @@ context = [
     {"@wd": "http://www.wikidata.org/entity/", "@language": "en"},
     {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
     {"@prov": "http://www.w3.org/ns/prov#", "@language": "en"},
+    {"@rdfs": "http://www.w3.org/2000/01/rdf-schema#", "@language": "en"},
 ]
 
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
@@ -49,7 +50,6 @@ people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 # PIDs from field_mapping to store in ES separate to the graph object
 non_graph_pids = [
     "description",
-    "label",
     field_mapping.WDT.P735,
     field_mapping.WDT.P734,
     field_mapping.WDT.P19,
