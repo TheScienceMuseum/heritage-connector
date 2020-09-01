@@ -1,6 +1,7 @@
 from fuzzywuzzy import fuzz
 from typing import Union
 from itertools import product
+import numpy as np
 
 # Similarity measures to compare fields of different types
 # Each function should use the following template:
@@ -48,25 +49,37 @@ def similarity_string(
 
 
 def similarity_numeric(
-    val1: Union[int, float], val2: Union[int, float], normalize: bool = True
+    val1: Union[int, float, list],
+    val2: Union[int, float, list],
+    aggregation_func=np.mean,
 ) -> float:
     """
-    Calculate numeric similarity as positive difference between the values divided by their average. 
-        Normalize==False returns only the difference between the values.
+    Calculate numeric similarity as positive difference between the values divided by their average. If lists are 
+        passed, uses `aggregation_func` (default np.mean) to convert the list of numbers into a single number. 
 
     Args:
-        val1 (Union[int, float])
-        val2 (Union[int, float]) 
-        normalize (bool, optional): Whether to divide |val1 - val2| by mean(val1, val2). Defaults to True.
+        val1 (Union[int, float, list])
+        val2 (Union[int, float, list]) 
+        aggregation_func (optional): function to convert list into numeric values if list is passed to either `val1`
+            or `val2`.
 
     Returns:
         float: 0 <= f <= 1
     """
 
-    if normalize:
-        return abs(val1 - val2) / (0.5 * (val1 + val2))
-    else:
-        return abs(val1 - val2)
+    val1 = (
+        aggregation_func([float(v) for v in val1])
+        if isinstance(val1, list)
+        else float(val1)
+    )
+
+    val2 = (
+        aggregation_func([float(v) for v in val2])
+        if isinstance(val2, list)
+        else float(val2)
+    )
+
+    return 1 - (abs(val1 - val2) / np.mean([val1, val2]))
 
 
 def similarity_categorical(
