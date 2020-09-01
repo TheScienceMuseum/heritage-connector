@@ -35,7 +35,7 @@ mapping = {
             "RDF": XSD.disambiguatingDescription,
             "type": "str",
         },
-        "OCCUPATION": {"RDF": XSD.occupation, "type": "list (str)"},
+        "OCCUPATION": {"RDF": XSD.additionalType, "type": "list (str)"},
         "NATIONALITY": {"RDF": SDO.nationality, "type": "list (str)"},
         "BIRTH_DATE": {"PID": WDT.P571, "RDF": SDO.foundingDate, "type": "date"},
         "DEATH_DATE": {"PID": WDT.P576, "RDF": SDO.dissolutionDate, "type": "date"},
