@@ -50,10 +50,11 @@ people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 # PIDs from field_mapping to store in ES separate to the graph object
 non_graph_pids = [
     "description",
-    field_mapping.WDT.P735,
-    field_mapping.WDT.P734,
-    field_mapping.WDT.P19,
-    field_mapping.WDT.P20,
+    # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
+    # field_mapping.WDT.P735, # first name
+    # field_mapping.WDT.P734, # last name
+    field_mapping.WDT.P19,  # place of birth
+    field_mapping.WDT.P20,  # place of death
 ]
 
 
