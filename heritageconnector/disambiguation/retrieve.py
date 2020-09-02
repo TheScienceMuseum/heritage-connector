@@ -6,7 +6,7 @@ import pandas as pd
 
 
 def get_wikidata_fields(
-    pids: list, qids: list = [], id_qid_mapping: dict = {}
+    pids: list, qids: list = [], id_qid_mapping: dict = {}, pids_nolabel: list = []
 ) -> pd.DataFrame:
     """
     Get information for Wikidata items specified by a set of Wikidata QIDs. Return columns specified by a set of Wikidata PIDs.
@@ -15,11 +15,17 @@ def get_wikidata_fields(
     Args:
         pids (list): list of Wikidata PIDs
         qcodes (list, optional): list of Wikidata QIDs
-        id_qcode_mapping (dict, optional):  
+        id_qcode_mapping (dict, optional): {internal_id: [qids], ...}. ID column is added to returned DataFrame to retain this 
+            mapping
+        pids_nolabel (list, optional): PIDs for which the value should be returned instead of the label. Any pids not included 
+            in `pids` will be added to the final result.
 
     Returns:
         pd.DataFrame: table of Wikidata results
     """
+
+    all_pids = list(set(pids + pids_nolabel))
+    pids_label = list(set(all_pids) - set(pids_nolabel))
 
     if qids and id_qid_mapping:
         raise ValueError("Only one of qids and id_qid_mapping should be provided.")
@@ -29,8 +35,13 @@ def get_wikidata_fields(
     endpoint = config.WIKIDATA_SPARQL_ENDPOINT
 
     sparq_qids = " ".join([f"(wd:{i})" for i in qids])
-    select_slug = "?" + " ?".join(map("{0}Label".format, pids))
-    body_exp = "\n".join([f"OPTIONAL{{ ?item wdt:{v} ?{v} .}}" for v in pids])
+    select_slug = (
+        "?"
+        + " ?".join(pids_nolabel)
+        + " ?"
+        + " ?".join(map("{0}Label".format, pids_label))
+    )
+    body_exp = "\n".join([f"OPTIONAL{{ ?item wdt:{v} ?{v} .}}" for v in all_pids])
 
     query = f"""
         SELECT ?item ?itemLabel ?itemDescription ?altLabel {select_slug}
@@ -89,13 +100,15 @@ def get_wikidata_fields(
             )
             condensed = condensed[
                 ["id", "item", "itemLabel", "itemDescription", "altLabel"]
-                + list(map("{0}Label".format, pids))
+                + list(map("{0}Label".format, pids_label))
+                + pids_nolabel
             ].sort_values("id")
 
         else:
             condensed = condensed[
                 ["item", "itemLabel", "itemDescription", "altLabel"]
-                + list(map("{0}Label".format, pids))
+                + list(map("{0}Label".format, pids_label))
+                + pids_nolabel
             ]
 
         condensed = condensed.rename(
