@@ -152,12 +152,11 @@ def build_training_data(
                     for i in vals_wikidata
                 ]
 
-            # if val_type in ['string', 'numeric', 'categorical']:
-            #    print(pid, vals_internal)
-            #    print(vals_wikidata)
-            #    print(sim_list)
-
-            X_temp.append(sim_list)
+            if val_type in ["string", "numeric", "categorical"]:
+                #    print(pid, vals_internal)
+                #    print(vals_wikidata)
+                #    print(sim_list)
+                X_temp.append(sim_list)
 
         X_item = np.asarray(X_temp, dtype=np.float32).transpose()
         X_list.append(X_item)
