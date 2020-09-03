@@ -12,6 +12,8 @@ import numpy as np
 #   return sim
 # ```
 
+np.seterr(all="raise")
+
 
 def similarity_string(
     val1: Union[str, list], val2: Union[str, list], scorer=fuzz.token_set_ratio
@@ -29,6 +31,9 @@ def similarity_string(
     Returns:
         float: 0 <= f <= 1
     """
+
+    if (len(val1) == 0) or (len(val2) == 0):
+        return 0
 
     if isinstance(val1, str) and isinstance(val2, str):
         return scorer(val1, val2) / 100
@@ -67,17 +72,21 @@ def similarity_numeric(
         float: 0 <= f <= 1
     """
 
-    val1 = (
-        aggregation_func([float(v) for v in val1])
-        if isinstance(val1, list)
-        else float(val1)
-    )
+    try:
+        val1 = (
+            aggregation_func([float(v) for v in val1])
+            if isinstance(val1, list)
+            else float(val1)
+        )
 
-    val2 = (
-        aggregation_func([float(v) for v in val2])
-        if isinstance(val2, list)
-        else float(val2)
-    )
+        val2 = (
+            aggregation_func([float(v) for v in val2])
+            if isinstance(val2, list)
+            else float(val2)
+        )
+    except ValueError:
+        # if either value can't be converted to a float, return 0 similarity
+        return 0
 
     return 1 - (abs(val1 - val2) / np.mean([val1, val2]))
 
@@ -100,6 +109,9 @@ def similarity_categorical(
     Returns:
         float: 0 <= f <= 1
     """
+
+    if (len(val1) == 0) or (len(val2) == 0):
+        return 0
 
     if isinstance(val1, (list, tuple)) and isinstance(val2, (list, tuple)):
         intersection_size = len(set(val1).intersection(set(val2)))

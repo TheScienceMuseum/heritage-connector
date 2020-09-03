@@ -238,13 +238,14 @@ class es_text_search(TextSearch):
 
         self.index = index
 
-    def run_search(self, text: str, limit=100, **kwargs) -> list:
+    def run_search(self, text: str, limit=100, return_unique=True, **kwargs) -> list:
         """
         Run a text search on a Wikidata dump on Elasticsearch. Uses fields labels, aliases by default.
 
         Args:
             text (str): text to search
             limit (int, optional): Defaults to 100.
+            return_unique (bool, optional): whether to return unique IDs. Defaults to True.
 
         Kwargs:
             include_aliases (bool, optional): whether to include aliases in the fields to search. If not only labels are used.
@@ -253,6 +254,8 @@ class es_text_search(TextSearch):
         Returns:
             list: list of qcodes of length *limit*
         """
+
+        duplicate_safety_factor = 1.2
 
         if "include_aliases" in kwargs:
             if kwargs["include_aliases"] is True:
@@ -268,10 +271,19 @@ class es_text_search(TextSearch):
             fields = ["labels", "aliases"]
 
         body = {"query": {"multi_match": {"query": text, "fields": fields}}}
-        res = es.search(index=self.index, body=body, size=limit)["hits"]["hits"]
+        res = es.search(
+            index=self.index, body=body, size=int(limit * duplicate_safety_factor)
+        )["hits"]["hits"]
 
         if len(res) > 0:
-            return [item["_source"]["id"] for item in res]
+            if return_unique:
+                # list(dict.fromkeys(a)) returns the unique values of a whilst maintaining order
+                return list(dict.fromkeys([item["_source"]["id"] for item in res]))[
+                    0:limit
+                ]
+
+            else:
+                return [item["_source"]["id"] for item in res][0:limit]
         else:
             return []
 
