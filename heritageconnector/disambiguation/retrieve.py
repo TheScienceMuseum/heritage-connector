@@ -35,12 +35,15 @@ def get_wikidata_fields(
     endpoint = config.WIKIDATA_SPARQL_ENDPOINT
 
     sparq_qids = " ".join([f"(wd:{i})" for i in qids])
-    select_slug = (
-        "?"
-        + " ?".join(pids_nolabel)
-        + " ?"
-        + " ?".join(map("{0}Label".format, pids_label))
-    )
+    if pids_nolabel:
+        select_slug = (
+            "?"
+            + " ?".join(pids_nolabel)
+            + " ?"
+            + " ?".join(map("{0}Label".format, pids_label))
+        )
+    else:
+        select_slug = "?" + " ?".join(map("{0}Label".format, pids_label))
     body_exp = "\n".join([f"OPTIONAL{{ ?item wdt:{v} ?{v} .}}" for v in all_pids])
 
     query = f"""
