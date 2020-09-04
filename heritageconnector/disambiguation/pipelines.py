@@ -19,6 +19,36 @@ from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.disambiguation import compare_fields as compare
 
 
+def get_pids(
+    table_name,
+    ignore_pids=["description"],
+    used_types=["numeric", "string", "categorical"],
+) -> list:
+    """
+    Get an ordered list of PIDS that have been used for training (the column names of X).
+
+    Returns:
+        list
+    """
+    table_mapping = field_mapping.mapping[table_name]
+
+    pids = []
+
+    for _, v in table_mapping.items():
+        if (
+            (("PID" in v) or (v.get("RDF") == RDFS.label))
+            and ("RDF" in v)
+            and (v.get("PID") not in ignore_pids)
+            and (v.get("type") in used_types)
+        ):
+            if "PID" in v:
+                pids.append(url_to_pid(v["PID"]))
+            elif v.get("RDF") == RDFS.label:
+                pids.append("label")
+
+    return pids
+
+
 def _process_wikidata_results(wikidata_results: pd.DataFrame) -> pd.DataFrame:
     """
     - fill empty firstname (P735) and lastname (P734) fields by taking the first and last words of the label field
@@ -205,12 +235,12 @@ def build_training_data(
                     X_temp.append(sim_list)
 
             X_item = np.asarray(X_temp, dtype=np.float32).transpose()
-            # if X_item.shape[1] < page_size:
-            #     print(item_id, X_item.shape)
+
             X_list.append(X_item)
             y_list += y_item
 
     X = np.vstack(X_list)
     y = np.asarray(y_list, dtype=bool)
+    X_columns = get_pids(table_name)
 
-    return X, y
+    return X, y, X_columns
