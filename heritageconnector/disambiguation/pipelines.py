@@ -58,7 +58,10 @@ def _process_wikidata_results(wikidata_results: pd.DataFrame) -> pd.DataFrame:
     firstname_from_label = lambda l: l.split(" ")[0]
     lastname_from_label = lambda l: l.split(" ")[-1]
     year_from_wiki_date = (
-        lambda l: l[0:4] if isinstance(l, str) else [int(i[0:4]) for i in l]
+        # don't worry about converting to numeric type here as comparison functions handle this
+        lambda l: l[0:4]
+        if isinstance(l, str)
+        else [i[0:4] for i in l]
     )
 
     # firstname, lastname

@@ -12,8 +12,6 @@ import numpy as np
 #   return sim
 # ```
 
-np.seterr(all="raise")
-
 
 def similarity_string(
     val1: Union[str, list], val2: Union[str, list], scorer=fuzz.token_set_ratio
