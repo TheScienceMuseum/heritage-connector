@@ -72,6 +72,11 @@ def similarity_numeric(
         float: 0 <= f <= 1
     """
 
+    if (isinstance(val1, (str, list)) and (len(val1) == 0)) or (
+        isinstance(val2, (str, list)) and (len(val2) == 0)
+    ):
+        return 0
+
     try:
         val1 = (
             aggregation_func([float(v) for v in val1])
