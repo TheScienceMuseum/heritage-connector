@@ -91,7 +91,7 @@ def _process_wikidata_results(wikidata_results: pd.DataFrame) -> pd.DataFrame:
 def build_training_data(
     wd_index: str,
     table_name: str,
-    page_size: int = 10,
+    page_size: int = 100,
     limit: int = None,
     search_limit=20,
 ) -> Tuple[np.ndarray, np.ndarray]:
