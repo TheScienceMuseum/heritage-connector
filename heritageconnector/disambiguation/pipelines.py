@@ -135,6 +135,7 @@ def build_training_data(
     ]
     X_list = []
     y_list = []
+    id_pair_list = []
 
     # get records with sameAs from Elasticsearch
     query = {
@@ -190,7 +191,8 @@ def build_training_data(
             qids_wikidata = wikidata_results_df.loc[
                 wikidata_results_df["id"] == item_id, "item"
             ]
-            y_item = [item_qid == i for i in qids_wikidata]
+            y_item = [item_qid == qid for qid in qids_wikidata]
+            id_pairs = [[str(item_id), qid] for qid in qids_wikidata]
 
             for key, value in filtered_mapping.items():
                 pid = (
@@ -238,9 +240,10 @@ def build_training_data(
 
             X_list.append(X_item)
             y_list += y_item
+            id_pair_list += id_pairs
 
     X = np.vstack(X_list)
     y = np.asarray(y_list, dtype=bool)
     X_columns = get_pids(table_name)
 
-    return X, y, X_columns
+    return X, y, X_columns, id_pair_list
