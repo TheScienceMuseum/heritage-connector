@@ -4,6 +4,8 @@ sys.path.append("..")
 
 from heritageconnector.namespace import XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, WD, WDT
 
+es_wikidata_idx = {"PERSON": "wikidump_humans"}
+
 mapping = {
     "PERSON": {
         "ID": {"type": "index"},
@@ -13,7 +15,12 @@ mapping = {
         "PREFERRED_NAME": {"RDF": RDFS.label, "type": "string"},
         "FIRSTMID_NAME": {"PID": WDT.P735, "RDF": FOAF.givenName, "type": "string"},
         "LASTSUFF_NAME": {"PID": WDT.P734, "RDF": FOAF.familyName, "type": "string"},
-        "GENDER": {"PID": WDT.P21, "RDF": XSD.gender, "type": "categorical"},
+        "GENDER": {
+            "PID": WDT.P21,
+            "RDF": XSD.gender,
+            "type": "categorical",
+            "wikidata_entity": True,
+        },
         # TODO: add date -> year guidance in docs
         "BIRTH_DATE": {"PID": WDT.P569, "RDF": XSD.birthDate, "type": "numeric"},
         "DEATH_DATE": {"PID": WDT.P570, "RDF": XSD.deathDate, "type": "numeric"},

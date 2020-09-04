@@ -89,11 +89,7 @@ def _process_wikidata_results(wikidata_results: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_training_data(
-    wd_index: str,
-    table_name: str,
-    page_size: int = 100,
-    limit: int = None,
-    search_limit=20,
+    table_name: str, page_size: int = 100, limit: int = None, search_limit=20,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Get training arrays X, y from all the records in the Heritage Connector index with an existing sameAs
@@ -113,8 +109,9 @@ def build_training_data(
     Returns:
         Tuple[np.ndarray, np.ndarray]: X, y
     """
-    search = es_text_search(index=wd_index)
     table_mapping = field_mapping.mapping[table_name]
+    wd_index = field_mapping.es_wikidata_idx[table_name]
+    search = es_text_search(index=wd_index)
 
     filtered_mapping = {
         k: v
