@@ -154,8 +154,10 @@ def build_training_data(
 
     search_res_paginated = paginate_generator(search_res, page_size)
 
+    total = math.ceil(limit / page_size) if limit is not None else None
+
     # for each record, get Wikidata results and create X: feature matrix and y: boolean vector (correct/incorrect match)
-    for item_list in tqdm(search_res_paginated, total=math.ceil(limit / page_size)):
+    for item_list in tqdm(search_res_paginated, total=total):
         id_qid_mapping = dict()
         # below is used so graphs can be accessed between the first and second `for item in item_list` loop
         graph_list = []
