@@ -148,7 +148,10 @@ def build_training_data(
             }
         }
     }
-    search_res = helpers.scan(es, query=query, index=config.ELASTIC_SEARCH_INDEX)
+    # set timeout to longer than default here to deal with large times between subsequent ES requests
+    search_res = helpers.scan(
+        es, query=query, index=config.ELASTIC_SEARCH_INDEX, size=500, scroll="30m"
+    )
     if limit:
         search_res = islice(search_res, limit)
 

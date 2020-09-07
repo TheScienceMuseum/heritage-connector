@@ -14,7 +14,7 @@ from heritageconnector.disambiguation.pipelines import build_training_data
 @click.option("--table_name", "-t", type=str)
 @click.option("--limit", "-l", type=int, default=None)
 def make_training_data(
-    output_folder, table_name, limit, page_size=100, search_limit=20
+    output_folder, table_name, limit, page_size=250, search_limit=20
 ):
     X, y, pid_labels, id_pairs = build_training_data(
         table_name, page_size=page_size, search_limit=search_limit, limit=limit
