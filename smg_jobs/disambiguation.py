@@ -33,3 +33,4 @@ def make_training_data(
 
 if __name__ == "__main__":
     make_training_data()
+    # make_training_data(".", "PERSON", None)

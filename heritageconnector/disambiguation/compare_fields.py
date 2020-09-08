@@ -91,7 +91,14 @@ def similarity_numeric(
         # if either value can't be converted to a float, return 0 similarity
         return 0
 
-    return 1 - (abs(val1 - val2) / np.mean([val1, val2]))
+    diff = 1 - (abs(val1 - val2) / np.max([abs(val1), abs(val2)]))
+
+    if diff < 0:
+        return 0
+    elif diff > 1:
+        return 1
+    else:
+        return diff
 
 
 def similarity_categorical(
