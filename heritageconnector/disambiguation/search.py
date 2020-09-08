@@ -4,6 +4,7 @@ from heritageconnector.base.disambiguation import TextSearch
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.data_transformation import assert_qid_format
+from heritageconnector.datastore import es
 import pandas as pd
 import re
 
@@ -219,6 +220,72 @@ class wikipedia_text_search(TextSearch):
             res_df = self.add_score_to_search_results_df(res_df, rank_col="rank")
 
         return res_df
+
+
+class es_text_search(TextSearch):
+    def __init__(self, index: str):
+        """
+        Args:
+            index (str): Elasticsearch index to search
+
+        Raises:
+            ValueError: Raised if index doesn't exist in the Elasticsearch index specified in config.
+        """
+        if not es.indices.exists(index=index):
+            raise ValueError(
+                f"Index {index} does not exist in the connected Elasticsearch index"
+            )
+
+        self.index = index
+
+    def run_search(self, text: str, limit=100, return_unique=True, **kwargs) -> list:
+        """
+        Run a text search on a Wikidata dump on Elasticsearch. Uses fields labels, aliases by default.
+
+        Args:
+            text (str): text to search
+            limit (int, optional): Defaults to 100.
+            return_unique (bool, optional): whether to return unique IDs. Defaults to True.
+
+        Kwargs:
+            include_aliases (bool, optional): whether to include aliases in the fields to search. If not only labels are used.
+                Defaults to True.
+
+        Returns:
+            list: list of qcodes of length *limit*
+        """
+
+        duplicate_safety_factor = 1.2
+
+        if "include_aliases" in kwargs:
+            if kwargs["include_aliases"] is True:
+                fields = ["labels", "aliases"]
+            elif kwargs["include_aliases"] is False:
+                fields = ["labels"]
+            else:
+                print(
+                    "WARNING: parameter include_aliases must be either True or False. Using default behaviour of including aliases."
+                )
+                fields = ["labels", "aliases"]
+        else:
+            fields = ["labels", "aliases"]
+
+        body = {"query": {"multi_match": {"query": text, "fields": fields}}}
+        res = es.search(
+            index=self.index, body=body, size=int(limit * duplicate_safety_factor)
+        )["hits"]["hits"]
+
+        if len(res) > 0:
+            if return_unique:
+                # list(dict.fromkeys(a)) returns the unique values of a whilst maintaining order
+                return list(dict.fromkeys([item["_source"]["id"] for item in res]))[
+                    0:limit
+                ]
+
+            else:
+                return [item["_source"]["id"] for item in res][0:limit]
+        else:
+            return []
 
 
 def combine_results(search_results: list, topn=20) -> pd.Series:

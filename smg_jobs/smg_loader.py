@@ -4,12 +4,12 @@ sys.path.append("..")
 
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
 from logging import getLogger
 from rdflib import Graph, Literal, URIRef
-from rdflib.namespace import XSD, FOAF, OWL, RDF
 from rdflib.serializer import Serializer
 import json
 import string
@@ -35,11 +35,13 @@ collection = "SMG"
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
-    {"@schema": "http://schema.org/", "@language": "en"},
+    {"@sdo": "https://schema.org/", "@language": "en"},
     {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
     {"@xsd": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
     {"@wd": "http://www.wikidata.org/entity/", "@language": "en"},
     {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
+    {"@prov": "http://www.w3.org/ns/prov#", "@language": "en"},
+    {"@rdfs": "http://www.w3.org/2000/01/rdf-schema#", "@language": "en"},
 ]
 
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
@@ -48,11 +50,11 @@ people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 # PIDs from field_mapping to store in ES separate to the graph object
 non_graph_pids = [
     "description",
-    "label",
-    field_mapping.WDT.P735,
-    field_mapping.WDT.P734,
-    field_mapping.WDT.P19,
-    field_mapping.WDT.P20,
+    # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
+    # field_mapping.WDT.P735, # first name
+    # field_mapping.WDT.P734, # last name
+    field_mapping.WDT.P19,  # place of birth
+    field_mapping.WDT.P20,  # place of death
 ]
 
 
@@ -132,7 +134,9 @@ def load_people_data():
     people_df.loc[:, "NOTES"] = (
         str(people_df.loc[:, "DESCRIPTION"]) + " " + str(people_df.loc[:, "NOTE"])
     )
-    # TODO: map gender to Wikidata QIDs
+    people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
+        {"F": WD.Q6581072, "M": WD.Q6581097}
+    )
 
     print("loading people data")
     add_records(table_name, people_df)
@@ -158,7 +162,6 @@ def load_orgs_data():
     org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
 
-    # TODO: use Elasticsearch batch mechanism for loading
     print("loading orgs data")
     add_records(table_name, org_df)
 
@@ -186,10 +189,10 @@ def load_user_data():
 
     user_df["MKEY"] = collection_prefix + user_df["MKEY"].astype(str)
     user_df["LINK_ID"] = people_prefix + user_df["LINK_ID"].astype(str)
-    user_df = user_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
+    user_df = user_df.rename(columns={"MKEY": "OBJECT", "LINK_ID": "SUBJECT"})
 
     print("loading user data")
-    add_triples(user_df, FOAF.knows, subject_col="SUBJECT", object_col="OBJECT")
+    add_triples(user_df, PROV.used, subject_col="SUBJECT", object_col="OBJECT")
 
     return
 
@@ -335,7 +338,6 @@ def serialize_to_jsonld(
 
     for col in keys:
         # this will trigger for the first row in the dataframe
-        #  TODO: put this in a separate checker function that checks each table against config on loading
         if col not in row.index:
             raise KeyError(f"column {col} not in data for table {table_name}")
 
@@ -346,6 +348,9 @@ def serialize_to_jsonld(
                     for val in row[col]
                     if str(val) != "nan"
                 ]
+            elif isinstance(row[col], URIRef):
+                g.add((record, table_mapping[col]["RDF"], row[col]))
+
             else:
                 g.add((record, table_mapping[col]["RDF"], Literal(row[col])))
 

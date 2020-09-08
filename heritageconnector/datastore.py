@@ -1,8 +1,8 @@
 from elasticsearch import helpers
 from elasticsearch import Elasticsearch
 from rdflib import Graph, Literal, RDF, URIRef
-from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
+from heritageconnector.namespace import XSD, FOAF, OWL, PROV
 from heritageconnector.config import config
 import json
 from tqdm.auto import tqdm
@@ -149,12 +149,6 @@ def get_graph_by_type(type):
     return g
 
 
-def search(query, filter):
-    """Return an optionally filtered list of matching objects"""
-
-    return
-
-
 def add_same_as(s_uri, o_uri):
     """Adds a sameAs relationship to an existing record"""
 
@@ -170,8 +164,7 @@ def add_maker(uri, relationship, maker_uri):
 def add_user(uri, relationship, user_uri):
     """Adds a user relationship to an existing record"""
 
-    # TODO: need to find a RDF term for USER/USED?
-    update_graph(uri, FOAF.knows, user_uri)
+    update_graph(user_uri, PROV.used, uri)
 
 
 def es_to_rdflib_graph(g=None, return_format=None):
