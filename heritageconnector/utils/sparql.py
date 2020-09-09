@@ -4,6 +4,9 @@ from SPARQLWrapper import SPARQLWrapper, JSON
 import urllib
 import time
 import json
+import sys
+import requests
+from heritageconnector.config import config
 
 
 def get_sparql_results(endpoint_url: str, query: str) -> dict:
@@ -17,13 +20,14 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
     Returns:
         query_result (dict): the JSON result of the query as a dict
     """
+    user_agent = generate_user_agent()
+
     sparql = SPARQLWrapper(endpoint_url)
     sparql.setQuery(query)
     sparql.setMethod("POST")
     sparql.setReturnFormat(JSON)
     sparql.addCustomHttpHeader(
-        "User-Agent",
-        "Heritage Connector bot/0.1 (heritageconnector@gmail.com / Science Museum Group)",
+        "User-Agent", user_agent,
     )
     try:
         return sparql.query().convert()
@@ -38,3 +42,22 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
     except json.decoder.JSONDecodeError as e:
         print(query)
         raise e
+
+
+def generate_user_agent() -> str:
+    """
+    Generates a User Agent header string according to the Wikidata policy
+        (https://meta.wikimedia.org/wiki/User-Agent_policy)
+
+    Returns:
+        str: [description]
+    """
+
+    part_hc = "Heritage Connector bot/0.1"
+    part_python = "Python/" + ".".join(str(i) for i in sys.version_info)
+    part_requests = "requests/" + requests.__version__
+
+    if "CUSTOM_USER_AGENT" in config.__dict__:
+        return f"{part_hc} {part_requests} {part_python} ({config.CUSTOM_USER_AGENT})"
+    else:
+        return f"{part_hc} {part_requests} {part_python}"
