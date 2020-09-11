@@ -2,6 +2,8 @@ import requests
 from typing import List, Union
 from tqdm import tqdm
 import re
+from heritageconnector.config import config
+from heritageconnector.utils.sparql import get_sparql_results
 
 
 class entities:
@@ -165,6 +167,71 @@ class entities:
         return self.get_property_values("P31", qcodes)
 
 
+def get_distance_between_entities(
+    qcode_1: str, qcode_2: str, reciprocal=False, max_path_length=10
+) -> Union[float, int]:
+    """
+    Get the length of the shortest path between two entities along the 'subclass of' axis. Flag `reciprocal=True`
+        returns 1/(1+l), where l is the length of the shortest path. 
+
+    Args:
+        qcode_1 (str)
+        qcode_2 (str)
+        reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
+        max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
+            greater than max_iterations, 10*max_iterations (reciprocal=False) or 0 (reciprocal=True) is returned.
+
+    Returns:
+        Union[float, int]: distance (int <= max_iterations or max_iterations*10) or reciprocal distance (float, 0 < f <= 1)
+    """
+
+    raise_invalid_qid(qcode_1)
+    raise_invalid_qid(qcode_2)
+
+    link_type = "P279"
+
+    query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
+
+    SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
+    SERVICE gas:service {{
+        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                    gas:in wd:{qcode_1} ;
+                    gas:traversalDirection "Forward" ;
+                    gas:out ?super ;
+                    gas:out1 ?aLength ;
+                    gas:maxIterations {max_path_length} ;
+                    gas:linkType wdt:{link_type} .
+    }}
+    SERVICE gas:service {{
+        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                    gas:in wd:{qcode_2} ;
+                    gas:traversalDirection "Forward" ;
+                    gas:out ?super ;
+                    gas:out1 ?bLength ;
+                    gas:maxIterations {max_path_length} ;
+                    gas:linkType wdt:{link_type} .
+    }}  
+    }} ORDER BY ?length
+    LIMIT 1
+    """
+
+    result = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
+        "bindings"
+    ]
+
+    if len(result) == 0:
+        # distance is greater than max_iterations
+        return 0 if reciprocal else 10 * max_path_length
+    else:
+        # distance is within max_iterations, so actual distance is returned
+        distance = int(float(result[0]["length"]["value"]))
+
+        if reciprocal:
+            return 1 / (1 + distance)
+        else:
+            return distance
+
+
 def url_to_qid(url: str) -> str:
     """
     Maps Wikidata URL of an entity to QID e.g. http://www.wikidata.org/entity/Q7187777 -> Q7187777.
@@ -195,3 +262,15 @@ def pid_to_url(pid: str) -> str:
     """
 
     return f"http://www.wikidata.org/prop/direct/{pid}"
+
+
+def raise_invalid_qid(qid: str) -> str:
+    """
+    Raise ValueError if supplied value is not a valid QID
+    """
+
+    if not isinstance(qid, str):
+        raise ValueError(f"QID {qid} is not of type string")
+
+    if len(re.findall(r"(Q\d+)", qid)) != 1:
+        raise ValueError(f"QID {qid} is not a valid QID")
