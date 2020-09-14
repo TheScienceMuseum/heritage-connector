@@ -4,7 +4,7 @@ sys.path.append("..")
 
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
@@ -51,10 +51,10 @@ people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 non_graph_pids = [
     "description",
     # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
-    # field_mapping.WDT.P735, # first name
-    # field_mapping.WDT.P734, # last name
-    field_mapping.WDT.P19,  # place of birth
-    field_mapping.WDT.P20,  # place of death
+    # WDT.P735, # first name
+    # WDT.P734, # last name
+    WDT.P19,  # place of birth
+    WDT.P20,  # place of death
 ]
 
 
@@ -139,7 +139,7 @@ def load_people_data():
     )
 
     print("loading people data")
-    add_records(table_name, people_df)
+    add_records(table_name, people_df, add_type=WD.Q5)
 
 
 def load_orgs_data():
@@ -200,7 +200,7 @@ def load_user_data():
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
 
 
-def add_record(table_name, row):
+def add_record(table_name, row, add_type=True):
     """Create and store new HC record with a JSON-LD graph"""
 
     uri_prefix = row["PREFIX"]
@@ -213,18 +213,20 @@ def add_record(table_name, row):
 
     data = serialize_to_json(table_name, row, data_fields)
     data["uri"] = uri
-    jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=non_graph_pids)
+    jsonld = serialize_to_jsonld(
+        table_name, uri, row, ignore_types=non_graph_pids, add_type=add_type
+    )
 
     datastore.create(collection, table_name, data, jsonld)
 
 
-def add_records(table_name, df):
+def add_records(table_name, df, add_type=True):
     """Use ES parallel_bulk mechanism to add records from a table"""
-    generator = record_create_generator(table_name, df)
+    generator = record_create_generator(table_name, df, add_type)
     datastore.es_bulk(generator, len(df))
 
 
-def record_create_generator(table_name, df):
+def record_create_generator(table_name, df, add_type):
     """Yields jsonld for a row for use with ES bulk helpers"""
 
     table_mapping = field_mapping.mapping[table_name]
@@ -238,7 +240,9 @@ def record_create_generator(table_name, df):
         uri = uri_prefix + str(row["ID"])
 
         data = serialize_to_json(table_name, row, data_fields)
-        jsonld = serialize_to_jsonld(table_name, uri, row, ignore_types=non_graph_pids)
+        jsonld = serialize_to_jsonld(
+            table_name, uri, row, ignore_types=non_graph_pids, add_type=add_type
+        )
 
         doc = {
             "_id": uri,
@@ -301,7 +305,7 @@ def serialize_to_json(table_name: str, row: pd.Series, columns: list) -> dict:
 
 
 def serialize_to_jsonld(
-    table_name: str, uri: str, row: pd.Series, ignore_types: list, add_type: bool = True
+    table_name: str, uri: str, row: pd.Series, ignore_types: list, add_type=True
 ) -> dict:
     """
     Returns a JSON-LD represention of a record
@@ -311,7 +315,8 @@ def serialize_to_jsonld(
         uri (str): URI of subject
         row (pd.Series): DataFrame row (record) to serialize
         ignore_types (list): PIDs to ignore when importing
-        add_type (bool, optional): whether to add @type field with the table_name. Defaults to True.
+        add_type (optional): whether to add @type field with the table_name. If a value rather than
+            a boolean is passed in, this will be added as the type for the table. Defaults to True.
 
     Raises:
         KeyError: [description]
@@ -324,8 +329,10 @@ def serialize_to_jsonld(
     record = URIRef(uri)
 
     # Add RDF:type
-    if add_type:
+    if add_type is True:
         g.add((record, RDF.type, Literal(table_name.lower())))
+    elif add_type:
+        g.add((record, RDF.type, add_type))
 
     # This code is effectivly the mapping from source data to the data we care about
     table_mapping = field_mapping.mapping[table_name]
