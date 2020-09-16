@@ -168,92 +168,113 @@ class entities:
 
 
 def get_distance_between_entities(
-    qcode_1: str, qcode_2: str, reciprocal=False, max_path_length=10
+    qcode_1: str, qcode_2: Union[str, list], reciprocal=False, max_path_length=10
 ) -> Union[float, int]:
     """
     Get the length of the shortest path between two entities along the 'subclass of' axis. Flag `reciprocal=True`
-        returns 1/(1+l), where l is the length of the shortest path. 
+        returns 1/(1+l), where l is the length of the shortest path. If a list is passed to qcode_2 the shortest 
+        path between qcode_1 and any item in qcode_2 is returned.
 
     Args:
         qcode_1 (str)
-        qcode_2 (str)
+        qcode_2 (Union[str, list]): if list, the shortest path between qcode_1 and any of qcode_2 is returned.
         reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
         max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
-            greater than max_iterations, 10*max_iterations (reciprocal=False) or 0 (reciprocal=True) is returned.
+            greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
 
     Returns:
         Union[float, int]: distance (int <= max_iterations or max_iterations*10) or reciprocal distance (float, 0 < f <= 1)
     """
 
     raise_invalid_qid(qcode_1)
-    raise_invalid_qid(qcode_2)
+
+    if isinstance(qcode_2, str):
+        raise_invalid_qid(qcode_2)
+        qcode_2 = [qcode_2]
+    elif isinstance(qcode_2, list) and len(qcode_2) > 0:
+        [raise_invalid_qid(q) for q in qcode_2]
+    else:
+        raise ValueError("qcode_2 is either not a string or is an empty list")
+
+    result_list = []
 
     link_type = "P279"
 
-    query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
+    for q in qcode_2:
+        print(q)
+        query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
 
-    SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
-    SERVICE gas:service {{
-        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                    gas:in wd:{qcode_1} ;
-                    gas:traversalDirection "Forward" ;
-                    gas:out ?super ;
-                    gas:out1 ?aLength ;
-                    gas:maxIterations {max_path_length} ;
-                    gas:linkType wdt:{link_type} .
-    }}
-    SERVICE gas:service {{
-        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                    gas:in wd:{qcode_2} ;
-                    gas:traversalDirection "Forward" ;
-                    gas:out ?super ;
-                    gas:out1 ?bLength ;
-                    gas:maxIterations {max_path_length} ;
-                    gas:linkType wdt:{link_type} .
-    }}  
-    }} ORDER BY ?length
-    LIMIT 1
-    """
+        SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcode_1} ;
+                        gas:traversalDirection "Forward" ;
+                        gas:out ?super ;
+                        gas:out1 ?aLength ;
+                        gas:maxIterations {max_path_length} ;
+                        gas:linkType wdt:{link_type} .
+        }}
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{q} ;
+                        gas:traversalDirection "Forward" ;
+                        gas:out ?super ;
+                        gas:out1 ?bLength ;
+                        gas:maxIterations {max_path_length} ;
+                        gas:linkType wdt:{link_type} .
+        }}  
+        }} ORDER BY ?length
+        LIMIT 1
+        """
 
-    result = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
-        "bindings"
-    ]
+        result = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
+            "bindings"
+        ]
 
-    if len(result) == 0:
-        # distance is greater than max_iterations
-        return 0 if reciprocal else 10 * max_path_length
-    else:
-        # distance is within max_iterations, so actual distance is returned
-        distance = int(float(result[0]["length"]["value"]))
-
-        if reciprocal:
-            return 1 / (1 + distance)
+        if len(result) == 0:
+            result_list.append(10 * max_path_length)
         else:
-            return distance
+            result_list.append(int(float(result[0]["length"]["value"])))
+
+    shortest_distance = min(result_list)
+
+    if reciprocal:
+        return 1 / (1 + shortest_distance)
+    else:
+        return shortest_distance
 
 
-def url_to_qid(url: str) -> str:
+def url_to_qid(url: Union[str, list]) -> Union[str, list]:
     """
     Maps Wikidata URL of an entity to QID e.g. http://www.wikidata.org/entity/Q7187777 -> Q7187777.
     """
 
-    return re.findall(r"(Q\d+)", url)[0]
+    if isinstance(url, str):
+        return re.findall(r"(Q\d+)", url)[0]
+    elif isinstance(url, list):
+        return [url_to_qid(i) for i in url]
 
 
-def qid_to_url(qid: str) -> str:
+def qid_to_url(qid: Union[str, list]) -> Union[str, list]:
     """
     Maps QID of an entity to a Wikidata URL e.g. Q7187777 -> http://www.wikidata.org/entity/Q7187777.
     """
 
-    return f"http://www.wikidata.org/entity/{qid}"
+    if isinstance(qid, str):
+        return f"http://www.wikidata.org/entity/{qid}"
+    elif isinstance(qid, list):
+        return [qid_to_url(i) for i in qid]
 
 
-def url_to_pid(url: str) -> str:
+def url_to_pid(url: Union[str, list]) -> Union[str, list]:
     """
     Maps Wikidata URL of an entity to PID e.g. http://www.wikidata.org/prop/direct/P570 -> P570.
     """
 
-    return re.findall(r"(P\d+)", url)[0]
+    if isinstance(url, str):
+        return re.findall(r"(P\d+)", url)[0]
+    elif isinstance(url, list):
+        return [url_to_pid(i) for i in url]
 
 
 def pid_to_url(pid: str) -> str:
@@ -261,7 +282,10 @@ def pid_to_url(pid: str) -> str:
     Maps PID of an entity to a Wikidata URL e.g. P570 -> http://www.wikidata.org/prop/direct/P570.
     """
 
-    return f"http://www.wikidata.org/prop/direct/{pid}"
+    if isinstance(pid, str):
+        return f"http://www.wikidata.org/entity/{pid}"
+    elif isinstance(pid, list):
+        return [pid_to_url(i) for i in pid]
 
 
 def raise_invalid_qid(qid: str) -> str:

@@ -11,5 +11,5 @@ class TestWikidataUtils:
             wikidata.get_distance_between_entities(
                 "Q5", "Q100", reciprocal=True, max_path_length=10
             )
-            == 0
+            < 0.01
         )

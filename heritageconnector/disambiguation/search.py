@@ -250,27 +250,30 @@ class es_text_search(TextSearch):
         Kwargs:
             include_aliases (bool, optional): whether to include aliases in the fields to search. If not only labels are used.
                 Defaults to True.
+            return_instanceof (bool, optional): whether to include the value of the instance of (P31) property. Defaults to False.
 
         Returns:
-            list: list of qcodes of length *limit*
+            list: list of QIDs of length *limit*
+            dict (optional): dict of {QID: P31_value, ...} for all QIDs. For records with no P31 value, the corresponding value is None.
         """
 
+        # get more results than we need to allow for removing values with return_unique flag
         duplicate_safety_factor = 1.2
 
         if "include_aliases" in kwargs:
             if kwargs["include_aliases"] is True:
-                fields = ["labels", "aliases"]
+                field = "labels_aliases"
             elif kwargs["include_aliases"] is False:
-                fields = ["labels"]
+                field = "labels"
             else:
                 print(
                     "WARNING: parameter include_aliases must be either True or False. Using default behaviour of including aliases."
                 )
-                fields = ["labels", "aliases"]
+                field = "labels_aliases"
         else:
-            fields = ["labels", "aliases"]
+            field = "labels_aliases"
 
-        body = {"query": {"multi_match": {"query": text, "fields": fields}}}
+        body = {"query": {"match": {field: text}}}
         res = es.search(
             index=self.index, body=body, size=int(limit * duplicate_safety_factor)
         )["hits"]["hits"]
@@ -278,14 +281,28 @@ class es_text_search(TextSearch):
         if len(res) > 0:
             if return_unique:
                 # list(dict.fromkeys(a)) returns the unique values of a whilst maintaining order
-                return list(dict.fromkeys([item["_source"]["id"] for item in res]))[
+                qids = list(dict.fromkeys([item["_source"]["id"] for item in res]))[
                     0:limit
                 ]
 
             else:
-                return [item["_source"]["id"] for item in res][0:limit]
+                qids = [item["_source"]["id"] for item in res][0:limit]
         else:
-            return []
+            qids = []
+
+        if kwargs.get("return_instanceof"):
+            qid_p31_dict = {
+                item["_source"]["id"]: item["_source"]["claims"].get("P31", [None])
+                for item in res
+                if item["_source"]["id"] in qids
+            }
+            qid_p31_dict = {
+                k: v[0] for k, v in qid_p31_dict.items() if isinstance(v, list)
+            }
+
+            return qids, qid_p31_dict
+        else:
+            return qids
 
 
 def combine_results(search_results: list, topn=20) -> pd.Series:

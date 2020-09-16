@@ -8,12 +8,17 @@ import numpy as np
 from tqdm.auto import tqdm
 import pandas as pd
 from typing import Tuple
+import time
 
 from heritageconnector.datastore import es
 from heritageconnector.config import config, field_mapping
-from heritageconnector.utils.wikidata import url_to_pid, url_to_qid
+from heritageconnector.utils.wikidata import (
+    url_to_pid,
+    url_to_qid,
+    get_distance_between_entities,
+)
 from heritageconnector.utils.generic import paginate_generator
-from heritageconnector.namespace import OWL, RDFS
+from heritageconnector.namespace import OWL, RDF, RDFS
 from heritageconnector.disambiguation.retrieve import get_wikidata_fields
 from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.disambiguation import compare_fields as compare
@@ -128,11 +133,12 @@ def build_training_data(
         for _, v in filtered_mapping.items()
         if v["RDF"] != RDFS.label
     ]
+    # also get URI of instanceof property (P31)
     pids_nolabel = [
         url_to_pid(v["PID"])
         for _, v in table_mapping.items()
         if v.get("wikidata_entity")
-    ]
+    ] + ["P31"]
     X_list = []
     y_list = []
     id_pair_list = []
@@ -143,7 +149,7 @@ def build_training_data(
             "bool": {
                 "must": [
                     {"wildcard": {"graph.@owl:sameAs.@id": "*"}},
-                    {"term": {"graph.@type.@value": table_name.lower()}},
+                    {"term": {"type.keyword": table_name.upper()}},
                 ]
             }
         }
@@ -162,9 +168,12 @@ def build_training_data(
     # for each record, get Wikidata results and create X: feature matrix and y: boolean vector (correct/incorrect match)
     for item_list in tqdm(search_res_paginated, total=total):
         id_qid_mapping = dict()
+        qid_instanceof_mapping = dict()
         # below is used so graphs can be accessed between the first and second `for item in item_list` loop
         graph_list = []
 
+        print("Running search")
+        start = time.time()
         for item in item_list:
             g = Graph().parse(
                 data=json.dumps(item["_source"]["graph"]), format="json-ld"
@@ -174,15 +183,25 @@ def build_training_data(
             item_label = g.label(next(g.subjects()))
 
             # search for Wikidata matches and retrieve information (batched)
-            qids = search.run_search(
-                item_label, limit=search_limit, include_aliases=True
+            qids, qid_instanceof_temp = search.run_search(
+                item_label,
+                limit=search_limit,
+                include_aliases=True,
+                return_instanceof=True,
             )
             id_qid_mapping[item_id] = qids
+            qid_instanceof_mapping.update(qid_instanceof_temp)
+        end = time.time()
+        print(f"...search complete in {end-start}s")
 
         # get Wikidata property values for the batch
+        print("Getting wikidata fields")
+        start = time.time()
         wikidata_results_df = get_wikidata_fields(
             pids=pids, id_qid_mapping=id_qid_mapping, pids_nolabel=pids_nolabel
         )
+        end = time.time()
+        print(f"...retrieved in {end-start}s")
         # print(id_qid_mapping.items())
         # print(wikidata_results_df[['id', 'item']])
         wikidata_results_df = _process_wikidata_results(wikidata_results_df)
@@ -198,6 +217,27 @@ def build_training_data(
             ]
             y_item = [item_qid == qid for qid in qids_wikidata]
             id_pairs = [[str(item_id), qid] for qid in qids_wikidata]
+
+            # calculate instanceof distances
+            item_instanceof = url_to_qid(next(g.objects(predicate=RDF.type)))
+            wikidata_instanceof = wikidata_results_df.loc[
+                wikidata_results_df["id"] == item_id, "P31"
+            ].tolist()
+            print(f"Getting distance for {len(wikidata_instanceof)} entities")
+            start = time.time()
+            instanceof_similarities = np.asarray(
+                [
+                    get_distance_between_entities(
+                        item_instanceof, url_to_qid(q), reciprocal=True
+                    )
+                    if q != ""
+                    else 0
+                    for q in wikidata_instanceof
+                ],
+                dtype=np.float32,
+            )
+            end = time.time()
+            print(f"...done in {end-start}s")
 
             for key, value in filtered_mapping.items():
                 pid = (
@@ -242,6 +282,7 @@ def build_training_data(
                     X_temp.append(sim_list)
 
             X_item = np.asarray(X_temp, dtype=np.float32).transpose()
+            X_item = np.column_stack([X_item, instanceof_similarities])
 
             X_list.append(X_item)
             y_list += y_item
@@ -249,6 +290,6 @@ def build_training_data(
 
     X = np.vstack(X_list)
     y = np.asarray(y_list, dtype=bool)
-    X_columns = get_pids(table_name)
+    X_columns = get_pids(table_name) + ["P31"]
 
     return X, y, X_columns, id_pair_list
