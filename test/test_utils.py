@@ -13,3 +13,8 @@ class TestWikidataUtils:
             )
             < 0.01
         )
+
+    def test_get_distance_between_entities_cached(self):
+        """Same as above but cached"""
+
+        assert next(wikidata.get_distance_between_entities_cached("Q5", "Q5")) == 0

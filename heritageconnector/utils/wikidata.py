@@ -1,11 +1,12 @@
 import requests
-from typing import List, Union
+from typing import List, Set, Union
 from tqdm import tqdm
 import re
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
 import os
 from cachew import cachew
+from itertools import product
 
 
 class entities:
@@ -173,7 +174,7 @@ class entities:
     os.path.join(os.path.dirname(__file__), "../cache_entitydistance.sqlite"), cls=float
 )
 def get_distance_between_entities_cached(
-    qcode_1: str,
+    qcode_1: Union[str, list],
     qcode_2: Union[str, list],
     reciprocal: bool = False,
     max_path_length: int = 10,
@@ -184,19 +185,21 @@ def get_distance_between_entities_cached(
 
 
 def get_distance_between_entities(
-    qcode_1: str,
+    qcode_1: Union[str, list],
     qcode_2: Union[str, list],
     reciprocal: bool = False,
     max_path_length: int = 10,
 ) -> float:
     """
-    Get the length of the shortest path between two entities along the 'subclass of' axis. Flag `reciprocal=True`
-        returns 1/(1+l), where l is the length of the shortest path. If a list is passed to qcode_2 the shortest 
-        path between qcode_1 and any item in qcode_2 is returned.
+    Get the length of the shortest path between entities or sets of entities along the 'subclass of' axis. When two entities
+    [a,b] are passed the shortest path is returned, and when two groups [(a,b), (c,d)] are passed the shortest path between
+    the closest entities across those two groups is returned.
+
+    Flag `reciprocal=True` returns 1/(1+l) where l is the length of the shortest path, which can be treated as a similarity measure.
 
     Args:
-        qcode_1 (str)
-        qcode_2 (Union[str, list]): if list, the shortest path between qcode_1 and any of qcode_2 is returned.
+        qcode_1 (Union[str, list])
+        qcode_2 (Union[str, list])
         reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
         max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
             greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
@@ -205,7 +208,13 @@ def get_distance_between_entities(
         Union[float, int]: distance (int <= max_iterations or max_iterations*10) or reciprocal distance (float, 0 < f <= 1)
     """
 
-    raise_invalid_qid(qcode_1)
+    if isinstance(qcode_1, str):
+        raise_invalid_qid(qcode_1)
+        qcode_1 = [qcode_1]
+    elif isinstance(qcode_1, list) and len(qcode_1) > 0:
+        [raise_invalid_qid(q) for q in qcode_1]
+    else:
+        raise ValueError("qcode_1 is either not a string or is an empty list")
 
     if isinstance(qcode_2, str):
         raise_invalid_qid(qcode_2)
@@ -215,18 +224,19 @@ def get_distance_between_entities(
     else:
         raise ValueError("qcode_2 is either not a string or is an empty list")
 
+    combinations = product(list(set(qcode_1)), list(set(qcode_2)))
     result_list = []
 
     link_type = "P279"
 
-    for q in list(set(qcode_2)):
+    for q1, q2 in combinations:
         # print(q)
         query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
 
         SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
         SERVICE gas:service {{
             gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                        gas:in wd:{qcode_1} ;
+                        gas:in wd:{q1} ;
                         gas:traversalDirection "Forward" ;
                         gas:out ?super ;
                         gas:out1 ?aLength ;
@@ -235,7 +245,7 @@ def get_distance_between_entities(
         }}
         SERVICE gas:service {{
             gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                        gas:in wd:{q} ;
+                        gas:in wd:{q2} ;
                         gas:traversalDirection "Forward" ;
                         gas:out ?super ;
                         gas:out1 ?bLength ;
