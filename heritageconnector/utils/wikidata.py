@@ -4,6 +4,8 @@ from tqdm import tqdm
 import re
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
+import os
+from cachew import cachew
 
 
 class entities:
@@ -167,9 +169,26 @@ class entities:
         return self.get_property_values("P31", qcodes)
 
 
+@cachew(
+    os.path.join(os.path.dirname(__file__), "../cache_entitydistance.sqlite"), cls=float
+)
+def get_distance_between_entities_cached(
+    qcode_1: str,
+    qcode_2: Union[str, list],
+    reciprocal: bool = False,
+    max_path_length: int = 10,
+) -> float:
+    res = get_distance_between_entities(qcode_1, qcode_2, reciprocal, max_path_length)
+
+    return [res]
+
+
 def get_distance_between_entities(
-    qcode_1: str, qcode_2: Union[str, list], reciprocal=False, max_path_length=10
-) -> Union[float, int]:
+    qcode_1: str,
+    qcode_2: Union[str, list],
+    reciprocal: bool = False,
+    max_path_length: int = 10,
+) -> float:
     """
     Get the length of the shortest path between two entities along the 'subclass of' axis. Flag `reciprocal=True`
         returns 1/(1+l), where l is the length of the shortest path. If a list is passed to qcode_2 the shortest 
@@ -200,8 +219,8 @@ def get_distance_between_entities(
 
     link_type = "P279"
 
-    for q in qcode_2:
-        print(q)
+    for q in list(set(qcode_2)):
+        # print(q)
         query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
 
         SELECT ?super (?aLength + ?bLength as ?length) WHERE {{

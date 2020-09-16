@@ -16,6 +16,7 @@ from heritageconnector.utils.wikidata import (
     url_to_pid,
     url_to_qid,
     get_distance_between_entities,
+    get_distance_between_entities_cached,
 )
 from heritageconnector.utils.generic import paginate_generator
 from heritageconnector.namespace import OWL, RDF, RDFS
@@ -227,8 +228,10 @@ def build_training_data(
             start = time.time()
             instanceof_similarities = np.asarray(
                 [
-                    get_distance_between_entities(
-                        item_instanceof, url_to_qid(q), reciprocal=True
+                    next(
+                        get_distance_between_entities_cached(
+                            item_instanceof, url_to_qid(q), reciprocal=True
+                        )
                     )
                     if q != ""
                     else 0
@@ -251,7 +254,6 @@ def build_training_data(
                 vals_wikidata = wikidata_results_df.loc[
                     wikidata_results_df["id"] == item_id, pid
                 ]
-                # print(vals_wikidata[['id', 'item']])
 
                 if val_type == "string":
                     sim_list = [
