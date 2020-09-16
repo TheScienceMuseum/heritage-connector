@@ -63,8 +63,8 @@ def flatten_list_of_lists(l: list) -> list:
 def paginate_generator(generator, page_size: int):
     """
     Returns an iterator that returns items from the provided generator grouped into `page_size`.
-        If the size of the output from the original generator isn't an exact multiple of 
-        `page_size`, the last list returned by the iterator will be of size less than `page_size`.
+    If the size of the output from the original generator isn't an exact multiple of 
+    `page_size`, the last list returned by the iterator will be of size less than `page_size`.
 
     Returns:
         iterator of lists

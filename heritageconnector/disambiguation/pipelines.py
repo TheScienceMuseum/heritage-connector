@@ -102,7 +102,7 @@ def build_training_data(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Get training arrays X, y from all the records in the Heritage Connector index with an existing sameAs
-        link to Wikidata.
+    link to Wikidata.
 
     Args:
         wd_index (str): Elasticsearch index of the Wikidata dump
