@@ -96,23 +96,27 @@ def get_wikidata_fields(
 
         # process dataframe to return
         condensed["item"] = condensed["item"].apply(url_to_qid)
+        target_columns = (
+            ["item", "itemLabel", "itemDescription", "altLabel"]
+            + list(map("{0}Label".format, pids_label))
+            + pids_nolabel
+        )
+
+        missing_columns = list(
+            set(target_columns) - set(condensed.columns.values.tolist())
+        )
+        for c in missing_columns:
+            condensed[c] = ""
 
         if id_qid_mapping:
             condensed["id"] = condensed["item"].apply(
                 lambda x: [key for key in id_qid_mapping if x in id_qid_mapping[key]][0]
             )
-            condensed = condensed[
-                ["id", "item", "itemLabel", "itemDescription", "altLabel"]
-                + list(map("{0}Label".format, pids_label))
-                + pids_nolabel
-            ].sort_values("id")
+            target_columns = ["id"] + target_columns
+            condensed = condensed[target_columns].sort_values("id")
 
         else:
-            condensed = condensed[
-                ["item", "itemLabel", "itemDescription", "altLabel"]
-                + list(map("{0}Label".format, pids_label))
-                + pids_nolabel
-            ]
+            condensed = condensed[target_columns]
 
         condensed = condensed.rename(
             columns=lambda x: x.strip("Label") if x.startswith("P") else x
