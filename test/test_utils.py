@@ -1,4 +1,5 @@
 from heritageconnector.utils import wikidata
+import time
 
 
 class TestWikidataUtils:
@@ -17,4 +18,11 @@ class TestWikidataUtils:
     def test_get_distance_between_entities_cached(self):
         """Same as above but cached"""
 
-        assert next(wikidata.get_distance_between_entities_cached({"Q5", "Q5"})) == 0
+        start = time.time()
+        _ = next(wikidata.get_distance_between_entities_cached({"Q5", "Q10"}))
+        mid = time.time()
+        _ = next(wikidata.get_distance_between_entities_cached({"Q5", "Q10"}))
+        end = time.time()
+
+        assert (end - mid) < (mid - start)
+        assert (end - mid) < 2

@@ -15,8 +15,7 @@ from heritageconnector.config import config, field_mapping
 from heritageconnector.utils.wikidata import (
     url_to_pid,
     url_to_qid,
-    get_distance_between_entities,
-    get_distance_between_entities_cached,
+    get_distance_between_entities_multiple,
 )
 from heritageconnector.utils.generic import paginate_generator
 from heritageconnector.namespace import OWL, RDF, RDFS
@@ -284,6 +283,7 @@ def build_training_data(
 
         batch_instanceof_comparisons_unique = list(set(batch_instanceof_comparisons))
 
+        logger.debug("Finding distances between entities...")
         for ent_1, ent_2 in tqdm(batch_instanceof_comparisons_unique):
             if isinstance(ent_2, list):
                 ent_set = {ent_1, tuple(ent_2)}
@@ -291,14 +291,12 @@ def build_training_data(
                 ent_set = {ent_1, ent_2}
 
             if hash((ent_1, ent_2)) not in ent_similarities_lookup:
-                ent_similarities_lookup[hash((ent_1, ent_2))] = next(
-                    get_distance_between_entities_cached(ent_set, reciprocal=True)
-                )
+                ent_similarities_lookup[
+                    hash((ent_1, ent_2))
+                ] = get_distance_between_entities_multiple(ent_set, reciprocal=True)
 
-        for ent_1, ent_2 in tqdm(batch_instanceof_comparisons):
+        for ent_1, ent_2 in batch_instanceof_comparisons:
             ent_similarity_list.append(ent_similarities_lookup[hash((ent_1, ent_2))])
-
-        # print('debug')
 
     X = np.vstack(X_list)
     X = np.column_stack([X, ent_similarity_list])

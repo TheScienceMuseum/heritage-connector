@@ -174,9 +174,7 @@ class entities:
     os.path.join(os.path.dirname(__file__), "../cache_entitydistance.sqlite"), cls=float
 )
 def get_distance_between_entities_cached(
-    qcode_set: Set[Union[str, tuple]],
-    reciprocal: bool = False,
-    max_path_length: int = 10,
+    qcode_set: Set[str], reciprocal: bool = False, max_path_length: int = 10,
 ) -> float:
     res = get_distance_between_entities(qcode_set, reciprocal, max_path_length)
 
@@ -184,9 +182,82 @@ def get_distance_between_entities_cached(
 
 
 def get_distance_between_entities(
+    qcode_set: Set[str], reciprocal: bool = False, max_path_length: int = 10,
+) -> float:
+    """
+    Get the length of the shortest path between two entities in `qcode_set`along the 'subclass of' axis. Flag `reciprocal=True` 
+    returns 1/(1+l) where l is the length of the shortest path, which can be treated as a similarity measure.
+
+    Args:
+        qcode_set (Set[str])
+        reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
+        max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
+            greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
+
+    Returns:
+        float: distance (d <= max_iterations or max_iterations*10) or reciprocal distance (0 < d <= 1)
+    """
+
+    if len(qcode_set) == 1:
+        # identity - assume two values have been passed in even though the set will have length 1
+        return 1 if reciprocal else 0
+
+    if len(qcode_set) != 2:
+        raise ValueError("Input variable qcode_set must contain exactly 1 or 2 items")
+
+    qcodes = [i for i in qcode_set]
+
+    if (qcodes[0] == "") or (qcodes[1] == ""):
+        # at least one value is empty so return maximum dissimilarity
+        return 0 if reciprocal else 1
+    else:
+        raise_invalid_qid(qcodes[0])
+        raise_invalid_qid(qcodes[1])
+
+    link_type = "P279"
+
+    query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
+
+    SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
+    SERVICE gas:service {{
+        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                    gas:in wd:{qcodes[0]} ;
+                    gas:traversalDirection "Forward" ;
+                    gas:out ?super ;
+                    gas:out1 ?aLength ;
+                    gas:maxIterations {max_path_length} ;
+                    gas:linkType wdt:{link_type} .
+    }}
+    SERVICE gas:service {{
+        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                    gas:in wd:{qcodes[1]} ;
+                    gas:traversalDirection "Forward" ;
+                    gas:out ?super ;
+                    gas:out1 ?bLength ;
+                    gas:maxIterations {max_path_length} ;
+                    gas:linkType wdt:{link_type} .
+    }}  
+    }} ORDER BY ?length
+    LIMIT 1
+    """
+
+    result = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
+        "bindings"
+    ]
+
+    if len(result) == 0:
+        distance = 10 * max_path_length
+    else:
+        distance = int(float(result[0]["length"]["value"]))
+
+    return 1 / (1 + distance) if reciprocal else distance
+
+
+def get_distance_between_entities_multiple(
     qcode_set: Set[Union[str, tuple]],
     reciprocal: bool = False,
     max_path_length: int = 10,
+    use_cache: bool = True,
 ) -> float:
     """
     Get the length of the shortest path between entities or sets of entities along the 'subclass of' axis. When two entities
@@ -200,6 +271,7 @@ def get_distance_between_entities(
         reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
         max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
             greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
+        use_cache (bool, optional): whether to use a query cache stored on disk. Defaults to True
 
     Returns:
         Union[float, int]: distance (int <= max_iterations or max_iterations*10) or reciprocal distance (float, 0 < f <= 1)
@@ -249,50 +321,27 @@ def get_distance_between_entities(
     combinations = product(list(set(qcode_1)), list(set(qcode_2)))
     result_list = []
 
-    link_type = "P279"
-
-    for q1, q2 in combinations:
-        # print(q)
-        query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
-
-        SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
-        SERVICE gas:service {{
-            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                        gas:in wd:{q1} ;
-                        gas:traversalDirection "Forward" ;
-                        gas:out ?super ;
-                        gas:out1 ?aLength ;
-                        gas:maxIterations {max_path_length} ;
-                        gas:linkType wdt:{link_type} .
-        }}
-        SERVICE gas:service {{
-            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                        gas:in wd:{q2} ;
-                        gas:traversalDirection "Forward" ;
-                        gas:out ?super ;
-                        gas:out1 ?bLength ;
-                        gas:maxIterations {max_path_length} ;
-                        gas:linkType wdt:{link_type} .
-        }}  
-        }} ORDER BY ?length
-        LIMIT 1
-        """
-
-        result = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
-            "bindings"
-        ]
-
-        if len(result) == 0:
-            result_list.append(10 * max_path_length)
-        else:
-            result_list.append(int(float(result[0]["length"]["value"])))
-
-    shortest_distance = min(result_list)
+    if use_cache:
+        for q1, q2 in combinations:
+            result_list.append(
+                next(
+                    get_distance_between_entities_cached(
+                        {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
+                    )
+                )
+            )
+    else:
+        for q1, q2 in combinations:
+            result_list.append(
+                get_distance_between_entities(
+                    {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
+                )
+            )
 
     if reciprocal:
-        return 1 / (1 + shortest_distance)
+        return max(result_list)
     else:
-        return shortest_distance
+        return min(result_list)
 
 
 def url_to_qid(url: Union[str, list], raise_invalid=True) -> Union[str, list]:
