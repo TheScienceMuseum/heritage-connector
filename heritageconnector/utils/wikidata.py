@@ -174,19 +174,17 @@ class entities:
     os.path.join(os.path.dirname(__file__), "../cache_entitydistance.sqlite"), cls=float
 )
 def get_distance_between_entities_cached(
-    qcode_1: Union[str, list],
-    qcode_2: Union[str, list],
+    qcode_set: Set[Union[str, tuple]],
     reciprocal: bool = False,
     max_path_length: int = 10,
 ) -> float:
-    res = get_distance_between_entities(qcode_1, qcode_2, reciprocal, max_path_length)
+    res = get_distance_between_entities(qcode_set, reciprocal, max_path_length)
 
     return [res]
 
 
 def get_distance_between_entities(
-    qcode_1: Union[str, list],
-    qcode_2: Union[str, list],
+    qcode_set: Set[Union[str, tuple]],
     reciprocal: bool = False,
     max_path_length: int = 10,
 ) -> float:
@@ -198,8 +196,7 @@ def get_distance_between_entities(
     Flag `reciprocal=True` returns 1/(1+l) where l is the length of the shortest path, which can be treated as a similarity measure.
 
     Args:
-        qcode_1 (Union[str, list])
-        qcode_2 (Union[str, list])
+        qcode_set (Set[Union[str, list], Union[str, list]])
         reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
         max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
             greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
@@ -208,21 +205,46 @@ def get_distance_between_entities(
         Union[float, int]: distance (int <= max_iterations or max_iterations*10) or reciprocal distance (float, 0 < f <= 1)
     """
 
+    if len(qcode_set) == 1:
+        # identity - assume two values have been passed in even though the set will have length 1
+        return 1 if reciprocal else 0
+
+    if len(qcode_set) != 2:
+        raise ValueError("Input variable qcode_set must contain exactly 1 or 2 items")
+
+    # Convert set into list so we can access its individual values.
+    # (The result of the distance function is independent of order)
+    qcode_list = [i for i in qcode_set]
+    qcode_1, qcode_2 = qcode_list
+
+    if (qcode_1 == "") or (qcode_2 == ""):
+        # one value is empty so return maximum dissimilarity
+        return 0 if reciprocal else 1
+
+    if isinstance(qcode_1, list):
+        qcode_1 = tuple(qcode_1)
+    if isinstance(qcode_2, list):
+        qcode_2 = tuple(qcode_2)
+
     if isinstance(qcode_1, str):
         raise_invalid_qid(qcode_1)
         qcode_1 = [qcode_1]
-    elif isinstance(qcode_1, list) and len(qcode_1) > 0:
+    elif isinstance(qcode_1, tuple) and len(qcode_1) > 0:
         [raise_invalid_qid(q) for q in qcode_1]
     else:
-        raise ValueError("qcode_1 is either not a string or is an empty list")
+        raise ValueError(
+            f"Item of qcode_set {qcode_1} is either not a string or is an empty list"
+        )
 
     if isinstance(qcode_2, str):
         raise_invalid_qid(qcode_2)
         qcode_2 = [qcode_2]
-    elif isinstance(qcode_2, list) and len(qcode_2) > 0:
+    elif isinstance(qcode_2, tuple) and len(qcode_2) > 0:
         [raise_invalid_qid(q) for q in qcode_2]
     else:
-        raise ValueError("qcode_2 is either not a string or is an empty list")
+        raise ValueError(
+            f"Item of qcode_set {qcode_2} is either not a string or is an empty list"
+        )
 
     combinations = product(list(set(qcode_1)), list(set(qcode_2)))
     result_list = []
@@ -273,15 +295,27 @@ def get_distance_between_entities(
         return shortest_distance
 
 
-def url_to_qid(url: Union[str, list]) -> Union[str, list]:
+def url_to_qid(url: Union[str, list], raise_invalid=True) -> Union[str, list]:
     """
     Maps Wikidata URL of an entity to QID e.g. http://www.wikidata.org/entity/Q7187777 -> Q7187777.
+
+    Args:
+        raise_invalid (bool, optional): whether to raise if a QID can't be found in the URL. If False, 
+            for any string in which a QID can't be found an empty string is returned.
     """
 
     if isinstance(url, str):
-        return re.findall(r"(Q\d+)", url)[0]
+        found = re.findall(r"(Q\d+)", url)
+        if len(found) == 1:
+            return found[0]
+        else:
+            if raise_invalid:
+                raise ValueError("URL does not contain a single QID")
+            else:
+                return ""
+
     elif isinstance(url, list):
-        return [url_to_qid(i) for i in url]
+        return [url_to_qid(i, raise_invalid) for i in url]
 
 
 def qid_to_url(qid: Union[str, list]) -> Union[str, list]:

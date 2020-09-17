@@ -23,6 +23,9 @@ from heritageconnector.namespace import OWL, RDF, RDFS
 from heritageconnector.disambiguation.retrieve import get_wikidata_fields
 from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.disambiguation import compare_fields as compare
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 
 def get_pids(
@@ -142,6 +145,8 @@ def build_training_data(
     ] + ["P31"]
     X_list = []
     y_list = []
+    ent_similarity_list = []
+    ent_similarities_lookup = {}  # in-memory caching for entity similarities
     id_pair_list = []
 
     # get records with sameAs from Elasticsearch
@@ -170,10 +175,11 @@ def build_training_data(
     for item_list in tqdm(search_res_paginated, total=total):
         id_qid_mapping = dict()
         qid_instanceof_mapping = dict()
+        batch_instanceof_comparisons = []
         # below is used so graphs can be accessed between the first and second `for item in item_list` loop
         graph_list = []
 
-        print("Running search")
+        logger.debug("Running search")
         start = time.time()
         for item in item_list:
             g = Graph().parse(
@@ -193,16 +199,16 @@ def build_training_data(
             id_qid_mapping[item_id] = qids
             qid_instanceof_mapping.update(qid_instanceof_temp)
         end = time.time()
-        print(f"...search complete in {end-start}s")
+        logger.debug(f"...search complete in {end-start}s")
 
         # get Wikidata property values for the batch
-        print("Getting wikidata fields")
+        logger.debug("Getting wikidata fields")
         start = time.time()
         wikidata_results_df = get_wikidata_fields(
             pids=pids, id_qid_mapping=id_qid_mapping, pids_nolabel=pids_nolabel
         )
         end = time.time()
-        print(f"...retrieved in {end-start}s")
+        logger.debug(f"...retrieved in {end-start}s")
         # print(id_qid_mapping.items())
         # print(wikidata_results_df[['id', 'item']])
         wikidata_results_df = _process_wikidata_results(wikidata_results_df)
@@ -224,23 +230,12 @@ def build_training_data(
             wikidata_instanceof = wikidata_results_df.loc[
                 wikidata_results_df["id"] == item_id, "P31"
             ].tolist()
-            print(f"Getting distance for {len(wikidata_instanceof)} entities")
-            start = time.time()
-            instanceof_similarities = np.asarray(
-                [
-                    next(
-                        get_distance_between_entities_cached(
-                            item_instanceof, url_to_qid(q), reciprocal=True
-                        )
-                    )
-                    if q != ""
-                    else 0
-                    for q in wikidata_instanceof
-                ],
-                dtype=np.float32,
-            )
-            end = time.time()
-            print(f"...done in {end-start}s")
+
+            to_tuple = lambda x: tuple(x) if isinstance(x, list) else x
+            batch_instanceof_comparisons += [
+                (item_instanceof, to_tuple(url_to_qid(q, raise_invalid=False)))
+                for q in wikidata_instanceof
+            ]
 
             for key, value in filtered_mapping.items():
                 pid = (
@@ -278,19 +273,35 @@ def build_training_data(
                     ]
 
                 if val_type in ["string", "numeric", "categorical"]:
-                    #    print(pid, vals_internal)
-                    #    print(vals_wikidata)
-                    #    print(sim_list)
                     X_temp.append(sim_list)
 
             X_item = np.asarray(X_temp, dtype=np.float32).transpose()
-            X_item = np.column_stack([X_item, instanceof_similarities])
+            # X_item = np.column_stack([X_item, instanceof_similarities])
 
             X_list.append(X_item)
             y_list += y_item
             id_pair_list += id_pairs
 
+        batch_instanceof_comparisons_unique = list(set(batch_instanceof_comparisons))
+
+        for ent_1, ent_2 in tqdm(batch_instanceof_comparisons_unique):
+            if isinstance(ent_2, list):
+                ent_set = {ent_1, tuple(ent_2)}
+            else:
+                ent_set = {ent_1, ent_2}
+
+            if hash((ent_1, ent_2)) not in ent_similarities_lookup:
+                ent_similarities_lookup[hash((ent_1, ent_2))] = next(
+                    get_distance_between_entities_cached(ent_set, reciprocal=True)
+                )
+
+        for ent_1, ent_2 in tqdm(batch_instanceof_comparisons):
+            ent_similarity_list.append(ent_similarities_lookup[hash((ent_1, ent_2))])
+
+        # print('debug')
+
     X = np.vstack(X_list)
+    X = np.column_stack([X, ent_similarity_list])
     y = np.asarray(y_list, dtype=bool)
     X_columns = get_pids(table_name) + ["P31"]
 
