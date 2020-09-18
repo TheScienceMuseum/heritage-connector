@@ -208,8 +208,7 @@ def build_training_data(
         )
         end = time.time()
         logger.debug(f"...retrieved in {end-start}s")
-        # print(id_qid_mapping.items())
-        # print(wikidata_results_df[['id', 'item']])
+
         wikidata_results_df = _process_wikidata_results(wikidata_results_df)
 
         # create X array for each record
@@ -275,8 +274,6 @@ def build_training_data(
                     X_temp.append(sim_list)
 
             X_item = np.asarray(X_temp, dtype=np.float32).transpose()
-            # X_item = np.column_stack([X_item, instanceof_similarities])
-
             X_list.append(X_item)
             y_list += y_item
             id_pair_list += id_pairs
