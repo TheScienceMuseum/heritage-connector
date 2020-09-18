@@ -77,9 +77,11 @@ def paginate_generator(generator, page_size: int):
 def _check_cache(cache_, key, func, args, kwargs):
     if key in cache_:
         # use cached results
+        # print("using cached results")
         return cache_[key]
     else:
         # no cache results: call function
+        # print("no cache results: calling function")
         result = func(*args, **kwargs)
         cache_[key] = result
         return result
