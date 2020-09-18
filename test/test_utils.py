@@ -1,5 +1,6 @@
-from heritageconnector.utils import wikidata
+from heritageconnector.utils import wikidata, generic
 import time
+import os
 
 
 class TestWikidataUtils:
@@ -26,3 +27,21 @@ class TestWikidataUtils:
 
         assert (end - mid) < (mid - start)
         assert (end - mid) < 0.4
+
+
+class TestGenericUtils:
+    def test_cache(self):
+        @generic.cache("./cache")
+        def multiply_slowly_cached(a, b):
+            time.sleep(2)
+            return a * b
+
+        start = time.time()
+        multiply_slowly_cached(5, 10)
+        mid = time.time()
+        multiply_slowly_cached(5, 10)
+        end = time.time()
+
+        os.remove("cache")
+
+        assert end - mid < mid - start
