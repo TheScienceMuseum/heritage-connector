@@ -2,11 +2,11 @@ import requests
 from typing import List, Set, Union
 from tqdm import tqdm
 import re
+import os
+from itertools import product
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
-import os
-from cachew import cachew
-from itertools import product
+from heritageconnector.utils.generic import cache
 
 
 class entities:
@@ -170,15 +170,13 @@ class entities:
         return self.get_property_values("P31", qcodes)
 
 
-@cachew(
-    os.path.join(os.path.dirname(__file__), "../cache_entitydistance.sqlite"), cls=float
-)
+@cache(os.path.join(os.path.dirname(__file__), "../entitydistance.cache"))
 def get_distance_between_entities_cached(
     qcode_set: Set[str], reciprocal: bool = False, max_path_length: int = 10,
 ) -> float:
     res = get_distance_between_entities(qcode_set, reciprocal, max_path_length)
 
-    return [res]
+    return res
 
 
 def get_distance_between_entities(
@@ -324,10 +322,8 @@ def get_distance_between_entities_multiple(
     if use_cache:
         for q1, q2 in combinations:
             result_list.append(
-                next(
-                    get_distance_between_entities_cached(
-                        {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
-                    )
+                get_distance_between_entities_cached(
+                    {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
                 )
             )
     else:

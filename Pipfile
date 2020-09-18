@@ -36,7 +36,6 @@ torch = "*"
 dgl = "==0.4.3"
 dglke = "*"
 click = "*"
-cachew = "*"
 
 [requires]
 python_version = "3.7"

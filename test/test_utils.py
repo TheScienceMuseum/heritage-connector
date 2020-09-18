@@ -19,10 +19,10 @@ class TestWikidataUtils:
         """Same as above but cached"""
 
         start = time.time()
-        _ = next(wikidata.get_distance_between_entities_cached({"Q5", "Q10"}))
+        _ = wikidata.get_distance_between_entities_cached({"Q5", "Q10"})
         mid = time.time()
-        _ = next(wikidata.get_distance_between_entities_cached({"Q5", "Q10"}))
+        _ = wikidata.get_distance_between_entities_cached({"Q5", "Q10"})
         end = time.time()
 
         assert (end - mid) < (mid - start)
-        assert (end - mid) < 2
+        assert (end - mid) < 0.4

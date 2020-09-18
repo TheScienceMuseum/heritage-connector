@@ -1,6 +1,8 @@
 # General utils for heritageconnector that don't fit anywhere else.
 import requests
 from itertools import islice
+import shelve
+import functools
 
 
 def extract_json_values(obj: dict, key: str) -> list:
@@ -70,3 +72,46 @@ def paginate_generator(generator, page_size: int):
         iterator of lists
     """
     return iter(lambda: list(islice(generator, page_size)), [])
+
+
+def _check_cache(cache_, key, func, args, kwargs):
+    if key in cache_:
+        # use cached results
+        return cache_[key]
+    else:
+        # no cache results: call function
+        result = func(*args, **kwargs)
+        cache_[key] = result
+        return result
+
+
+def cache(filename: str):
+    """
+    Decorator to cache function calls to a pickle file in the location specified by filename.
+    """
+
+    def decorating_function(user_function):
+        def wrapper(*args, **kwargs):
+            args = tuple([frozenset(i) if isinstance(i, set) else i for i in args])
+            args_key = str(hash(functools._make_key(args, kwargs, typed=False)))
+            func_key = ".".join([user_function.__module__, user_function.__name__])
+            key = func_key + args_key
+            handle_name = "{}_handle".format(filename)
+            if hasattr(cache, handle_name) and not hasattr(
+                getattr(cache, handle_name).dict, "closed"
+            ):
+                # print("Using open handle")
+                return _check_cache(
+                    getattr(cache, handle_name), key, user_function, args, kwargs
+                )
+            else:
+                # print("Opening handle")
+                with shelve.open(filename, writeback=True) as c:
+                    setattr(
+                        cache, handle_name, c
+                    )  # Save a reference to the open handle
+                    return _check_cache(c, key, user_function, args, kwargs)
+
+        return functools.update_wrapper(wrapper, user_function)
+
+    return decorating_function
