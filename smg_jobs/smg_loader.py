@@ -9,6 +9,7 @@ from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
 from logging import getLogger
+import rdflib
 from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
 import json
@@ -200,7 +201,7 @@ def load_user_data():
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
 
 
-def add_record(table_name, row, add_type=True):
+def add_record(table_name, row, add_type=False):
     """Create and store new HC record with a JSON-LD graph"""
 
     uri_prefix = row["PREFIX"]
@@ -220,7 +221,7 @@ def add_record(table_name, row, add_type=True):
     datastore.create(collection, table_name, data, jsonld)
 
 
-def add_records(table_name, df, add_type=True):
+def add_records(table_name, df, add_type=False):
     """Use ES parallel_bulk mechanism to add records from a table"""
     generator = record_create_generator(table_name, df, add_type)
     datastore.es_bulk(generator, len(df))
@@ -305,7 +306,11 @@ def serialize_to_json(table_name: str, row: pd.Series, columns: list) -> dict:
 
 
 def serialize_to_jsonld(
-    table_name: str, uri: str, row: pd.Series, ignore_types: list, add_type=True
+    table_name: str,
+    uri: str,
+    row: pd.Series,
+    ignore_types: list,
+    add_type: rdflib.term.URIRef = False,
 ) -> dict:
     """
     Returns a JSON-LD represention of a record
@@ -315,7 +320,7 @@ def serialize_to_jsonld(
         uri (str): URI of subject
         row (pd.Series): DataFrame row (record) to serialize
         ignore_types (list): PIDs to ignore when importing
-        add_type (optional): whether to add @type field with the table_name. If a value rather than
+        add_type (rdflib.term.URIRef, optional): whether to add @type field with the table_name. If a value rather than
             a boolean is passed in, this will be added as the type for the table. Defaults to True.
 
     Raises:
@@ -329,9 +334,8 @@ def serialize_to_jsonld(
     record = URIRef(uri)
 
     # Add RDF:type
-    if add_type is True:
-        g.add((record, RDF.type, Literal(table_name.lower())))
-    elif add_type:
+    # Need to check for isinstance otherwise this will fail silently during bulk load, causing the entire record to not load
+    if add_type and isinstance(add_type, rdflib.term.URIRef):
         g.add((record, RDF.type, add_type))
 
     # This code is effectivly the mapping from source data to the data we care about
