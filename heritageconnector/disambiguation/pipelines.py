@@ -131,7 +131,7 @@ def build_training_data(
         Tuple[np.ndarray, np.ndarray]: X, y
     """
     table_mapping = field_mapping.mapping[table_name]
-    wd_index = field_mapping.wikidump_index
+    wd_index = config.ELASTIC_SEARCH_WIKI_INDEX
     search = es_text_search(index=wd_index)
 
     filtered_mapping = {
