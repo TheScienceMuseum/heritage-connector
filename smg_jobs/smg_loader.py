@@ -2,13 +2,7 @@ import sys
 
 sys.path.append("..")
 
-from heritageconnector.config import config, field_mapping
-from heritageconnector import datastore
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
-from heritageconnector.utils.data_transformation import get_year_from_date_value
-from heritageconnector.utils.wikidata import qid_to_url
 import pandas as pd
-from logging import getLogger
 import rdflib
 from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
@@ -16,11 +10,17 @@ import json
 import string
 import os
 from tqdm.auto import tqdm
+from heritageconnector.config import config, field_mapping
+from heritageconnector import datastore
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
+from heritageconnector.utils.data_transformation import get_year_from_date_value
+from heritageconnector.utils.wikidata import qid_to_url
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 # disable SettingWithCopyWarning
 pd.options.mode.chained_assignment = None
-
-logger = getLogger(__file__)
 
 # set to None for no limit
 max_records = None
@@ -96,7 +96,7 @@ def load_object_data():
         get_year_from_date_value
     )
 
-    print("loading object data")
+    logger.info("loading object data")
     add_records(table_name, catalogue_df)
 
     return
@@ -139,7 +139,7 @@ def load_people_data():
         {"F": WD.Q6581072, "M": WD.Q6581097}
     )
 
-    print("loading people data")
+    logger.info("loading people data")
     add_records(table_name, people_df, add_type=WD.Q5)
 
 
@@ -163,7 +163,7 @@ def load_orgs_data():
     org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
 
-    print("loading orgs data")
+    logger.info("loading orgs data")
     add_records(table_name, org_df)
 
     return
@@ -178,7 +178,7 @@ def load_maker_data():
     maker_df["LINK_ID"] = people_prefix + maker_df["LINK_ID"].astype(str)
     maker_df = maker_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
 
-    print("loading maker data")
+    logger.info("loading maker data")
     add_triples(maker_df, FOAF.maker, subject_col="SUBJECT", object_col="OBJECT")
 
     return
@@ -192,7 +192,7 @@ def load_user_data():
     user_df["LINK_ID"] = people_prefix + user_df["LINK_ID"].astype(str)
     user_df = user_df.rename(columns={"MKEY": "OBJECT", "LINK_ID": "SUBJECT"})
 
-    print("loading user data")
+    logger.info("loading user data")
     add_triples(user_df, PROV.used, subject_col="SUBJECT", object_col="OBJECT")
 
     return
@@ -397,11 +397,11 @@ def load_sameas_people_orgs(pickle_path):
         )
         df_links["QID"] = df_links["QID"].apply(qid_to_url)
 
-        print("adding sameAs relationships for people & orgs")
+        logger.info("adding sameAs relationships for people & orgs")
         add_triples(df_links, OWL.sameAs, subject_col="LINK_ID", object_col="QID")
 
     else:
-        print(
+        logger.warn(
             f"Path {pickle_path} does not exist. No sameAs relationships loaded for people & orgs."
         )
 

@@ -12,6 +12,9 @@ tqdm.pandas()
 from heritageconnector.config import config
 from heritageconnector.utils import data_loaders
 from heritageconnector.entity_matching import lookup, filtering
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 
 def main():

@@ -1,8 +1,8 @@
 from ..config import config
 import pandas as pd
-from logging import getLogger
+from heritageconnector import logging
 
-logger = getLogger(__file__)
+logger = logging.get_logger(__name__)
 
 
 class local_loader:
@@ -20,7 +20,7 @@ class local_loader:
         # load all data here
         all_data.update(self.load_mimsy_data())
 
-        print(f"Loaded data from local path: {', '.join(list(all_data.keys()))}")
+        logger.debug(f"Loaded data from local path: {', '.join(list(all_data.keys()))}")
 
         return all_data
 
