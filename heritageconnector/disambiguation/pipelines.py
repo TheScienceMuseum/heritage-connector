@@ -319,8 +319,7 @@ def build_training_data(
         for ent_1, ent_2 in batch_instanceof_comparisons:
             ent_similarity_list.append(ent_similarities_lookup[hash((ent_1, ent_2))])
 
-    X = np.vstack(X_list)
-    X = np.column_stack([X, ent_similarity_list])
+    X = np.column_stack([np.vstack(X_list), ent_similarity_list])
     y = np.asarray(y_list, dtype=bool)
     X_columns = get_pids(table_name) + ["P31"]
 
