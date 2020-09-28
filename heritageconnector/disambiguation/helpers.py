@@ -1,7 +1,10 @@
-import numpy as np
-import pandas as pd
 import os
 from typing import Tuple
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import roc_curve, precision_recall_curve
 
 
 def load_training_data(
@@ -37,3 +40,34 @@ def load_training_data(
     )["column"].tolist()
 
     return X, y, pairs, pids
+
+
+def plot_performance_curves(y_true, y_pred_proba):
+    """
+    Plots TPR/FPR and Precision-Recall curves
+    """
+
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred_proba)
+    precision, recall, thresholds2 = precision_recall_curve(y_true, y_pred_proba)
+
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12, 4))
+
+    # plot TPR, FPR against threshold
+    ax1.plot(thresholds, fpr, label="FPR")
+    ax1.plot(thresholds, tpr, label="TPR")
+    ax1.set_xlim([0.0, 1.0])
+    ax1.set_ylim([0.0, 1.05])
+    ax1.set_xlabel("threshold")
+    ax1.set_ylabel("TPR/FPR")
+    ax1.legend(loc="best")
+    ax1.set_title("TPR & FPR over Threshold")
+    sns.despine()
+
+    # plot precision-recall curve
+    ax2.plot(recall, precision)
+    ax2.set_xlim([0.0, 1.0])
+    ax2.set_ylim([0.0, 1.05])
+    ax2.set_xlabel("recall")
+    ax2.set_ylabel("precision")
+    ax2.set_title("Precision-Recall Curve")
+    sns.despine()
