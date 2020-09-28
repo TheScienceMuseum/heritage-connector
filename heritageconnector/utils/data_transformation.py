@@ -1,6 +1,8 @@
 import pandas as pd
 import re
+from heritageconnector import logging
 
+logger = logging.get_logger(__name__)
 # methods to transform different typed fields
 
 
@@ -26,7 +28,7 @@ def transform_series_str_to_list(series: pd.Series, separator: str) -> pd.Series
     )
 
 
-def get_year_from_date_value(datestring: str) -> int:
+def get_year_from_date_value(datestring: str, raise_errors: bool = False) -> int:
     """
     Looks for a year mention in a date-like string by finding a run of 1-4 digits if BCE, 
     or 4 digits if not BCE.
@@ -63,7 +65,10 @@ def get_year_from_date_value(datestring: str) -> int:
             # assume in the format "333-345 BCE" / "1983-1984"
             return (int(year_matches[0]) + int(year_matches[1])) / 2
     except ValueError as e:
-        print(e)
+        if raise_errors:
+            raise e
+        else:
+            logger.error(e)
 
 
 def assert_qid_format(qid: str):

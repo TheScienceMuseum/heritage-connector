@@ -1,11 +1,11 @@
-from heritageconnector import datastore
 from rdflib import Graph, Literal, RDF, URIRef, BNode
 from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
 from rdflib.plugins.stores import sparqlstore
-from logging import getLogger
 import json
 from tqdm.auto import tqdm
+from heritageconnector import datastore
+
 
 # Fuseki endpoints (localhost)
 query_endpoint = "http://localhost:3030/ds/query"

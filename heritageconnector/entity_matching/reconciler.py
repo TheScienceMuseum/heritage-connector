@@ -1,12 +1,14 @@
-from heritageconnector.disambiguation.search import wikidata_text_search
-from heritageconnector.config import config, field_mapping
-from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.wikidata import url_to_qid
-
 import re
 import pandas as pd
 from collections import Counter
 from tqdm import tqdm
+from heritageconnector.disambiguation.search import wikidata_text_search
+from heritageconnector.config import config, field_mapping
+from heritageconnector.utils.sparql import get_sparql_results
+from heritageconnector.utils.wikidata import url_to_qid
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 tqdm.pandas()
 
@@ -31,7 +33,7 @@ class reconciler:
             config_column = config_table[column]
 
             if "PID" not in config_column:
-                print(
+                logger.warn(
                     f"WARNING: PID has not been specified for column {column} in table {self.table}"
                 )
 
@@ -48,7 +50,7 @@ class reconciler:
         """
 
         if pid.startswith("http"):
-            # print("WARNING: URL instead of PID entered. Converting to PID")
+            logger.warn("WARNING: URL instead of PID entered. Converting to PID")
             pids = re.findall(r"(P\d+)", pid)
 
             if len(pids) == 1:
@@ -112,7 +114,7 @@ class reconciler:
             else:
                 return [url_to_qid(i) for i in res_df["item"].tolist()]
 
-        print("Looking up Wikidata qcodes for unique items..")
+        logger.info("Looking up Wikidata qcodes for unique items..")
         map_df["qid"] = map_df.index.to_series().progress_apply(lookup_value)
 
         if multiple_vals:

@@ -7,6 +7,9 @@ from itertools import product
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.generic import cache
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 
 class entities:
@@ -62,7 +65,7 @@ class entities:
             for i in range(0, len(self.qcodes), self.page_limit)
         ]
         all_responses = {}
-        print(
+        logger.info(
             f"Getting {len(self.qcodes)} wikidata documents in pages of {self.page_limit}"
         )
 

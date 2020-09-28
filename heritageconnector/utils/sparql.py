@@ -7,6 +7,9 @@ import json
 import sys
 import requests
 from heritageconnector.config import config
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 
 def get_sparql_results(endpoint_url: str, query: str) -> dict:
@@ -33,18 +36,19 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
         return sparql.query().convert()
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            print("429")
+            logger.debug("429")
             if isinstance(e.headers.get("retry-after", None), int):
                 time.sleep(e.headers["retry-after"])
             else:
                 time.sleep(10)
             return get_sparql_results(endpoint_url, query)
         elif e.code == 403:
-            print("403")
+            logger.debug("403")
             return e.read().decode("utf8", "ignore")
         raise e
     except json.decoder.JSONDecodeError as e:
-        print(query)
+        logger.error("JSONDecodeError. Query:")
+        logger.error(query)
         raise e
 
 

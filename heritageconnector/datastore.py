@@ -2,10 +2,13 @@ from elasticsearch import helpers
 from elasticsearch import Elasticsearch
 from rdflib import Graph, Literal, RDF, URIRef
 from rdflib.serializer import Serializer
-from heritageconnector.namespace import XSD, FOAF, OWL, PROV
-from heritageconnector.config import config
 import json
 from tqdm.auto import tqdm
+from heritageconnector.namespace import XSD, FOAF, OWL, PROV
+from heritageconnector.config import config
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
@@ -35,13 +38,13 @@ context = [
 def create_index():
     """Delete the exiting ES index if it exists and create a new index and mappings"""
 
-    print("Wiping existing index: " + index)
+    logger.info("Wiping existing index: " + index)
     es.indices.delete(index=index, ignore=[400, 404])
 
     # setup any mappings etc.
     indexSettings = {"settings": {"number_of_shards": 1, "number_of_replicas": 0}}
 
-    print("Creating new index: " + index)
+    logger.info("Creating new index: " + index)
     es.indices.create(index=index, body=indexSettings)
 
 
@@ -189,7 +192,7 @@ def es_to_rdflib_graph(g=None, return_format=None):
                 data=json.dumps(item["_source"]["graph"]), format="json-ld"
             )
     else:
-        print("Using existing graph")
+        logger.debug("Using existing graph")
         for item in tqdm(res, total=total):
             g.parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
 

@@ -1,14 +1,17 @@
+import pandas as pd
+from tqdm import tqdm
+from fuzzywuzzy import fuzz
+from itertools import compress
+import re
 from heritageconnector.nlp.string_pairs import fuzzy_match
 from heritageconnector.utils.wikidata import entities
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.generic import add_dicts
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.config import config
-import pandas as pd
-from tqdm import tqdm
-from fuzzywuzzy import fuzz
-from itertools import compress
-import re
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 
 class Filter:
@@ -213,7 +216,7 @@ class Filter:
                 "fuzzy_match_scorer": fuzzy_match_scorer,
             }
         }
-        print(f"Added filter {new_filter}")
+        logger.info(f"Added filter {new_filter}")
         self.filters.update(new_filter)
 
     def add_instanceof_filter(self, property_id: str, include_class_tree: bool):
@@ -233,7 +236,7 @@ class Filter:
                 "include_class_tree": include_class_tree,
             }
         }
-        print(f"Added filter {new_filter}")
+        logger.info(f"Added filter {new_filter}")
         self.filters.update(new_filter)
 
     def add_date_filter(self, date_col: str, wiki_value: str, uncertainty: int):
@@ -257,7 +260,7 @@ class Filter:
             }
         }
 
-        print(f"Added filter {new_filter}")
+        logger.info(f"Added filter {new_filter}")
         self.filters.update(new_filter)
 
     def _get_aliases(self, res_df: pd.DataFrame, qcodes: list) -> list:
@@ -450,7 +453,7 @@ class Filter:
         else:
             instanceof_filter = property_id = include_class_tree = False
 
-        print("Running Wikidata query..")
+        logger.info("Running Wikidata query..")
         sparql_res = self._run_wikidata_query(
             self.qcodes_unique,
             instanceof_filter,
@@ -459,14 +462,14 @@ class Filter:
         )
         self.sparql_res = sparql_res
 
-        print("Applying filters...")
+        logger.debug("Applying filters...")
         self.df.loc[:, self.new_qcode_col] = self.df[self.qcode_col]
 
         # we only need to process the rows which don't already have an empty list
         df_to_process = self.df[self.df[self.new_qcode_col].map(lambda d: len(d)) > 0]
 
         if instanceof_filter:
-            print(f"Filter: instance of {property_id}")
+            logger.info(f"Filter: instance of {property_id}")
             qcodes_unique_filtered = sparql_res["qcode"].unique().tolist()
 
             for idx, row in tqdm(
@@ -481,7 +484,7 @@ class Filter:
 
         if "label" in self.filters:
             label_filter_args = self.filters["label"]
-            print(
+            logger.info(
                 f"Filter: check label similarity against column {label_filter_args['label_col']}"
             )
 
@@ -500,7 +503,7 @@ class Filter:
                     self.df[self.new_qcode_col].map(lambda d: len(d)) > 0
                 ]
                 date_filter_args = self.filters[f]
-                print(f"Filter: date ({date_filter_args['date_col']})")
+                logger.info(f"Filter: date ({date_filter_args['date_col']})")
                 for idx, row in tqdm(
                     df_to_process.iterrows(), total=df_to_process.shape[0]
                 ):
@@ -519,7 +522,9 @@ class Filter:
         if self.new_qcode_col in self.df.columns:
             return self.df
         else:
-            print("WARNING: filters not run against dataframe yet so nothing returned.")
+            logger.warn(
+                "WARNING: filters not run against dataframe yet so nothing returned."
+            )
 
     def view_stats(self):
         """
@@ -537,7 +542,7 @@ class Filter:
             100 * num_records_after_filter / num_records_total, 1
         )
 
-        print(
+        logger.info(
             f"No. records after filtering: {num_records_after_filter}/{num_records_total} ({perc_records_with_unique_match}%)"
         )
 
@@ -546,9 +551,9 @@ class Filter:
         Shows filters added so far. For use in an interactive environment.
         """
 
-        print("Filters: ")
+        logger.info("Filters: ")
 
         for k, v in self.filters.items():
-            print(f" - {k}: {v}")
+            logger.info(f" - {k}: {v}")
 
     # TODO: instance filters from_file, to_file

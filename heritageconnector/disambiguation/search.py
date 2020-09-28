@@ -1,12 +1,16 @@
 from heritageconnector.nlp.string_pairs import fuzzy_match
 from fuzzywuzzy import fuzz
+import pandas as pd
+import re
+
 from heritageconnector.base.disambiguation import TextSearch
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.data_transformation import assert_qid_format
 from heritageconnector.datastore import es
-import pandas as pd
-import re
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 
 class wikidata_text_search(TextSearch):
@@ -266,8 +270,8 @@ class es_text_search(TextSearch):
             elif kwargs["include_aliases"] is False:
                 field = "labels"
             else:
-                print(
-                    "WARNING: parameter include_aliases must be either True or False. Using default behaviour of including aliases."
+                logger.warn(
+                    "Parameter include_aliases must be either True or False. Using default behaviour of including aliases."
                 )
                 field = "labels_aliases"
         else:
