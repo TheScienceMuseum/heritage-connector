@@ -4,7 +4,8 @@ sys.path.append("..")
 
 from heritageconnector.namespace import XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, WD, WDT
 
-es_wikidata_idx = {"PERSON": "wikidump_humans"}
+
+wikidump_index = "wikidump2"
 
 mapping = {
     "PERSON": {
@@ -35,17 +36,21 @@ mapping = {
         "ID": {"type": "index"},
         # TODO: make PREFIX field when loading data
         "PREFIX": {"type": "prefix"},
-        "PREFERRED_NAME": {"RDF": RDFS.label, "type": "str"},
-        "DESCRIPTION": {"PID": "description", "RDF": XSD.description, "type": "str"},
+        "PREFERRED_NAME": {"RDF": RDFS.label, "type": "string"},
+        "DESCRIPTION": {
+            # "PID": "description",
+            "RDF": XSD.description,
+            "type": "str",
+        },
         "BRIEF_BIO": {
-            "PID": "description",
+            # "PID": "description",
             "RDF": XSD.disambiguatingDescription,
             "type": "str",
         },
-        "OCCUPATION": {"RDF": XSD.additionalType, "type": "list (str)"},
-        "NATIONALITY": {"RDF": SDO.nationality, "type": "list (str)"},
-        "BIRTH_DATE": {"PID": WDT.P571, "RDF": SDO.foundingDate, "type": "date"},
-        "DEATH_DATE": {"PID": WDT.P576, "RDF": SDO.dissolutionDate, "type": "date"},
+        "OCCUPATION": {"RDF": XSD.additionalType, "type": "categorical"},
+        "NATIONALITY": {"RDF": SDO.nationality, "type": "categorical"},
+        "BIRTH_DATE": {"PID": WDT.P571, "RDF": SDO.foundingDate, "type": "numeric"},
+        "DEATH_DATE": {"PID": WDT.P576, "RDF": SDO.dissolutionDate, "type": "numeric"},
     },
     "OBJECT": {
         "ID": {"type": "index"},

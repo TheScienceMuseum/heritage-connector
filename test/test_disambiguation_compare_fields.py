@@ -12,7 +12,7 @@ class TestSimilarities:
         assert compare_fields.similarity_string(["a", "b", "c"], ["d", "e", "f"]) == 0
 
     def test_numeric_similarity(self):
-        assert compare_fields.similarity_numeric(100, 50, normalize=True) == 50 / 75
+        assert compare_fields.similarity_numeric(100, 50) == 50 / 100
 
     def test_categorical_similarity(self):
         assert (
