@@ -73,17 +73,27 @@ def _process_wikidata_results(wikidata_results: pd.DataFrame) -> pd.DataFrame:
     )
 
     # firstname, lastname
-    for idx, row in wikidata_results.iterrows():
-        wikidata_results.loc[idx, "P735"] = (
-            firstname_from_label(row["itemLabel"]) if not row["P735"] else row["P735"]
-        )
-        wikidata_results.loc[idx, "P734"] = (
-            lastname_from_label(row["itemLabel"]) if not row["P734"] else row["P734"]
-        )
+    if "P735" in wikidata_results.columns and "P734" in wikidata_results.columns:
+        for idx, row in wikidata_results.iterrows():
+            wikidata_results.loc[idx, "P735"] = (
+                firstname_from_label(row["itemLabel"])
+                if not row["P735"]
+                else row["P735"]
+            )
+            wikidata_results.loc[idx, "P734"] = (
+                lastname_from_label(row["itemLabel"])
+                if not row["P734"]
+                else row["P734"]
+            )
 
     # date of birth, date of death
-    wikidata_results["P569"] = wikidata_results["P569"].apply(year_from_wiki_date)
-    wikidata_results["P570"] = wikidata_results["P570"].apply(year_from_wiki_date)
+    if "P569" in wikidata_results.columns and "P570" in wikidata_results.columns:
+        wikidata_results["P569"] = wikidata_results["P569"].apply(year_from_wiki_date)
+        wikidata_results["P570"] = wikidata_results["P570"].apply(year_from_wiki_date)
+
+    if "P571" in wikidata_results.columns and "P576" in wikidata_results.columns:
+        wikidata_results["P571"] = wikidata_results["P571"].apply(year_from_wiki_date)
+        wikidata_results["P576"] = wikidata_results["P576"].apply(year_from_wiki_date)
 
     # combine labels and aliases into one list: label
     wikidata_results["itemLabel"] = wikidata_results["itemLabel"].apply(
@@ -121,7 +131,7 @@ def build_training_data(
         Tuple[np.ndarray, np.ndarray]: X, y
     """
     table_mapping = field_mapping.mapping[table_name]
-    wd_index = field_mapping.es_wikidata_idx[table_name]
+    wd_index = field_mapping.wikidump_index
     search = es_text_search(index=wd_index)
 
     filtered_mapping = {
@@ -145,7 +155,8 @@ def build_training_data(
     X_list = []
     y_list = []
     ent_similarity_list = []
-    ent_similarities_lookup = {}  # in-memory caching for entity similarities
+    # in-memory caching for entity similarities, prefilled with case for where there is no type specified
+    ent_similarities_lookup = {hash((None, None)): 0}
     id_pair_list = []
 
     # get records with sameAs from Elasticsearch
@@ -224,16 +235,28 @@ def build_training_data(
             id_pairs = [[str(item_id), qid] for qid in qids_wikidata]
 
             # calculate instanceof distances
-            item_instanceof = url_to_qid(next(g.objects(predicate=RDF.type)))
-            wikidata_instanceof = wikidata_results_df.loc[
-                wikidata_results_df["id"] == item_id, "P31"
-            ].tolist()
+            try:
+                item_instanceof = url_to_qid(next(g.objects(predicate=RDF.type)))
+                wikidata_instanceof = wikidata_results_df.loc[
+                    wikidata_results_df["id"] == item_id, "P31"
+                ].tolist()
 
-            to_tuple = lambda x: tuple(x) if isinstance(x, list) else x
-            batch_instanceof_comparisons += [
-                (item_instanceof, to_tuple(url_to_qid(q, raise_invalid=False)))
-                for q in wikidata_instanceof
-            ]
+                to_tuple = lambda x: tuple(x) if isinstance(x, list) else x
+                batch_instanceof_comparisons += [
+                    (item_instanceof, to_tuple(url_to_qid(q, raise_invalid=False)))
+                    for q in wikidata_instanceof
+                ]
+            except:  # noqa: E722
+                batch_instanceof_comparisons += [
+                    (None, None)
+                    for q in range(
+                        len(
+                            wikidata_results_df.loc[
+                                wikidata_results_df["id"] == item_id, :
+                            ]
+                        )
+                    )
+                ]
 
             for key, value in filtered_mapping.items():
                 pid = (
@@ -282,15 +305,16 @@ def build_training_data(
 
         logger.debug("Finding distances between entities...")
         for ent_1, ent_2 in tqdm(batch_instanceof_comparisons_unique):
-            if isinstance(ent_2, list):
-                ent_set = {ent_1, tuple(ent_2)}
-            else:
-                ent_set = {ent_1, ent_2}
+            if (ent_1, ent_2) != (None, None):
+                if isinstance(ent_2, list):
+                    ent_set = {ent_1, tuple(ent_2)}
+                else:
+                    ent_set = {ent_1, ent_2}
 
-            if hash((ent_1, ent_2)) not in ent_similarities_lookup:
-                ent_similarities_lookup[
-                    hash((ent_1, ent_2))
-                ] = get_distance_between_entities_multiple(ent_set, reciprocal=True)
+                if hash((ent_1, ent_2)) not in ent_similarities_lookup:
+                    ent_similarities_lookup[
+                        hash((ent_1, ent_2))
+                    ] = get_distance_between_entities_multiple(ent_set, reciprocal=True)
 
         for ent_1, ent_2 in batch_instanceof_comparisons:
             ent_similarity_list.append(ent_similarities_lookup[hash((ent_1, ent_2))])
