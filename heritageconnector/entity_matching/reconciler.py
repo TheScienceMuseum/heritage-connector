@@ -2,6 +2,7 @@ import re
 import pandas as pd
 from collections import Counter
 from tqdm import tqdm
+from typing import Union
 from heritageconnector.disambiguation.search import wikidata_text_search
 from heritageconnector.config import config, field_mapping
 from heritageconnector.utils.sparql import get_sparql_results
@@ -74,7 +75,13 @@ class reconciler:
         else:
             return []
 
-    def process_column(self, column: str, multiple_vals: bool) -> pd.Series:
+    def process_column(
+        self,
+        column: str,
+        multiple_vals: bool,
+        pid: str = None,
+        instanceof_filter: Union[str, list] = None,
+    ) -> pd.Series:
         """
         Run reconciliation on a categorical column.
 
@@ -88,8 +95,13 @@ class reconciler:
             raise ValueError("Column not in dataframe columns.")
 
         # get PID and lookup filter (entity type) for PID
-        pid = self.get_column_pid(column)
-        lookup_filter = self.get_subject_items_from_pid(pid)
+        if not instanceof_filter and not pid:
+            pid = self.get_column_pid(column)
+            lookup_filter = self.get_subject_items_from_pid(pid)
+        elif not instanceof_filter:
+            lookup_filter = self.get_subject_items_from_pid(pid)
+        else:
+            lookup_filter = instanceof_filter
 
         if multiple_vals:
             all_vals = self.df[column].sum()
@@ -116,6 +128,7 @@ class reconciler:
 
         logger.info("Looking up Wikidata qcodes for unique items..")
         map_df["qid"] = map_df.index.to_series().progress_apply(lookup_value)
+        self._map_df = map_df
 
         if multiple_vals:
             return self.df[column].apply(
