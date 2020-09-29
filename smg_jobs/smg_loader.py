@@ -8,12 +8,14 @@ from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
 import json
 import string
+import re
 import os
 from tqdm.auto import tqdm
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
 from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
 from heritageconnector.utils.data_transformation import get_year_from_date_value
+from heritageconnector.entity_matching.lookup import get_internal_urls_from_wikidata
 from heritageconnector.utils.wikidata import qid_to_url
 from heritageconnector import logging
 
@@ -185,7 +187,7 @@ def load_maker_data():
 
 
 def load_user_data():
-    """Load object -> user -> people relationships from CSV files and add to existing records """
+    """Load object -> user -> people relationships from CSV files and add to existing records"""
     user_df = pd.read_csv(user_data_path, low_memory=False, nrows=max_records)
 
     user_df["MKEY"] = collection_prefix + user_df["MKEY"].astype(str)
@@ -196,6 +198,53 @@ def load_user_data():
     add_triples(user_df, PROV.used, subject_col="SUBJECT", object_col="OBJECT")
 
     return
+
+
+def load_sameas_people_orgs(pickle_path):
+    """
+    pickle_path points to a dataframe with a 'qcodes_filtered' column containing exact qcode matches for items
+    """
+
+    if os.path.exists(pickle_path):
+        df = pd.read_pickle(pickle_path)
+
+        df_links = df[df["qcodes_filtered"].apply(len) == 1]
+        df_links.loc[:, "QID"] = df_links.loc[:, "qcodes_filtered"].apply(
+            lambda i: i[0]
+        )
+        df_links = df_links[["LINK_ID", "QID"]]
+
+        # transform IDs to URLs
+        df_links["LINK_ID"] = df_links["LINK_ID"].apply(
+            lambda i: f"https://collection.sciencemuseumgroup.org.uk/people/cp{i}"
+        )
+        df_links["QID"] = df_links["QID"].apply(qid_to_url)
+
+        logger.info("adding sameAs relationships for people & orgs")
+        add_triples(df_links, OWL.sameAs, subject_col="LINK_ID", object_col="QID")
+
+    else:
+        logger.warn(
+            f"Path {pickle_path} does not exist. No sameAs relationships loaded for people & orgs."
+        )
+
+
+def load_sameas_from_wikidata():
+    """Load sameAs connections that already exist between the SMG records and Wikidata"""
+    logger.info("adding sameAs relationships from Wikidata")
+
+    connection_df = get_internal_urls_from_wikidata(
+        "collection.sciencemuseum.org.uk", config.WIKIDATA_SPARQL_ENDPOINT
+    )
+
+    # remove anything after c(o|d|p)(\d+)
+    connection_df["internalURL"] = connection_df["internalURL"].apply(
+        lambda x: re.findall(r"https://(?:\w.+)/c(?:o|d|p)(?:\d+)", x)[0]
+    )
+    connection_df["internalURL"] = connection_df["internalURL"].str.replace(
+        "sciencemuseum.org.uk", "sciencemuseumgroup.org.uk"
+    )
+    add_triples(connection_df, OWL.sameAs, subject_col="internalURL", object_col="item")
 
 
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
@@ -377,35 +426,6 @@ def serialize_to_jsonld(
     return json_ld_dict
 
 
-def load_sameas_people_orgs(pickle_path):
-    """
-    pickle_path points to a dataframe with a 'qcodes_filtered' column containing exact qcode matches for items
-    """
-
-    if os.path.exists(pickle_path):
-        df = pd.read_pickle(pickle_path)
-
-        df_links = df[df["qcodes_filtered"].apply(len) == 1]
-        df_links.loc[:, "QID"] = df_links.loc[:, "qcodes_filtered"].apply(
-            lambda i: i[0]
-        )
-        df_links = df_links[["LINK_ID", "QID"]]
-
-        # transform IDs to URLs
-        df_links["LINK_ID"] = df_links["LINK_ID"].apply(
-            lambda i: f"https://collection.sciencemuseumgroup.org.uk/people/cp{i}"
-        )
-        df_links["QID"] = df_links["QID"].apply(qid_to_url)
-
-        logger.info("adding sameAs relationships for people & orgs")
-        add_triples(df_links, OWL.sameAs, subject_col="LINK_ID", object_col="QID")
-
-    else:
-        logger.warn(
-            f"Path {pickle_path} does not exist. No sameAs relationships loaded for people & orgs."
-        )
-
-
 if __name__ == "__main__":
 
     datastore.create_index()
@@ -414,4 +434,5 @@ if __name__ == "__main__":
     load_object_data()
     load_maker_data()
     load_user_data()
+    load_sameas_from_wikidata()
     load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
