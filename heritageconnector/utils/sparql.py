@@ -37,8 +37,9 @@ def get_sparql_results(endpoint_url: str, query: str) -> dict:
     except urllib.error.HTTPError as e:
         if e.code == 429:
             logger.debug("429")
-            if isinstance(e.headers.get("retry-after", None), int):
-                time.sleep(e.headers["retry-after"])
+            if e.headers.get("retry-after", None):
+                logger.debug(f"Retrying after {e.headers['retry-after']} seconds")
+                time.sleep(int(e.headers["retry-after"]))
             else:
                 time.sleep(10)
             return get_sparql_results(endpoint_url, query)
