@@ -25,7 +25,7 @@ Steps
     # path_to_tdb2_db = path to an empty folder
     # path_for_rdf_file = filename to store the Elasticsearch RDF export
 
-    ./load_data_from_es $path_to_tdb2_db $path_for_rdf_file
+    ./load_data_from_es.sh $path_to_tdb2_db $path_for_rdf_file
 
     # --- 2. START FUSEKI SERVER ---
 
