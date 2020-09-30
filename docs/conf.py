@@ -62,9 +62,10 @@ html_static_path = ["_static"]
 html_theme_options = {
     "logo": "header.jpg",
     "logo_name": True,
-    # "github_user": "theScienceMuseum",
-    # "github_repo": "heritage-connector",
-    # "github_type": "star",
+    "page_width": "50%",
+    "github_user": "theScienceMuseum",
+    "github_repo": "heritage-connector",
+    "github_type": "star",
     # "github_count": False,
     "sidebar_collapse": True,
     "extra_nav_links": links,
