@@ -409,3 +409,47 @@ def raise_invalid_qid(qid: str) -> str:
 
     if len(re.findall(r"(Q\d+)", qid)) != 1:
         raise ValueError(f"QID {qid} is not a valid QID")
+
+
+def join_qids_for_sparql_values_clause(qids: list) -> str:
+    """
+    Return joined list of QIDs for VALUES clause in a SPARQL query.
+    E.g. VALUES ?item {wd:Q123 wd:Q234}
+
+    Args:
+        qids (list): list of QIDs
+
+    Returns:
+        str: QIDs formatted for VALUES clause
+    """
+
+    return " ".join([f"wd:{i}" for i in qids])
+
+
+def filter_qids_in_class_tree(qids: list, higher_class: str) -> list:
+    """
+    Returns filtered list of QIDs that exist in the class tree below the QID defined by 
+    `higher_class`. Raises if higher_class is not a valid QID.
+
+    Args:
+        qids (list): list of QIDs
+        higher_class (str): QID of higher class
+
+    Returns:
+        list
+    """
+
+    formatted_qids = join_qids_for_sparql_values_clause(qids)
+
+    # assume format of each item of qids has already been checked
+    # TODO: what's a good pattern for coordinating this checking so it's not done multiple times?
+    raise_invalid_qid(higher_class)
+
+    query = f"""SELECT * WHERE {{
+    VALUES ?item {{ {formatted_qids} }}
+    ?item wdt:P279* wd:{higher_class}.
+    }}"""
+
+    res = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)
+
+    return [url_to_qid(i["item"]["value"]) for i in res["results"]["bindings"]]
