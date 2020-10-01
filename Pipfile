@@ -13,6 +13,8 @@ scikit-learn = "*"
 pylint = "*"
 sphinx = "*"
 recommonmark = "*"
+coverage = "*"
+pytest-cov = "*"
 
 [packages]
 pre-commit = "*"
@@ -36,6 +38,7 @@ torch = "*"
 dgl = "==0.4.3"
 dglke = "*"
 click = "*"
+coverage = "*"
 
 [requires]
 python_version = "3.7"

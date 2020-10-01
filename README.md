@@ -29,11 +29,13 @@ Transforming text into data to extract meaning and make connections
 - Create a new branch / Pull Request for each new feature / unit of functionality
 
 ### Running tests
-Run `python -m pytest`.
+
+Run `python -m pytest` with optional `--cov=heritageconnector` for a coverage report.
 
 We use `pytest` for tests, and all tests are in *./test*. 
 
 ## Running
+
 To run web app (in development): `python -m heritageconnector.web.app`
 
 ## Deployment
