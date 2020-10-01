@@ -6,7 +6,7 @@ import re
 from heritageconnector.nlp.string_pairs import fuzzy_match
 from heritageconnector.utils.wikidata import entities
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.generic import add_dicts
+from heritageconnector.utils.generic import add_dicts, paginate_list
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.config import config
 from heritageconnector import logging
@@ -57,9 +57,7 @@ class Filter:
     def _run_wikidata_query_paginated(
         self, page_limit, qcodes: list, instance_of_filter: bool, **kwargs
     ):
-        qcodes_paginated = [
-            qcodes[i : i + page_limit] for i in range(0, len(qcodes), page_limit)
-        ]
+        qcodes_paginated = paginate_list(qcodes, page_limit)
 
         return pd.concat(
             [

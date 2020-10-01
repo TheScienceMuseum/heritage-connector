@@ -62,3 +62,9 @@ class TestGenericUtils:
         os.remove("cache")
 
         assert end - mid < mid - start
+
+    def test_paginate_list(self):
+        original_list = [1, 2, 3, 4, 5, 6, 7]
+        new_list = generic.paginate_list(original_list, page_size=3)
+
+        assert new_list == [[1, 2, 3], [4, 5, 6], [7]]

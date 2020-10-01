@@ -6,7 +6,7 @@ import os
 from itertools import product
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.generic import cache
+from heritageconnector.utils.generic import cache, paginate_list
 from heritageconnector import logging
 
 logger = logging.get_logger(__name__)
@@ -60,10 +60,8 @@ class entities:
             dict: raw JSON response from API
         """
 
-        qcodes_paginated = [
-            self.qcodes[i : i + self.page_limit]
-            for i in range(0, len(self.qcodes), self.page_limit)
-        ]
+        qcodes_paginated = paginate_list(self.qcodes, self.page_limit)
+
         all_responses = {}
         logger.info(
             f"Getting {len(self.qcodes)} wikidata documents in pages of {self.page_limit}"

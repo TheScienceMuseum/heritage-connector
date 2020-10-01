@@ -3,6 +3,7 @@ import requests
 from itertools import islice
 import shelve
 import functools
+from typing import List
 
 
 def extract_json_values(obj: dict, key: str) -> list:
@@ -60,6 +61,23 @@ def flatten_list_of_lists(l: list) -> list:
     """
 
     return [item for sublist in l for item in sublist]
+
+
+def paginate_list(l: list, page_size: int) -> List[list]:
+    """
+    Returns a list of lists, where each sublist is a page of the original list with
+    size `page_size`. (The last list will be of size less than `page_size` if len(l)
+    isn't a perfect multiple of `page_size`).
+
+    Args:
+        l (list): flat list
+        page_size (int)
+
+    Returns:
+        List[list]: paginated
+    """
+
+    return [l[i : i + page_size] for i in range(0, len(l), page_size)]
 
 
 def paginate_generator(generator, page_size: int):
