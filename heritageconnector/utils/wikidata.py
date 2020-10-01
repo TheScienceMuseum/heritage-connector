@@ -426,29 +426,44 @@ def join_qids_for_sparql_values_clause(qids: list) -> str:
     return " ".join([f"wd:{i}" for i in qids])
 
 
-def filter_qids_in_class_tree(qids: list, higher_class: str) -> list:
+def filter_qids_in_class_tree(qids: list, higher_class: Union[str, list]) -> list:
     """
-    Returns filtered list of QIDs that exist in the class tree below the QID defined by 
-    `higher_class`. Raises if higher_class is not a valid QID.
+    Returns filtered list of QIDs that exist in the class tree below the QID or any of 
+    the QIDs defined by `higher_class`. Raises if higher_class is not a valid QID.
 
     Args:
         qids (list): list of QIDs
-        higher_class (str): QID of higher class
+        higher_class (Union[str, list]): QID of higher class
 
     Returns:
-        list
+        list: unique list of filtered QIDs
     """
 
     formatted_qids = join_qids_for_sparql_values_clause(qids)
 
     # assume format of each item of qids has already been checked
     # TODO: what's a good pattern for coordinating this checking so it's not done multiple times?
-    raise_invalid_qid(higher_class)
 
-    query = f"""SELECT * WHERE {{
-    VALUES ?item {{ {formatted_qids} }}
-    ?item wdt:P279* wd:{higher_class}.
-    }}"""
+    if isinstance(higher_class, str):
+        raise_invalid_qid(higher_class)
+
+        query = f"""SELECT DISTINCT ?item WHERE {{
+        VALUES ?item {{ {formatted_qids} }}
+        ?item wdt:P279* wd:{higher_class}.
+        }}"""
+
+    elif isinstance(higher_class, list):
+        [raise_invalid_qid(c) for c in higher_class]
+        classes_str = ", ".join(["wd:" + x for x in higher_class])
+
+        query = f"""SELECT DISTINCT ?item WHERE {{
+        VALUES ?item {{ {formatted_qids} }}
+        ?item wdt:P279* ?tree.
+        FILTER (?tree in ({classes_str}))
+        }}"""
+
+    else:
+        raise ValueError("Variable higher_class must be either string or list.")
 
     res = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)
 

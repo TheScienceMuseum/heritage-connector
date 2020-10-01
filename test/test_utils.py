@@ -36,6 +36,15 @@ class TestWikidataUtils:
         assert isinstance(filtered_qids, list)
         assert len(filtered_qids) == 2
 
+    def test_filter_qids_in_class_tree_multiple(self):
+        filtered_qids_2 = wikidata.filter_qids_in_class_tree(
+            ["Q83463949", "Q83463824", "Q16917", "Q15944511", "Q12823105"],
+            ["Q43229", "Q618123"],
+        )
+
+        assert isinstance(filtered_qids_2, list)
+        assert len(filtered_qids_2) == 3
+
 
 class TestGenericUtils:
     def test_cache(self):
