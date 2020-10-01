@@ -322,21 +322,22 @@ def get_internal_urls_from_wikidata(
     url_pattern: str, wikidata_endpoint="https://query.wikidata.org/sparql"
 ):
     """
-    Get all Wikidata records with property P973 'described at URL' following the pattern in url_pattern. 
+    Get all Wikidata records with property P973 'described at URL' following the pattern in url_pattern. HTTPS is enforced on internal URLs, 
+    but Wikidata URLs start with "http://".
 
     Args:
         url_pattern (str): the regex pattern to describe collection URLs. The Science Museum's is 'collection.sciencemuseum.org.uk'.
         wikidata_endpoint (str, optional): SPARQL endpoint for Wikidata. Defaults to "https://query.wikidata.org/sparql".
 
     Returns:
-        pd.DataFrame: columns item (qcode), itemLabel (label) and URL (internal URL)
+        pd.DataFrame: columns item (Wikidata URL), itemLabel (label) and internalURL (internal URL)
     """
 
     query = f"""
-        SELECT DISTINCT ?item ?itemLabel ?URL WHERE {{
-            ?item wdt:P973 ?URL
+        SELECT DISTINCT ?item ?itemLabel ?internalURL WHERE {{
+            ?item wdt:P973 ?internalURL
 
-            filter( regex(str(?URL), "{url_pattern}" ) )
+            filter( regex(str(?internalURL), "{url_pattern}" ) )
 
             SERVICE wikibase:label {{
             bd:serviceParam wikibase:language "en" .
@@ -348,9 +349,12 @@ def get_internal_urls_from_wikidata(
     res_df = pd.json_normalize(res)
 
     if len(res_df) > 0:
-        res_df = res_df[["item.value", "itemLabel.value", "URL.value"]].rename(
+        res_df = res_df[["item.value", "itemLabel.value", "internalURL.value"]].rename(
             columns=lambda x: x.replace(".value", "")
         )
-        res_df["item"] = res_df["item"].apply(lambda i: re.findall(r"(Q\d+)", i)[0])
+
+        res_df["internalURL"] = res_df["internalURL"].apply(
+            lambda x: x.replace("http://", "https://")
+        )
 
     return res_df
