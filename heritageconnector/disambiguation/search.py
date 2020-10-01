@@ -227,7 +227,7 @@ class wikipedia_text_search(TextSearch):
 
 
 class es_text_search(TextSearch):
-    def __init__(self, index: str):
+    def __init__(self, index: str = config.ELASTIC_SEARCH_WIKI_INDEX):
         """
         Args:
             index (str): Elasticsearch index to search
