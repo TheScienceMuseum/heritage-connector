@@ -81,7 +81,8 @@ class reconciler:
         column: str,
         multiple_vals: bool,
         pid: str = None,
-        instanceof_filter: Union[str, list] = None,
+        class_include: Union[str, list] = None,
+        class_exclude: Union[str, list] = None,
         text_similarity_thresh: int = 95,
     ) -> pd.Series:
         """
@@ -97,13 +98,11 @@ class reconciler:
             raise ValueError("Column not in dataframe columns.")
 
         # get PID and lookup filter (entity type) for PID
-        if not instanceof_filter and not pid:
+        if not class_include and not pid:
             pid = self.get_column_pid(column)
-            lookup_filter = self.get_subject_items_from_pid(pid)
-        elif not instanceof_filter:
-            lookup_filter = self.get_subject_items_from_pid(pid)
-        else:
-            lookup_filter = instanceof_filter
+            class_include = self.get_subject_items_from_pid(pid)
+        elif not class_include:
+            class_include = self.get_subject_items_from_pid(pid)
 
         if multiple_vals:
             all_vals = self.df[column].sum()
@@ -137,7 +136,7 @@ class reconciler:
         instanceof_unique = set(map_df["qids"].sum())
 
         # return only values that exist in subclass tree
-        logger.info(f"Filtering to values in subclass tree of {lookup_filter}")
+        logger.info(f"Filtering to values in subclass tree of {class_include}")
         # 50 seems like a sensible size given this is the page size commonly used on the wb APIs
         instanceof_unique_paginated = paginate_list(
             list(instanceof_unique), page_size=50
@@ -145,7 +144,9 @@ class reconciler:
         instanceof_filtered = []
 
         for page in tqdm(instanceof_unique_paginated):
-            instanceof_filtered += filter_qids_in_class_tree(page, lookup_filter)
+            instanceof_filtered += filter_qids_in_class_tree(
+                page, class_include, class_exclude
+            )
 
         self.instanceof_filtered = instanceof_filtered
 
