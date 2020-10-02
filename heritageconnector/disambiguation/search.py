@@ -288,7 +288,11 @@ class es_text_search(TextSearch):
 
         body = {"query": {"match": {field: text}}}
         res = es.search(
-            index=self.index, body=body, size=int(limit * duplicate_safety_factor)
+            index=self.index,
+            body=body,
+            size=min(
+                int(limit * duplicate_safety_factor), 10000 / duplicate_safety_factor
+            ),
         )["hits"]["hits"]
 
         if len(res) > 0:

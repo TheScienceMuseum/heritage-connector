@@ -120,7 +120,12 @@ class reconciler:
 
         def lookup_value(text):
             qids = search.run_search(
-                text, return_instanceof=False, similarity_thresh=text_similarity_thresh
+                # limit is large here as we want to fetch all the results then filter them by
+                # text similarity later
+                text,
+                limit=5000,
+                return_instanceof=False,
+                similarity_thresh=text_similarity_thresh,
             )
 
             return qids
@@ -157,8 +162,26 @@ class reconciler:
 
         self._map_df = map_df
 
+        return self.create_column_from_map_df(column, map_df, multiple_vals)
+
+    def create_column_from_map_df(
+        self, original_column: str, map_df: pd.DataFrame, multiple_vals: bool
+    ) -> pd.Series:
+        """
+        Creates a column 
+
+        Args:
+            original_column (str): column to apply the transform to
+            map_df (pd.DataFrame): dataframe containing unique column values and their mapping to Wikidata entities
+            multiple_vals (bool): whether items in the original dataframe column contain multiple values per element
+                (elements are lists)
+
+        Returns:
+            pd.Series: transformed column
+        """
+
         if multiple_vals:
-            return self.df[column].apply(
+            return self.df[original_column].apply(
                 lambda x: map_df.loc[
                     [i for i in x if i != ""], "filtered_qids"
                 ].values.sum()
@@ -166,6 +189,6 @@ class reconciler:
                 else []
             )
         else:
-            return self.df[column].apply(
+            return self.df[original_column].apply(
                 lambda x: map_df.loc[x, "filtered_qids"] if x != "" else []
             )
