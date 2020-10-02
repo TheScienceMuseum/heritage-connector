@@ -448,6 +448,7 @@ def filter_qids_in_class_tree(qids: list, higher_class: Union[str, list]) -> lis
         query = f"""SELECT DISTINCT ?item WHERE {{
         VALUES ?item {{ {formatted_qids} }}
         ?item wdt:P279* wd:{higher_class}.
+        hint:Prior hint:gearing "forward".
         }}"""
 
     elif isinstance(higher_class, list):
@@ -458,6 +459,7 @@ def filter_qids_in_class_tree(qids: list, higher_class: Union[str, list]) -> lis
         VALUES ?item {{ {formatted_qids} }}
         ?item wdt:P279* ?tree.
         FILTER (?tree in ({classes_str}))
+        hint:Prior hint:gearing "forward".
         }}"""
 
     else:
