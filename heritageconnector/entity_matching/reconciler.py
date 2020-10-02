@@ -83,15 +83,26 @@ class reconciler:
         pid: str = None,
         class_include: Union[str, list] = None,
         class_exclude: Union[str, list] = None,
+        search_limit_per_item: int = 5000,
         text_similarity_thresh: int = 95,
     ) -> pd.Series:
         """
         Run reconciliation on a categorical column.
 
         Args:
-            column (str)
+            column (str): column to reconcile.
             multiple_vals (bool): whether the column contains multiple values per record. 
-            If values are: lists -> True, strings -> False.
+                If values are: lists -> True, strings -> False.
+            pid (str, Optional): Wikidata PID of the selected column. Only needed to look up a class 
+                constraint using 'subject item of this property' (P1629).
+            class_include (Union[str, list], Optional): class tree to look under. Will be ignored if 
+                PID is specified. Defaults to None.
+            class_exclude (Union[str, list], Optional): class trees containing this class (above the entity)
+                will be excluded. Defaults to None.
+            search_limit_per_item (int): Number of results to return from the Elasticsearch index per search.
+                Set lower (~200) for speed if queries are more unique. With a small limit some results for generic
+                queries may be missed. Defaults to 5000.
+            text_similarity_thresh (int). Text similarity threshold for a match. Defaults to 95.
         """
 
         if column not in self.df.columns:
@@ -123,7 +134,7 @@ class reconciler:
                 # limit is large here as we want to fetch all the results then filter them by
                 # text similarity later
                 text,
-                limit=5000,
+                limit=search_limit_per_item,
                 return_instanceof=False,
                 similarity_thresh=text_similarity_thresh,
             )

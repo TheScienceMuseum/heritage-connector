@@ -483,8 +483,8 @@ def filter_qids_in_class_tree(
         query = f"""SELECT DISTINCT ?item WHERE {{
         VALUES ?item {{ {formatted_qids} }}
         ?item wdt:P279* ?tree.
-        FILTER (?tree in ({classes_str}))
         hint:Prior hint:gearing "forward".
+        FILTER (?tree in ({classes_str}))
         {exclude_slug}
         }}"""
 
