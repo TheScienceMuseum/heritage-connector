@@ -26,7 +26,7 @@ class wikidata_text_search(TextSearch):
             limit (int, optional): Defaults to 100.
 
         Kwargs:
-            instanceof_filter (str/list): property or properties to filter values by instance of. 
+            instanceof_filter (str/list): property or properties to filter values by instance of.
             include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
             property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
 
@@ -116,7 +116,7 @@ class wikipedia_text_search(TextSearch):
         strings. If there are no tokens in common the similarity is set to zero.
 
         Returns:
-            int: similarity between 0 and 100. 
+            int: similarity between 0 and 100.
         """
 
         def tokenize(text) -> set:
@@ -133,15 +133,15 @@ class wikipedia_text_search(TextSearch):
 
     def run_search(self, text: str, limit=100, similarity_thresh=50, **kwargs):
         """
-        Run Wikipedia search, then rank and limit results based on string similarity. 
+        Run Wikipedia search, then rank and limit results based on string similarity.
 
         Args:
             text (str): text to search
             limit (int, optional): Defaults to 100.
-            similarity_thresh (int, optional): The text similarity cut-off to exclude items from search results. Defaults to 50. 
+            similarity_thresh (int, optional): The text similarity cut-off to exclude items from search results. Defaults to 50.
 
         Kwargs:
-            instanceof_filter (str/list): property or properties to filter values by instance of. 
+            instanceof_filter (str/list): property or properties to filter values by instance of.
             include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
             property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
 
@@ -243,7 +243,13 @@ class es_text_search(TextSearch):
         self.index = index
 
     def run_search(
-        self, text: str, limit=100, similarity_thresh=50, return_unique=True, **kwargs
+        self,
+        text: str,
+        limit=100,
+        similarity_thresh=50,
+        return_unique=True,
+        field_exists_filter: str = None,
+        **kwargs,
     ) -> list:
         """
         Run a text search on a Wikidata dump on Elasticsearch. Uses fields labels & aliases by default.
@@ -252,7 +258,9 @@ class es_text_search(TextSearch):
             text (str): text to search
             limit (int, optional): Defaults to 100.
             return_unique (bool, optional): whether to return unique IDs. Defaults to True.
-            similarity_thresh (int, optional): The text similarity cut-off to exclude items from search results. Defaults to 50. 
+            similarity_thresh (int, optional): the text similarity cut-off to exclude items from search results. Defaults to 50.
+            field_exists_filter (str, optional): if specified, all searches will be filtered to only documents which have a value for this field.
+                For example to filter to documents which have a P279 value, set `field_exists_filter = "claims.P279"`. Defaults to None.
 
         Kwargs:
             include_aliases (bool, optional): whether to include aliases in the fields to search. If not only labels are used.
@@ -286,12 +294,24 @@ class es_text_search(TextSearch):
         else:
             field = "labels_aliases"
 
-        body = {"query": {"match": {field: text}}}
+        if field_exists_filter:
+            body = {
+                "query": {
+                    "bool": {
+                        "should": {"match": {"labels_aliases": {"query": text}}},
+                        "filter": {"exists": {"field": field_exists_filter}},
+                    }
+                }
+            }
+        else:
+            body = {"query": {"match": {field: text}}}
+
         res = es.search(
             index=self.index,
             body=body,
             size=min(
-                int(limit * duplicate_safety_factor), 10000 / duplicate_safety_factor
+                int(limit * duplicate_safety_factor),
+                int(10000 / duplicate_safety_factor),
             ),
         )["hits"]["hits"]
 
@@ -354,7 +374,7 @@ def combine_results(search_results: list, topn=20) -> pd.Series:
 
     Args:
         search_results (list)
-        topn (int): the number of top results to return 
+        topn (int): the number of top results to return
 
     Return:
         pd.Series: Wikidata references, ranked by score
@@ -389,10 +409,10 @@ def run(
     Args:
         text (str): text to search
         limit (int, optional): Defaults to 100.
-        similarity_thresh (int, optional): The cut off to exclude items from search results. Defaults to 50. 
+        similarity_thresh (int, optional): The cut off to exclude items from search results. Defaults to 50.
 
     Kwargs:
-        instanceof_filter (str): the property to filter values by instance of. 
+        instanceof_filter (str): the property to filter values by instance of.
         include_class_tree (bool): whether to look in the subclass tree for the instance of filter.
         property_filters (dict): filters on exact values of properties you want to pass through. {property: value, ...}
 

@@ -85,6 +85,7 @@ class reconciler:
         class_exclude: Union[str, list] = None,
         search_limit_per_item: int = 5000,
         text_similarity_thresh: int = 95,
+        field_exists_filter: str = None,
     ) -> pd.Series:
         """
         Run reconciliation on a categorical column.
@@ -103,6 +104,9 @@ class reconciler:
                 Set lower (~200) for speed if queries are more unique. With a small limit some results for generic
                 queries may be missed. Defaults to 5000.
             text_similarity_thresh (int). Text similarity threshold for a match. Defaults to 95.
+            field_exists_filter (str, optional): if specified, all searches will be filtered to only documents which have a value for this field.
+                For example to filter to documents which have a P279 value, set `field_exists_filter = "claims.P279"`. Defaults to None.
+
         """
 
         if column not in self.df.columns:
@@ -137,6 +141,7 @@ class reconciler:
                 limit=search_limit_per_item,
                 return_instanceof=False,
                 similarity_thresh=text_similarity_thresh,
+                field_exists_filter=field_exists_filter,
             )
 
             return qids
