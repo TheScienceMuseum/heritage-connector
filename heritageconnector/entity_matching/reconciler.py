@@ -3,10 +3,11 @@ import pandas as pd
 from collections import Counter
 from tqdm import tqdm
 from typing import Union
-from heritageconnector.disambiguation.search import wikidata_text_search
+from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.config import config, field_mapping
+from heritageconnector.utils.generic import paginate_list
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.wikidata import url_to_qid
+from heritageconnector.utils.wikidata import url_to_qid, filter_qids_in_class_tree
 from heritageconnector import logging
 
 logger = logging.get_logger(__name__)
@@ -80,28 +81,39 @@ class reconciler:
         column: str,
         multiple_vals: bool,
         pid: str = None,
-        instanceof_filter: Union[str, list] = None,
+        class_include: Union[str, list] = None,
+        class_exclude: Union[str, list] = None,
+        search_limit_per_item: int = 5000,
+        text_similarity_thresh: int = 95,
     ) -> pd.Series:
         """
         Run reconciliation on a categorical column.
 
         Args:
-            column (str)
+            column (str): column to reconcile.
             multiple_vals (bool): whether the column contains multiple values per record. 
-            If values are: lists -> True, strings -> False.
+                If values are: lists -> True, strings -> False.
+            pid (str, Optional): Wikidata PID of the selected column. Only needed to look up a class 
+                constraint using 'subject item of this property' (P1629).
+            class_include (Union[str, list], Optional): class tree to look under. Will be ignored if 
+                PID is specified. Defaults to None.
+            class_exclude (Union[str, list], Optional): class trees containing this class (above the entity)
+                will be excluded. Defaults to None.
+            search_limit_per_item (int): Number of results to return from the Elasticsearch index per search.
+                Set lower (~200) for speed if queries are more unique. With a small limit some results for generic
+                queries may be missed. Defaults to 5000.
+            text_similarity_thresh (int). Text similarity threshold for a match. Defaults to 95.
         """
 
         if column not in self.df.columns:
             raise ValueError("Column not in dataframe columns.")
 
         # get PID and lookup filter (entity type) for PID
-        if not instanceof_filter and not pid:
+        if not class_include and not pid:
             pid = self.get_column_pid(column)
-            lookup_filter = self.get_subject_items_from_pid(pid)
-        elif not instanceof_filter:
-            lookup_filter = self.get_subject_items_from_pid(pid)
-        else:
-            lookup_filter = instanceof_filter
+            class_include = self.get_subject_items_from_pid(pid)
+        elif not class_include:
+            class_include = self.get_subject_items_from_pid(pid)
 
         if multiple_vals:
             all_vals = self.df[column].sum()
@@ -115,28 +127,79 @@ class reconciler:
         map_df = pd.DataFrame(val_count).rename(columns={0: "count"})
 
         #  look up QIDs for unique values
-        search = wikidata_text_search()
+        search = es_text_search()
 
         def lookup_value(text):
-            res_df = search.run_search(
-                text, instanceof_filter=lookup_filter, include_class_tree=True
+            qids = search.run_search(
+                # limit is large here as we want to fetch all the results then filter them by
+                # text similarity later
+                text,
+                limit=search_limit_per_item,
+                return_instanceof=False,
+                similarity_thresh=text_similarity_thresh,
             )
-            if len(res_df) == 0:
-                return []
-            else:
-                return [url_to_qid(i) for i in res_df["item"].tolist()]
 
-        logger.info("Looking up Wikidata qcodes for unique items..")
-        map_df["qid"] = map_df.index.to_series().progress_apply(lookup_value)
+            return qids
+
+        logger.info(
+            "Looking up Wikidata qcodes for items on Elasticsearch Wikidata dump"
+        )
+
+        map_df["qids"] = map_df.index.to_series().progress_apply(lookup_value)
         self._map_df = map_df
 
+        # get set of types to look up in subclass tree
+        instanceof_unique = set(map_df["qids"].sum())
+
+        # return only values that exist in subclass tree
+        logger.info(f"Filtering to values in subclass tree of {class_include}")
+        # 50 seems like a sensible size given this is the page size commonly used on the wb APIs
+        instanceof_unique_paginated = paginate_list(
+            list(instanceof_unique), page_size=50
+        )
+        instanceof_filtered = []
+
+        for page in tqdm(instanceof_unique_paginated):
+            instanceof_filtered += filter_qids_in_class_tree(
+                page, class_include, class_exclude
+            )
+
+        self.instanceof_filtered = instanceof_filtered
+
+        # filter found QIDs by those in instanceof_filtered
+        map_df["filtered_qids"] = map_df["qids"].apply(
+            lambda l: [i for i in l if i in instanceof_filtered]
+        )
+
+        self._map_df = map_df
+
+        return self.create_column_from_map_df(column, map_df, multiple_vals)
+
+    def create_column_from_map_df(
+        self, original_column: str, map_df: pd.DataFrame, multiple_vals: bool
+    ) -> pd.Series:
+        """
+        Creates a column 
+
+        Args:
+            original_column (str): column to apply the transform to
+            map_df (pd.DataFrame): dataframe containing unique column values and their mapping to Wikidata entities
+            multiple_vals (bool): whether items in the original dataframe column contain multiple values per element
+                (elements are lists)
+
+        Returns:
+            pd.Series: transformed column
+        """
+
         if multiple_vals:
-            return self.df[column].apply(
-                lambda x: map_df.loc[[i for i in x if i != ""], "qid"].values.sum()
+            return self.df[original_column].apply(
+                lambda x: map_df.loc[
+                    [i for i in x if i != ""], "filtered_qids"
+                ].values.sum()
                 if x != [""]
                 else []
             )
         else:
-            return self.df[column].apply(
-                lambda x: map_df.loc[x, "qid"] if x != "" else []
+            return self.df[original_column].apply(
+                lambda x: map_df.loc[x, "filtered_qids"] if x != "" else []
             )

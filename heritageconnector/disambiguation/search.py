@@ -1,10 +1,10 @@
-from heritageconnector.nlp.string_pairs import fuzzy_match
 from fuzzywuzzy import fuzz
 import pandas as pd
 import re
 
 from heritageconnector.base.disambiguation import TextSearch
 from heritageconnector.config import config
+from heritageconnector.nlp.string_pairs import fuzzy_match_lists
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.data_transformation import assert_qid_format
 from heritageconnector.datastore import es
@@ -138,7 +138,7 @@ class wikipedia_text_search(TextSearch):
         Args:
             text (str): text to search
             limit (int, optional): Defaults to 100.
-            similarity_thresh (int, optional): The cut off to exclude items from search results. Defaults to 50. 
+            similarity_thresh (int, optional): The text similarity cut-off to exclude items from search results. Defaults to 50. 
 
         Kwargs:
             instanceof_filter (str/list): property or properties to filter values by instance of. 
@@ -227,7 +227,7 @@ class wikipedia_text_search(TextSearch):
 
 
 class es_text_search(TextSearch):
-    def __init__(self, index: str):
+    def __init__(self, index: str = config.ELASTIC_SEARCH_WIKI_INDEX):
         """
         Args:
             index (str): Elasticsearch index to search
@@ -242,24 +242,33 @@ class es_text_search(TextSearch):
 
         self.index = index
 
-    def run_search(self, text: str, limit=100, return_unique=True, **kwargs) -> list:
+    def run_search(
+        self, text: str, limit=100, similarity_thresh=50, return_unique=True, **kwargs
+    ) -> list:
         """
-        Run a text search on a Wikidata dump on Elasticsearch. Uses fields labels, aliases by default.
+        Run a text search on a Wikidata dump on Elasticsearch. Uses fields labels & aliases by default.
 
         Args:
             text (str): text to search
             limit (int, optional): Defaults to 100.
             return_unique (bool, optional): whether to return unique IDs. Defaults to True.
+            similarity_thresh (int, optional): The text similarity cut-off to exclude items from search results. Defaults to 50. 
 
         Kwargs:
             include_aliases (bool, optional): whether to include aliases in the fields to search. If not only labels are used.
                 Defaults to True.
             return_instanceof (bool, optional): whether to include the value of the instance of (P31) property. Defaults to False.
+            fuzzy_scorer (fuzzywuzzy scorer, optional): the scorer to use for text similarity. Defaults to fuzz.ratio.
 
         Returns:
             list: list of QIDs of length *limit*
             dict (optional): dict of {QID: P31_value, ...} for all QIDs. For records with no P31 value, the corresponding value is None.
         """
+
+        if "fuzzy_scorer" not in kwargs:
+            fuzzy_scorer = fuzz.token_sort_ratio
+        else:
+            fuzzy_scorer = kwargs["fuzzy_scorer"]
 
         # get more results than we need to allow for removing values with return_unique flag
         duplicate_safety_factor = 1.2
@@ -279,18 +288,42 @@ class es_text_search(TextSearch):
 
         body = {"query": {"match": {field: text}}}
         res = es.search(
-            index=self.index, body=body, size=int(limit * duplicate_safety_factor)
+            index=self.index,
+            body=body,
+            size=min(
+                int(limit * duplicate_safety_factor), 10000 / duplicate_safety_factor
+            ),
         )["hits"]["hits"]
 
         if len(res) > 0:
             if return_unique:
                 # list(dict.fromkeys(a)) returns the unique values of a whilst maintaining order
-                qids = list(dict.fromkeys([item["_source"]["id"] for item in res]))[
-                    0:limit
-                ]
+                qids = list(
+                    dict.fromkeys(
+                        [
+                            item["_source"]["id"]
+                            for item in res
+                            if fuzzy_match_lists(
+                                item["_source"].get("labels", ""),
+                                text,
+                                threshold=similarity_thresh,
+                                scorer=fuzzy_scorer,
+                            )
+                        ]
+                    )
+                )[0:limit]
 
             else:
-                qids = [item["_source"]["id"] for item in res][0:limit]
+                qids = [
+                    item["_source"]["id"]
+                    for item in res
+                    if fuzzy_match_lists(
+                        item["_source"].get("labels", ""),
+                        text,
+                        threshold=similarity_thresh,
+                        scorer=fuzzy_scorer,
+                    )
+                ][0:limit]
         else:
             qids = []
 
@@ -299,6 +332,12 @@ class es_text_search(TextSearch):
                 item["_source"]["id"]: item["_source"]["claims"].get("P31", [None])
                 for item in res
                 if item["_source"]["id"] in qids
+                and fuzzy_match_lists(
+                    item["_source"].get("labels", ""),
+                    text,
+                    threshold=similarity_thresh,
+                    scorer=fuzzy_scorer,
+                )
             }
             qid_p31_dict = {
                 k: v[0] for k, v in qid_p31_dict.items() if isinstance(v, list)

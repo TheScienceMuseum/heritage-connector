@@ -6,8 +6,8 @@ import os
 from itertools import product
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.generic import cache
-from heritageconnector import logging
+from heritageconnector.utils.generic import cache, paginate_list
+from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
 
@@ -60,10 +60,8 @@ class entities:
             dict: raw JSON response from API
         """
 
-        qcodes_paginated = [
-            self.qcodes[i : i + self.page_limit]
-            for i in range(0, len(self.qcodes), self.page_limit)
-        ]
+        qcodes_paginated = paginate_list(self.qcodes, self.page_limit)
+
         all_responses = {}
         logger.info(
             f"Getting {len(self.qcodes)} wikidata documents in pages of {self.page_limit}"
@@ -409,3 +407,90 @@ def raise_invalid_qid(qid: str) -> str:
 
     if len(re.findall(r"(Q\d+)", qid)) != 1:
         raise ValueError(f"QID {qid} is not a valid QID")
+
+
+def join_qids_for_sparql_values_clause(qids: list) -> str:
+    """
+    Return joined list of QIDs for VALUES clause in a SPARQL query.
+    E.g. VALUES ?item {wd:Q123 wd:Q234}
+
+    Args:
+        qids (list): list of QIDs
+
+    Returns:
+        str: QIDs formatted for VALUES clause
+    """
+
+    return " ".join([f"wd:{i}" for i in qids])
+
+
+def filter_qids_in_class_tree(
+    qids: list, higher_class: Union[str, list], classes_exclude: Union[str, list] = None
+) -> list:
+    """
+    Returns filtered list of QIDs that exist in the class tree below the QID or any of 
+    the QIDs defined by `higher_class`. Raises if higher_class is not a valid QID.
+
+    Args:
+        qids (list): list of QIDs
+        higher_class (Union[str, list]): QID or QIDs of higher class to filter on
+        classes_exclude (Union[str, list]): QID or QIDs of higher classes to exclude. Defaults to None.
+
+    Returns:
+        list: unique list of filtered QIDs
+    """
+
+    formatted_qids = join_qids_for_sparql_values_clause(qids)
+
+    # assume format of each item of qids has already been checked
+    # TODO: what's a good pattern for coordinating this checking so it's not done multiple times?
+
+    generate_exclude_slug = (
+        lambda c: f"""MINUS {{?item wdt:P279* wd:{c}. hint:Prior hint:gearing "forward".}}."""
+    )
+
+    if classes_exclude:
+        if isinstance(classes_exclude, str):
+            raise_invalid_qid(classes_exclude)
+            exclude_slug = generate_exclude_slug(classes_exclude)
+
+        elif isinstance(classes_exclude, list):
+            [raise_invalid_qid(c) for c in classes_exclude]
+            exclude_slug = "\n".join(
+                [generate_exclude_slug(c) for c in classes_exclude]
+            )
+
+        else:
+            errors.raise_must_be_str_or_list("classes_exclude")
+
+    else:
+        exclude_slug = ""
+
+    if isinstance(higher_class, str):
+        raise_invalid_qid(higher_class)
+
+        query = f"""SELECT DISTINCT ?item WHERE {{
+        VALUES ?item {{ {formatted_qids} }}
+        ?item wdt:P279* wd:{higher_class}.
+        hint:Prior hint:gearing "forward".
+        {exclude_slug}
+        }}"""
+
+    elif isinstance(higher_class, list):
+        [raise_invalid_qid(c) for c in higher_class]
+        classes_str = ", ".join(["wd:" + x for x in higher_class])
+
+        query = f"""SELECT DISTINCT ?item WHERE {{
+        VALUES ?item {{ {formatted_qids} }}
+        ?item wdt:P279* ?tree.
+        hint:Prior hint:gearing "forward".
+        FILTER (?tree in ({classes_str}))
+        {exclude_slug}
+        }}"""
+
+    else:
+        errors.raise_must_be_str_or_list("higher_class")
+
+    res = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)
+
+    return [url_to_qid(i["item"]["value"]) for i in res["results"]["bindings"]]

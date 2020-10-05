@@ -28,6 +28,23 @@ class TestWikidataUtils:
         assert (end - mid) < (mid - start)
         assert (end - mid) < 0.4
 
+    def test_filter_qids_in_class_tree(self):
+        filtered_qids = wikidata.filter_qids_in_class_tree(
+            ["Q83463949", "Q83463824", "Q16917", "Q15944511"], "Q43229"
+        )
+
+        assert isinstance(filtered_qids, list)
+        assert len(filtered_qids) == 2
+
+    def test_filter_qids_in_class_tree_multiple(self):
+        filtered_qids_2 = wikidata.filter_qids_in_class_tree(
+            ["Q83463949", "Q83463824", "Q16917", "Q15944511", "Q12823105"],
+            ["Q43229", "Q618123"],
+        )
+
+        assert isinstance(filtered_qids_2, list)
+        assert len(filtered_qids_2) == 3
+
 
 class TestGenericUtils:
     def test_cache(self):
@@ -45,3 +62,9 @@ class TestGenericUtils:
         os.remove("cache")
 
         assert end - mid < mid - start
+
+    def test_paginate_list(self):
+        original_list = [1, 2, 3, 4, 5, 6, 7]
+        new_list = generic.paginate_list(original_list, page_size=3)
+
+        assert new_list == [[1, 2, 3], [4, 5, 6], [7]]

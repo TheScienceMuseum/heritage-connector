@@ -1,5 +1,8 @@
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.wikidata import url_to_qid
+from heritageconnector.utils.wikidata import (
+    url_to_qid,
+    join_qids_for_sparql_values_clause,
+)
 from heritageconnector.utils.generic import flatten_list_of_lists
 from heritageconnector.config import config
 import pandas as pd
@@ -34,7 +37,7 @@ def get_wikidata_fields(
 
     endpoint = config.WIKIDATA_SPARQL_ENDPOINT
 
-    sparq_qids = " ".join([f"(wd:{i})" for i in qids])
+    sparq_qids = join_qids_for_sparql_values_clause(qids)
     if pids_nolabel:
         select_slug = (
             "?"
@@ -49,7 +52,7 @@ def get_wikidata_fields(
     query = f"""
         SELECT ?item ?itemLabel ?itemDescription ?altLabel {select_slug}
             WHERE {{
-                VALUES (?item) {{ {sparq_qids} }}
+                VALUES ?item {{ {sparq_qids} }}
                 {body_exp}
 
                 OPTIONAL {{
