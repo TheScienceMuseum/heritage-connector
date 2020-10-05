@@ -32,3 +32,12 @@ def test_es_text_search():
     assert len(res1) > 0
     assert len(res2) > 0
     assert len(res2) < len(res1)
+    assert len(list(set(res1))) == len(res1)
+    assert len(list(set(res2))) == len(res2)
+
+    # this result will contain 'phonograph' as well without the `return_exact_only` flag
+    res3 = s.run_search(
+        "photograph", return_exact_only=True, field_exists_filter="claims.P279",
+    )
+
+    assert res3 == ["Q125191"]

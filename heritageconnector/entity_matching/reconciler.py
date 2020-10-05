@@ -142,6 +142,7 @@ class reconciler:
                 return_instanceof=False,
                 similarity_thresh=text_similarity_thresh,
                 field_exists_filter=field_exists_filter,
+                return_exact_only=True,
             )
 
             return qids
