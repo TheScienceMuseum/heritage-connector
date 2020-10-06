@@ -3,6 +3,7 @@ import pandas as pd
 from collections import Counter
 from tqdm import tqdm
 import os
+from ast import literal_eval
 from typing import Union
 from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.config import config, field_mapping
@@ -186,14 +187,16 @@ class reconciler:
 
         # return self.create_column_from_map_df(column, map_df, multiple_vals)
 
-    def export_map_df(self):
+    def export_map_df(self, file_path: str = None):
         """
         Export dataframe of unique column values and their reconciled QIDs to a CSV file
         """
 
-        filename = "reconciliation_" + self.table + "_" + get_timestamp() + ".csv"
-
-        self.current_file_path = os.path.join(config.DATA_FOLDER, filename)
+        if file_path:
+            self.current_file_path = file_path
+        else:
+            filename = "reconciliation_" + self.table + "_" + get_timestamp() + ".csv"
+            self.current_file_path = os.path.join(config.DATA_FOLDER, filename)
 
         self._map_df.sort_values("count", ascending=False).to_csv(
             self.current_file_path, sep="\t"
@@ -222,6 +225,10 @@ class reconciler:
             self._map_df_imported = pd.read_csv(
                 self.current_file_path, sep="\t", index_col=0
             )
+
+        # turn list columns back into lists (from strings)
+        for col in ["qids", "filtered_qids"]:
+            self._map_df_imported[col] = self._map_df_imported[col].apply(literal_eval)
 
     def create_column_from_map_df(self, original_column: str) -> pd.Series:
         """
