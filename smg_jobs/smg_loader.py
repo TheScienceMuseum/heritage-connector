@@ -247,6 +247,46 @@ def load_sameas_from_wikidata():
     add_triples(connection_df, OWL.sameAs, subject_col="internalURL", object_col="item")
 
 
+def load_organisation_types(org_type_df_path):
+    logger.info("adding resolved organisation types")
+
+    org_type_df = pd.read_pickle(org_type_df_path)
+    org_type_df = org_type_df.loc[
+        org_type_df["OCCUPATION_resolved"].apply(len) > 0,
+        ["LINK_ID", "OCCUPATION_resolved"],
+    ]
+
+    org_type_df["LINK_ID"] = org_type_df["LINK_ID"].astype(str)
+    org_type_df["ID"] = people_prefix + org_type_df["LINK_ID"]
+    org_type_df["OCCUPATION_resolved"] = org_type_df["OCCUPATION_resolved"].apply(
+        qid_to_url
+    )
+
+    add_triples(
+        org_type_df, RDF.type, subject_col="ID", object_col="OCCUPATION_resolved"
+    )
+
+
+def load_object_types(object_type_df_path):
+    logger.info("adding resolved object types")
+
+    object_type_df = pd.read_pickle(object_type_df_path)
+    object_type_df = object_type_df.loc[
+        object_type_df["ITEM_NAME_resolved"].apply(len) > 0,
+        ["MKEY", "ITEM_NAME_resolved"],
+    ]
+
+    object_type_df["MKEY"] = object_type_df["MKEY"].astype(str)
+    object_type_df["ID"] = collection_prefix + object_type_df["MKEY"]
+    object_type_df["ITEM_NAME_resolved"] = object_type_df["ITEM_NAME_resolved"].apply(
+        qid_to_url
+    )
+
+    add_triples(
+        object_type_df, RDF.type, subject_col="ID", object_col="ITEM_NAME_resolved"
+    )
+
+
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
 
 
@@ -307,7 +347,11 @@ def record_create_generator(table_name, df, add_type):
 
 
 def add_triples(df, predicate, subject_col="SUBJECT", object_col="OBJECT"):
-    """Add triples with RDF predicate and dataframe containing subject and object columns"""
+    """
+    Add triples with RDF predicate and dataframe containing subject and object columns.
+    Values in object_col can either be string or list. If list, a one subject to many 
+    objects relationship is assumed.
+    """
 
     generator = record_update_generator(df, predicate, subject_col, object_col)
     datastore.es_bulk(generator, len(df))
@@ -318,7 +362,13 @@ def record_update_generator(df, predicate, subject_col="SUBJECT", object_col="OB
 
     for _, row in df.iterrows():
         g = Graph()
-        g.add((URIRef(row[subject_col]), predicate, URIRef(row[object_col])))
+        if isinstance(row[object_col], str):
+            g.add((URIRef(row[subject_col]), predicate, URIRef(row[object_col])))
+        elif isinstance(row[object_col], list):
+            [
+                g.add((URIRef(row[subject_col]), predicate, URIRef(v)))
+                for v in row[object_col]
+            ]
 
         jsonld_dict = json.loads(
             g.serialize(format="json-ld", context=context, indent=4)
@@ -436,3 +486,5 @@ if __name__ == "__main__":
     load_user_data()
     load_sameas_from_wikidata()
     load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
