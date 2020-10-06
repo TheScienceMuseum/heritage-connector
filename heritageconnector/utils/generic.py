@@ -3,6 +3,7 @@ import requests
 from itertools import islice
 import shelve
 import functools
+import time
 from typing import List
 
 
@@ -135,3 +136,11 @@ def cache(filename: str):
         return functools.update_wrapper(wrapper, user_function)
 
     return decorating_function
+
+
+def get_timestamp() -> str:
+    """
+    For timestamped filenames
+    """
+
+    return time.strftime("%Y%m%d-%H%M")
