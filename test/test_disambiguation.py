@@ -8,7 +8,7 @@ def test_get_wikidata_fields():
 
     assert res_df.shape == (2, 6)
     assert set(res_df.columns.tolist()) == set(
-        ["item", "itemLabel", "itemDescription", "altLabel", "P569", "P570"]
+        ["qid", "label", "description", "aliases", "P569", "P570"]
     )
 
 

@@ -4,12 +4,144 @@ from tqdm import tqdm
 import re
 import os
 from itertools import product
+import pandas as pd
+from elastic_wikidata.wd_entities import get_entities, simplify_wbgetentities_result
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.generic import cache, paginate_list
 from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
+
+
+class wbentities:
+    def __init__(self, api_timeout=6):
+        self.timeout = api_timeout
+        self.ge = get_entities()
+
+    def get_properties(
+        self,
+        qids: list,
+        pids: list,
+        pids_to_label: Union[list, str] = None,
+        page_size: int = 50,
+    ) -> pd.DataFrame:
+        """
+        Get Wikidata properties specified by `pids` and `pids_to_label` for entities specified by `qids`.
+
+        Args:
+            qids (list): list of Wikidata entities
+            pids (list): list of Wikidata properties
+            pids_to_label (Union[list, str], optional): list of Wikidata properties to get labels for (if their values are entities).
+                Use "all" to get labels for all PIDs; None to get labels for no PIDs; or a list of PIDs to get labels for a subset of PIDs.
+                If any PIDs in `pids_to_label` aren't in `pids`, values will still be returned for them. Defaults to None.
+            page_size (int, optional): page size for API calls. Defaults to 50.
+
+        Returns:
+            pd.DataFrame: table of specified property values for entities, with null values specified by empty strings.
+        """
+        res_generator = self.ge.result_generator(
+            qids, page_limit=page_size, timeout=self.timeout
+        )
+
+        if pids_to_label is not None:
+            if isinstance(pids_to_label, list):
+                pids_all = pids + pids_to_label
+            elif pids_to_label == "all":
+                pids_all = pids
+                pids_to_label = pids_all
+
+        docs = [
+            simplify_wbgetentities_result(doc, lang="en", properties=pids_all)
+            for doc in res_generator
+        ][0]
+        doc_df = pd.json_normalize(docs)
+
+        # add columns with empty string values for any that are missing
+        proposed_cols = self._pids_to_df_cols(pids_all)
+        actual_cols = [col for col in doc_df.columns if col.startswith("claims")]
+        extra_cols = list(set(proposed_cols) - set(actual_cols))
+
+        for c in extra_cols:
+            doc_df[c] = ""
+
+        self.doc_df = doc_df
+
+        if pids_to_label is not None:
+            self.get_labels_for_properties(pids_to_label)
+
+    def _pids_to_df_cols(self, pids: list) -> list:
+        """Transform PIDs to doc_df column names: P79 -> claims.P79"""
+        return [f"claims.{pid}" for pid in pids]
+
+    def _replace_qid_with_label(self, v):
+        """Replace QID with label from qid_label_mapping. Return original value if 
+        QID is not in keys of qid_label_mapping."""
+        if (not isinstance(v, list)) or len(v) == 0:
+            return v
+
+        else:
+            return [self.qid_label_mapping.get(i, i) for i in v]
+
+    def _copy_and_clean_df_for_export(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Replace one-item lists with strings across the dataframe.
+        Replace empty lists with empty strings.
+        Replace nan values with empty strings.
+        """
+
+        export_df = df.copy()
+
+        export_df = export_df.applymap(
+            lambda i: i[0] if isinstance(i, list) and len(i) == 1 else i
+        )
+        export_df = export_df.applymap(
+            lambda i: "" if isinstance(i, list) and len(i) == 0 else i
+        )
+        export_df = export_df.fillna("")
+
+        return export_df
+
+    def get_labels_for_properties(self, pids: list):
+        """
+        Get labels for properties and add to self.doc_df.
+
+        Args:
+            pids (list): PIDs to get labels for
+        """
+        cols = self._pids_to_df_cols(pids)
+
+        # make list of qids to get labels for
+        qids_getlabels = []
+        for idx, row in self.doc_df.iterrows():
+            for col in cols:
+                if isinstance(row[col], str) and is_qid(row[col]):
+                    qids_getlabels.append(row[col])
+
+                elif isinstance(row[col], list):
+                    [qids_getlabels.append(val) for val in row[col] if is_qid(val)]
+
+        # get labels if the list is not empty
+        if len(qids_getlabels) > 0:
+            qids_getlabels = list(set(qids_getlabels))
+            self.qid_label_mapping = self.ge.get_labels(
+                qids_getlabels, timeout=self.timeout
+            )
+
+            for col in cols:
+                self.doc_df[col] = self.doc_df[col].map(
+                    lambda i: self._replace_qid_with_label(i)
+                )
+
+    def get_results(self) -> pd.DataFrame:
+        """
+        Get dataframe with results.
+
+        Returns:
+            pd.DataFrame
+        """
+
+        return self._copy_and_clean_df_for_export(self.doc_df)
 
 
 @cache(os.path.join(os.path.dirname(__file__), "../entitydistance.cache"))
@@ -248,6 +380,23 @@ def raise_invalid_qid(qid: str) -> str:
 
     if len(re.findall(r"(Q\d+)", qid)) != 1:
         raise ValueError(f"QID {qid} is not a valid QID")
+
+
+def is_qid(val: str, case_sensitive=False) -> bool:
+    """
+    Returns boolean describing whether provided string is a QID.
+
+    Args:
+        val (str)
+        case_sensitive (bool, optional): Defaults to False.
+
+    Returns:
+        bool
+    """
+    if case_sensitive:
+        return len(re.findall(r"(Q\d+)", val)) == 1
+    else:
+        return len(re.findall(r"(q\d+)", val.lower())) == 1
 
 
 def join_qids_for_sparql_values_clause(qids: list) -> str:
