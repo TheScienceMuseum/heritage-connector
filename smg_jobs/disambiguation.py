@@ -6,7 +6,7 @@ import os
 import numpy as np
 import csv
 import click
-from heritageconnector.disambiguation.pipelines import build_training_data
+from heritageconnector.disambiguation.pipelines import Disambiguator
 
 
 @click.command()
@@ -16,7 +16,8 @@ from heritageconnector.disambiguation.pipelines import build_training_data
 def make_training_data(
     output_folder, table_name, limit, page_size=100, search_limit=20
 ):
-    X, y, pid_labels, id_pairs = build_training_data(
+    d = Disambiguator()
+    X, y, pid_labels, id_pairs = d.build_training_data(
         table_name, page_size=page_size, search_limit=search_limit, limit=limit
     )
 
@@ -35,5 +36,5 @@ if __name__ == "__main__":
     make_training_data()
     # DEBUG:
     # make_training_data(
-    #     "/Volumes/Kalyan_SSD/SMG/disambiguation/types_test", "PERSON", limit=None, page_size=100, search_limit=20
+    #     "/Volumes/Kalyan_SSD/SMG/disambiguation/test", "PERSON", limit=1000, page_size=100, search_limit=20
     # )

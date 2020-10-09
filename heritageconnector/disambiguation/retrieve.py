@@ -34,7 +34,7 @@ def get_wikidata_fields(
     if qids and id_qid_mapping:
         raise ValueError("Only one of qids and id_qid_mapping should be provided.")
     elif id_qid_mapping:
-        qids = flatten_list_of_lists(id_qid_mapping.values())
+        qids = list(set(flatten_list_of_lists(id_qid_mapping.values())))
 
     ent = wbentities()
     ent.get_properties(qids, pids, pids_label)
@@ -43,6 +43,9 @@ def get_wikidata_fields(
         .rename(columns={"id": "qid", "labels": "label", "descriptions": "description"})
         .rename(columns=lambda c: c.strip("claims.") if c.startswith("claims.") else c)
     )
+
+    # this line checks that all the QIDs that were requested have ended up in the resulting dataframe
+    assert len(set(qids)) == len(set(res_df["qid"].tolist()))
 
     if id_qid_mapping:
         res_df["id"] = res_df["qid"].apply(

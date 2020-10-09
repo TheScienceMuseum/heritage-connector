@@ -47,3 +47,43 @@ class TextSearch(ABC):
             df["score"] = df["score"].apply(lambda x: x / sum_confidence)
 
         return df
+
+
+class Classifier(ABC):
+    def __init__(self):
+        super().__init__()
+
+    @abstractmethod
+    def get_params(self) -> dict:
+        """
+        Returns parameter names mapped to their values.
+
+        Returns:
+            dict
+        """
+
+        pass
+
+    @abstractmethod
+    def set_params(self, **params):
+        """
+        Set parameter names.
+        """
+
+        return self
+
+    @abstractmethod
+    def fit(self, X, y, **kwargs):
+        pass
+
+    @abstractmethod
+    def predict_proba(self, X):
+        pass
+
+    @abstractmethod
+    def predict(self, X):
+        pass
+
+    @abstractmethod
+    def score(self, X, y, sample_weight=None) -> float:
+        pass

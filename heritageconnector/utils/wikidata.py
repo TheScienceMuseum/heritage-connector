@@ -8,7 +8,7 @@ import pandas as pd
 from elastic_wikidata.wd_entities import get_entities, simplify_wbgetentities_result
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.generic import cache, paginate_list
+from heritageconnector.utils.generic import cache, paginate_list, flatten_list_of_lists
 from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
@@ -50,11 +50,17 @@ class wbentities:
             elif pids_to_label == "all":
                 pids_all = pids
                 pids_to_label = pids_all
+        else:
+            pids_all = pids
 
-        docs = [
-            simplify_wbgetentities_result(doc, lang="en", properties=pids_all)
-            for doc in res_generator
-        ][0]
+        docs = flatten_list_of_lists(
+            [
+                simplify_wbgetentities_result(
+                    doc, lang="en", properties=pids_all, use_redirected_qid=False
+                )
+                for doc in res_generator
+            ]
+        )
         doc_df = pd.json_normalize(docs)
 
         # add columns with empty string values for any that are missing
