@@ -121,8 +121,72 @@ class Disambiguator:
 
         return wikidata_results
 
+    def _get_labelled_records_from_elasticsearch(
+        self, table_name: str, limit: int = None
+    ):
+        """
+        Get labelled records (with sameAs) from Elasticsearch for training.
+
+        Args:
+            table_name (str):
+            limit (int, optional): Defaults to None.
+
+        """
+
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"wildcard": {"graph.@owl:sameAs.@id": "*"}},
+                        {"term": {"type.keyword": table_name.upper()}},
+                    ]
+                }
+            }
+        }
+        # set 'scroll' timeout to longer than default here to deal with large times between subsequent ES requests
+        search_res = helpers.scan(
+            es, query=query, index=config.ELASTIC_SEARCH_INDEX, size=500, scroll="30m"
+        )
+        if limit:
+            search_res = islice(search_res, limit)
+
+        return search_res
+
+    def _get_unlabelled_records_from_elasticsearch(
+        self, table_name: str, limit: int = None
+    ):
+        """
+        Get unlabelled records (without sameAs) from Elasticsearch for inference.
+
+        Args:
+            table_name (str)
+            limit (int, optional): Defaults to None.
+        """
+
+        query = {
+            "query": {
+                "bool": {
+                    "must": {"term": {"type.keyword": "PERSON"}},
+                    "must_not": {"exists": {"field": "graph.@owl:sameAs.@id"}},
+                }
+            }
+        }
+
+        search_res = helpers.scan(
+            es, query=query, index=config.ELASTIC_SEARCH_INDEX, size=500, scroll="30m"
+        )
+        if limit:
+            search_res = islice(search_res, limit)
+
+        return search_res
+
     def build_training_data(
-        self, table_name: str, page_size: int = 100, limit: int = None, search_limit=20,
+        self,
+        train: bool,
+        table_name: str,
+        page_size: int = 100,
+        limit: int = None,
+        search_limit=20,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get training arrays X, y from all the records in the Heritage Connector index with an existing sameAs
@@ -130,13 +194,15 @@ class Disambiguator:
 
         Args:
             wd_index (str): Elasticsearch index of the Wikidata dump
+            train (str): whether to build training data (True) or data for inference (False). If True a y vector 
+                is returned, otherwise one isn't.
             table_name (str): table name in field_mapping config
             page_size (int, optional): the number of records to fetch from Wikidata per iteration. Larger numbers
-                will speed up the process but may cause the SPARQL query to time out. Defaults to 10. 
+                will speed up the process but may cause the SPARQL query to time out. Defaults to 10.
                 (TODO: set better default)
-            limit (int, optional): set a limit on the number of records to use for training (useful for testing). 
+            limit (int, optional): set a limit on the number of records to use for training (useful for testing).
                 Defaults to None.
-            search_limit (int, optional): number of search results to retrieve from the Wikidata dump per record. 
+            search_limit (int, optional): number of search results to retrieve from the Wikidata dump per record.
                 Defaults to 20.
 
         Returns:
@@ -165,29 +231,22 @@ class Disambiguator:
             if v.get("wikidata_entity")
         ] + ["P31"]
         X_list = []
-        y_list = []
+        if train:
+            y_list = []
         ent_similarity_list = []
         # in-memory caching for entity similarities, prefilled with case for where there is no type specified
         ent_similarities_lookup = {hash((None, None)): 0}
         id_pair_list = []
 
         # get records with sameAs from Elasticsearch
-        query = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"wildcard": {"graph.@owl:sameAs.@id": "*"}},
-                        {"term": {"type.keyword": table_name.upper()}},
-                    ]
-                }
-            }
-        }
-        # set timeout to longer than default here to deal with large times between subsequent ES requests
-        search_res = helpers.scan(
-            es, query=query, index=config.ELASTIC_SEARCH_INDEX, size=500, scroll="30m"
-        )
-        if limit:
-            search_res = islice(search_res, limit)
+        if train:
+            search_res = self._get_labelled_records_from_elasticsearch(
+                table_name, limit
+            )
+        else:
+            search_res = self._get_unlabelled_records_from_elasticsearch(
+                table_name, limit
+            )
 
         search_res_paginated = paginate_generator(search_res, page_size)
 
@@ -239,11 +298,12 @@ class Disambiguator:
                 X_temp = []
                 g = graph_list[idx]
                 item_id = next(g.subjects())
-                item_qid = url_to_qid(next(g.objects(predicate=OWL.sameAs)))
                 qids_wikidata = wikidata_results_df.loc[
                     wikidata_results_df["id"] == item_id, "qid"
                 ]
-                y_item = [item_qid == qid for qid in qids_wikidata]
+                if train:
+                    item_qid = url_to_qid(next(g.objects(predicate=OWL.sameAs)))
+                    y_item = [item_qid == qid for qid in qids_wikidata]
                 id_pairs = [[str(item_id), qid] for qid in qids_wikidata]
 
                 # calculate instanceof distances
@@ -312,7 +372,8 @@ class Disambiguator:
 
                 X_item = np.asarray(X_temp, dtype=np.float32).transpose()
                 X_list.append(X_item)
-                y_list += y_item
+                if train:
+                    y_list += y_item
                 id_pair_list += id_pairs
 
             batch_instanceof_comparisons_unique = list(
@@ -339,8 +400,15 @@ class Disambiguator:
                     ent_similarities_lookup[hash((ent_1, ent_2))]
                 )
 
-        X = np.column_stack([np.vstack(X_list), ent_similarity_list])
-        y = np.asarray(y_list, dtype=bool)
-        X_columns = self._get_pids(table_name) + ["P31"]
+        if train:
+            X = np.column_stack([np.vstack(X_list), ent_similarity_list])
+            y = np.asarray(y_list, dtype=bool)
+            X_columns = self._get_pids(table_name) + ["P31"]
 
-        return X, y, X_columns, id_pair_list
+            return X, y, X_columns, id_pair_list
+
+        else:
+            X = np.column_stack([np.vstack(X_list), ent_similarity_list])
+            X_columns = self._get_pids(table_name) + ["P31"]
+
+            return X, X_columns, id_pair_list
