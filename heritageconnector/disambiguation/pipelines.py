@@ -32,6 +32,9 @@ class Disambiguator:
     def __init__(self):
         super().__init__()
 
+        # in-memory caching for entity similarities, prefilled with case for where there is no type specified
+        self.entity_distance_cache = {hash((None, None)): 0}
+
     def _get_pids(
         self,
         table_name,
@@ -180,6 +183,26 @@ class Disambiguator:
 
         return search_res
 
+    def _add_instanceof_distances_to_inmemory_cache(self, batch_instanceof_comparisons):
+        """
+        Adds instanceof distances for a batch to the in-memory/in-class-instance cache.
+        """
+
+        batch_instanceof_comparisons_unique = list(set(batch_instanceof_comparisons))
+
+        logger.debug("Finding distances between entities...")
+        for ent_1, ent_2 in tqdm(batch_instanceof_comparisons_unique):
+            if (ent_1, ent_2) != (None, None):
+                if isinstance(ent_2, list):
+                    ent_set = {ent_1, tuple(ent_2)}
+                else:
+                    ent_set = {ent_1, ent_2}
+
+                if hash((ent_1, ent_2)) not in self.entity_distance_cache:
+                    self.entity_distance_cache[
+                        hash((ent_1, ent_2))
+                    ] = get_distance_between_entities_multiple(ent_set, reciprocal=True)
+
     def build_training_data(
         self,
         train: bool,
@@ -234,11 +257,9 @@ class Disambiguator:
         if train:
             y_list = []
         ent_similarity_list = []
-        # in-memory caching for entity similarities, prefilled with case for where there is no type specified
-        ent_similarities_lookup = {hash((None, None)): 0}
         id_pair_list = []
 
-        # get records with sameAs from Elasticsearch
+        # get records to process from Elasticsearch
         if train:
             search_res = self._get_labelled_records_from_elasticsearch(
                 table_name, limit
@@ -376,28 +397,13 @@ class Disambiguator:
                     y_list += y_item
                 id_pair_list += id_pairs
 
-            batch_instanceof_comparisons_unique = list(
-                set(batch_instanceof_comparisons)
+            self._add_instanceof_distances_to_inmemory_cache(
+                batch_instanceof_comparisons
             )
-
-            logger.debug("Finding distances between entities...")
-            for ent_1, ent_2 in tqdm(batch_instanceof_comparisons_unique):
-                if (ent_1, ent_2) != (None, None):
-                    if isinstance(ent_2, list):
-                        ent_set = {ent_1, tuple(ent_2)}
-                    else:
-                        ent_set = {ent_1, ent_2}
-
-                    if hash((ent_1, ent_2)) not in ent_similarities_lookup:
-                        ent_similarities_lookup[
-                            hash((ent_1, ent_2))
-                        ] = get_distance_between_entities_multiple(
-                            ent_set, reciprocal=True
-                        )
 
             for ent_1, ent_2 in batch_instanceof_comparisons:
                 ent_similarity_list.append(
-                    ent_similarities_lookup[hash((ent_1, ent_2))]
+                    self.entity_distance_cache[hash((ent_1, ent_2))]
                 )
 
         if train:
