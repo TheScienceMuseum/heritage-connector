@@ -17,6 +17,8 @@ from heritageconnector.utils.wikidata import (
     url_to_pid,
     url_to_qid,
     get_distance_between_entities_multiple,
+    qid_to_url,
+    is_qid,
 )
 from heritageconnector.utils.generic import paginate_generator
 from heritageconnector.namespace import OWL, RDF, RDFS
@@ -169,7 +171,7 @@ class Disambiguator:
         query = {
             "query": {
                 "bool": {
-                    "must": {"term": {"type.keyword": "PERSON"}},
+                    "must": {"term": {"type.keyword": table_name.upper()}},
                     "must_not": {"exists": {"field": "graph.@owl:sameAs.@id"}},
                 }
             }
@@ -340,6 +342,8 @@ class Disambiguator:
                         for q in wikidata_instanceof
                     ]
                 except:  # noqa: E722
+                    logger.warning("Getting types for comparison failed.")
+
                     batch_instanceof_comparisons += [
                         (None, None)
                         for q in range(
@@ -364,6 +368,10 @@ class Disambiguator:
                     vals_internal = [str(i) for i in g.objects(predicate=rdf)]
                     vals_wikidata = wikidata_results_df.loc[
                         wikidata_results_df["id"] == item_id, pid
+                    ].tolist()
+                    # convert Wikidata QIDs to URL so they can be compared against RDF predicates of internal DB
+                    vals_wikidata = [
+                        qid_to_url(i) if is_qid(i) else i for i in vals_wikidata
                     ]
 
                     if val_type == "string":

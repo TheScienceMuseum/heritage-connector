@@ -399,6 +399,10 @@ def is_qid(val: str, case_sensitive=False) -> bool:
     Returns:
         bool
     """
+
+    if not isinstance(val, str):
+        return False
+
     if case_sensitive:
         return len(re.findall(r"(Q\d+)", val)) == 1
     else:

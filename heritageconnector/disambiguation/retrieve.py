@@ -37,7 +37,7 @@ def get_wikidata_fields(
         qids = list(set(flatten_list_of_lists(id_qid_mapping.values())))
 
     ent = wbentities()
-    ent.get_properties(qids, pids, pids_label)
+    ent.get_properties(qids, all_pids, pids_label)
     res_df = (
         ent.get_results()
         .rename(columns={"id": "qid", "labels": "label", "descriptions": "description"})
