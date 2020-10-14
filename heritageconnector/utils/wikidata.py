@@ -15,7 +15,7 @@ logger = logging.get_logger(__name__)
 
 
 class wbentities:
-    def __init__(self, api_timeout=6):
+    def __init__(self, api_timeout=8):
         self.timeout = api_timeout
         self.ge = get_entities()
 

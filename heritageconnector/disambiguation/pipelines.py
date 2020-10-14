@@ -77,9 +77,9 @@ class Disambiguator:
         lastname_from_label = lambda l: l.split(" ")[-1]
         year_from_wiki_date = (
             # don't worry about converting to numeric type here as comparison functions handle this
-            lambda l: l[0:4]
+            lambda l: l[1:5]
             if isinstance(l, str)
-            else [i[0:4] for i in l]
+            else [i[1:5] for i in l]
         )
 
         # firstname, lastname
