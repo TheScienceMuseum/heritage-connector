@@ -9,6 +9,11 @@ from tqdm.auto import tqdm
 import pandas as pd
 from typing import Tuple
 import time
+import os
+import csv
+
+from sklearn.tree import DecisionTreeClassifier, export_text
+from sklearn.metrics import balanced_accuracy_score, precision_score, recall_score
 
 from heritageconnector.base.disambiguation import Classifier
 from heritageconnector.datastore import es
@@ -25,17 +30,198 @@ from heritageconnector.namespace import OWL, RDF, RDFS
 from heritageconnector.disambiguation.retrieve import get_wikidata_fields
 from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.disambiguation import compare_fields as compare
-from heritageconnector import logging
+from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
 
 
-class Disambiguator:
-    def __init__(self):
+class Disambiguator(Classifier):
+    def __init__(
+        self,
+        random_state=42,
+        max_depth=5,
+        class_weight="balanced",
+        min_samples_split=2,
+        min_samples_leaf=5,
+        max_features=None,
+    ):
         super().__init__()
+
+        self.clf = DecisionTreeClassifier(
+            random_state=random_state,
+            max_depth=max_depth,
+            class_weight=class_weight,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            max_features=max_features,
+        )
 
         # in-memory caching for entity similarities, prefilled with case for where there is no type specified
         self.entity_distance_cache = {hash((None, None)): 0}
+
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        self.clf = self.clf.fit(X, y)
+
+        return self
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """
+        Returns probabilities for the positive class
+
+        Args:
+            X (np.ndarray)
+
+        Returns:
+            np.ndarray: a value for each row of X
+        """
+        return self.clf.predict_proba(X)[:, 1]
+
+    def predict(self, X, threshold=0.5):
+        """
+        Returns predictions for the positive class at a threshold.
+
+        Args:
+            X (np.ndarray)
+            threshold (float, optional): Defaults to 0.5.
+
+        Returns:
+            np.ndarray: boolean values
+        """
+        pred_proba = self.predict_proba(X)
+
+        return pred_proba >= threshold
+
+    def score(
+        self, X: np.ndarray, y: np.ndarray, threshold: float = 0.5, output_dict=False
+    ) -> float:
+        """
+        Returns balanced accuracy, precision and recall for given test data and labels.
+
+        Args:
+            X (np.ndarray): data to return score for.
+            y (np.ndarray): True labels.
+            threshold (np.ndarray): threshold to use for classification.
+            output_dict (bool, optional): whether to output a dictionary with the results. Defaults to False,
+                where the results will be printed.
+
+        Returns:
+            float: score
+        """
+
+        y_pred = self.predict(X, threshold)
+
+        results = {
+            "balanced accuracy score": balanced_accuracy_score(y, y_pred),
+            "precision score": precision_score(y, y_pred),
+            "recall score": recall_score(y, y_pred),
+        }
+
+        if output_dict:
+            return results
+        else:
+            return "\n".join([f"{k}: {v}" for k, v in results.items()])
+
+    def print_tree(self, feature_names: list = None):
+        """
+        Print textual representation of the decision tree.
+
+        Args:
+            feature_names (list, optional): List of feature names to use. Defaults to None.
+        """
+
+        print(export_text(self.clf, feature_names=feature_names))
+
+    def save_training_data_to_folder(
+        self,
+        path: str,
+        table_name: str,
+        limit: int = None,
+        page_size=100,
+        search_limit=20,
+    ):
+        """
+        Make training data from the labelled records in the Heritage Connector and save it to a folder. The folder will contain:
+            - X.npy: numpy array X
+            - y.npy: numpy array y
+            - pids.txt: newline separated list of column labels of X (properties used)
+            - ids.txt: tab-separated CSV (tsv) of internal and external ID pairs (rows of X)
+
+        These can be loaded from the folder using `heritageconnector.disambiguation.helpers.load_training_data`.
+
+        Args:
+            path (str): path of folder to save files to
+            table_name (str): table name of entities to process
+            limit (int, optional): Optionally limit the number of records processed. Defaults to None.
+            page_size (int, optional): Batch size. Defaults to 100.
+            search_limit (int, optional): Number of Wikidata candidates to process per SMG record, one of which
+                is the correct match. Defaults to 20.
+        """
+
+        if not os.path.exists(path):
+            errors.raise_file_not_found_error(path, "folder")
+
+        X, y, pid_labels, id_pairs = self.build_training_data(
+            True,
+            table_name,
+            page_size=page_size,
+            limit=limit,
+            search_limit=search_limit,
+        )
+
+        np.save(os.path.join(path, "X.npy"), X)
+        np.save(os.path.join(path, "y.npy"), y)
+
+        with open(os.path.join(path, "pids.txt"), "w") as f:
+            f.write("\n".join(pid_labels))
+
+        with open(os.path.join(path, "ids.txt"), "w") as f:
+            wr = csv.writer(f, delimiter="\t")
+            wr.writerows(id_pairs)
+
+    def save_test_data_to_folder(
+        self,
+        path: str,
+        table_name: str,
+        limit: int = None,
+        page_size=100,
+        search_limit=20,
+    ):
+        """
+        Make test data from the unlabelled records in the Heritage Connector and save it to a folder. The folder will contain:
+            - X.npy: numpy array X
+            - pids.txt: newline separated list of column labels of X (properties used)
+            - ids.txt: tab-separated CSV (tsv) of internal and external ID pairs (rows of X)
+
+        These can be loaded from the folder using `heritageconnector.disambiguation.helpers.load_training_data`.
+
+        Args:
+            path (str): path of folder to save files to
+            table_name (str): table name of entities to process
+            limit (int, optional): Optionally limit the number of records processed. Defaults to None.
+            page_size (int, optional): Batch size. Defaults to 100.
+            search_limit (int, optional): Number of Wikidata candidates to process per SMG record, one of which
+                is the correct match. Defaults to 20.
+        """
+
+        if not os.path.exists(path):
+            errors.raise_file_not_found_error(path, "folder")
+
+        X, pid_labels, id_pairs = self.build_training_data(
+            False,
+            table_name,
+            page_size=page_size,
+            limit=limit,
+            search_limit=search_limit,
+        )
+
+        np.save(os.path.join(path, "X.npy"), X)
+
+        with open(os.path.join(path, "pids.txt"), "w") as f:
+            f.write("\n".join(pid_labels))
+
+        with open(os.path.join(path, "ids.txt"), "w") as f:
+            wr = csv.writer(f, delimiter="\t")
+            wr.writerows(id_pairs)
 
     def _get_pids(
         self,
@@ -219,7 +405,7 @@ class Disambiguator:
 
         Args:
             wd_index (str): Elasticsearch index of the Wikidata dump
-            train (str): whether to build training data (True) or data for inference (False). If True a y vector 
+            train (str): whether to build training data (True) or data for inference (False). If True a y vector
                 is returned, otherwise one isn't.
             table_name (str): table name in field_mapping config
             page_size (int, optional): the number of records to fetch from Wikidata per iteration. Larger numbers
