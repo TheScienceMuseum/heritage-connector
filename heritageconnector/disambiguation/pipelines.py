@@ -11,6 +11,7 @@ from typing import Tuple
 import time
 import os
 import csv
+from joblib import dump, load
 
 from sklearn.tree import DecisionTreeClassifier, export_text
 from sklearn.metrics import balanced_accuracy_score, precision_score, recall_score
@@ -130,6 +131,33 @@ class Disambiguator(Classifier):
         """
 
         print(export_text(self.clf, feature_names=feature_names))
+
+    def save_classifier_to_disk(self, path: str):
+        """
+        Pickle classifier to disk.
+
+        Args:
+            path (str): path to pickle to
+        """
+
+        # TODO: should maybe raise a warning if model hasn't been trained,
+        # but not sure how to do this without testing predict (which needs X, or
+        # at least the required dimensions of X)
+
+        dump(self.clf, path)
+
+    def load_classifier_from_disk(self, path: str):
+        """
+        Load pickled classifier from disk
+
+        Args:
+            path (str): path of pickled classifier
+        """
+
+        # TODO: maybe there should be a warning if overwriting a trained model.
+        # See todo above.
+
+        self.clf = load(path)
 
     def save_training_data_to_folder(
         self,
