@@ -77,7 +77,7 @@ class Disambiguator(Classifier):
         """
         return self.clf.predict_proba(X)[:, 1]
 
-    def predict(self, X, threshold=0.5):
+    def predict(self, X: np.ndarray, threshold=0.5) -> np.ndarray:
         """
         Returns predictions for the positive class at a threshold.
 
@@ -91,6 +91,43 @@ class Disambiguator(Classifier):
         pred_proba = self.predict_proba(X)
 
         return pred_proba >= threshold
+
+    def predict_top_ranked_pairs(
+        self, X: np.ndarray, pairs: pd.DataFrame, threshold=0.5
+    ) -> pd.DataFrame:
+        """
+        Returns a dataframe of highest ranked Wikidata candidate for each internal record based on the classifier output.
+        Any predictions below the threshold aren't counted. If there are multiple Wikidata candidates with the same 
+        predicted probability, all candidates with the maximum probability are returned.
+
+        Args:
+            X (np.ndarray)
+            pairs (pd.DataFrame): with columns internal_id, wikidata_id. returned by self.build_training_data
+            threshold (float, optional): Defaults to 0.5.
+
+        Returns:
+            pd.DataFrame: with columns internal_id, wikidata_id, y_pred, y_pred_proba
+        """
+
+        pairs_new = pairs.copy()
+
+        y_pred_proba = self.predict_proba(X)
+        pairs_new["y_pred_proba"] = y_pred_proba
+        pairs_new["y_pred"] = y_pred_proba >= threshold
+
+        pairs_true = pairs_new[pairs_new["y_pred"] is True]
+
+        pairs_true_filtered = pd.DataFrame()
+
+        for _id in pairs_true["internal_id"].unique().tolist():
+            tempdf = pairs_true[pairs_true["internal_id"] == _id]
+            max_proba = tempdf["y_pred_proba"].max()
+
+            pairs_true_filtered = pairs_true_filtered.append(
+                tempdf[tempdf["y_pred_proba"] == max_proba]
+            )
+
+        return pairs_true_filtered
 
     def score(
         self, X: np.ndarray, y: np.ndarray, threshold: float = 0.5, output_dict=False
