@@ -115,7 +115,7 @@ class Disambiguator(Classifier):
         pairs_new["y_pred_proba"] = y_pred_proba
         pairs_new["y_pred"] = y_pred_proba >= threshold
 
-        pairs_true = pairs_new[pairs_new["y_pred"] is True]
+        pairs_true = pairs_new[pairs_new["y_pred"] == True]  # noqa: E712
 
         pairs_true_filtered = pd.DataFrame()
 
