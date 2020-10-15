@@ -15,7 +15,10 @@ from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
 from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
 from heritageconnector.utils.data_transformation import get_year_from_date_value
-from heritageconnector.entity_matching.lookup import get_internal_urls_from_wikidata
+from heritageconnector.entity_matching.lookup import (
+    get_internal_urls_from_wikidata,
+    get_sameas_links_from_external_id,
+)
 from heritageconnector.utils.wikidata import qid_to_url
 from heritageconnector import logging
 
@@ -231,7 +234,7 @@ def load_sameas_people_orgs(pickle_path):
 
 def load_sameas_from_wikidata():
     """Load sameAs connections that already exist between the SMG records and Wikidata"""
-    logger.info("adding sameAs relationships from Wikidata")
+    logger.info("adding sameAs relationships from Wikidata URLs")
 
     connection_df = get_internal_urls_from_wikidata(
         "collection.sciencemuseum.org.uk", config.WIKIDATA_SPARQL_ENDPOINT
@@ -285,6 +288,38 @@ def load_object_types(object_type_df_path):
     add_triples(
         object_type_df, RDF.type, subject_col="ID", object_col="ITEM_NAME_resolved"
     )
+
+
+def load_crowdsourced_links(links_path):
+    logger.info("adding crowdsourced links")
+
+    df = pd.read_csv(links_path)
+    df["courl"] = df["courl"].str.replace(
+        "http://collectionsonline-staging.eu-west-1.elasticbeanstalk.com/",
+        "https://collection.sciencemuseumgroup.org.uk/",
+    )
+    df["courl"] = df["courl"].str.replace(
+        "http://localhost:8000/", "https://collection.sciencemuseumgroup.org.uk/"
+    )
+    # remove anything after c(o|d|p)(\d+)
+    df["courl"] = df["courl"].apply(
+        lambda x: re.findall(r"https://(?:\w.+)/(?:co|cp|ap)(?:\d+)", x)[0]
+    )
+    df["wikidataurl"] = df["wikidataurl"].str.replace("https", "http")
+    df["wikidataurl"] = df["wikidataurl"].str.replace("/wiki/", "/entity/")
+
+    add_triples(df, OWL.sameAs, subject_col="courl", object_col="wikidataurl")
+
+
+def load_sameas_from_wikidata_smg_people_id():
+    logger.info("adding sameAs relationships from Wikidata SMG People ID")
+
+    df = get_sameas_links_from_external_id("P4389")
+    df["external_url"] = df["external_url"].str.replace(
+        "sciencemuseum.org.uk", "sciencemuseumgroup.org.uk"
+    )
+
+    add_triples(df, OWL.sameAs, subject_col="external_url", object_col="wikidata_url")
 
 
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
@@ -485,6 +520,10 @@ if __name__ == "__main__":
     load_maker_data()
     load_user_data()
     load_sameas_from_wikidata()
+    load_sameas_from_wikidata_smg_people_id()
     load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
     load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
     load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    load_crowdsourced_links(
+        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    )

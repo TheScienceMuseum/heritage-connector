@@ -10,7 +10,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 import os
 import pytest
 import pandas as pd
-from heritageconnector.entity_matching import reconciler
+from heritageconnector.entity_matching import reconciler, lookup
 
 
 @pytest.fixture
@@ -46,3 +46,16 @@ def test_reconciler_import_export(rec):
     # both qids and filtered_qids columns should be of type list
     assert all(isinstance(i, list) for i in rec._map_df_imported["qids"])
     assert all(isinstance(i, list) for i in rec._map_df_imported["filtered_qids"])
+
+
+def test_get_sameas_links_from_external_id():
+    res = lookup.get_sameas_links_from_external_id("P4389")
+
+    assert isinstance(res, pd.DataFrame)
+    assert res.columns.values.tolist() == ["wikidata_url", "external_url"]
+    assert all(
+        [
+            i.startswith("http://www.wikidata.org/entity/")
+            for i in res["wikidata_url"].tolist()
+        ]
+    )
