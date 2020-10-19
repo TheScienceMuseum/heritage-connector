@@ -1,17 +1,19 @@
 from elasticsearch import helpers
-import rdflib
-from rdflib import Graph
 import json
 import math
 from itertools import islice
 import numpy as np
 from tqdm.auto import tqdm
 import pandas as pd
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Iterable
 import time
 import os
 import csv
 from joblib import dump, load
+
+import rdflib
+from rdflib import Graph, URIRef
+from rdflib.plugins.stores.sparqlstore import SPARQLStore
 
 from sklearn.tree import DecisionTreeClassifier, export_text
 from sklearn.metrics import balanced_accuracy_score, precision_score, recall_score
@@ -469,6 +471,32 @@ class Disambiguator(Classifier):
 
         else:
             return []
+
+    def _open_sparql_store(self, endpoint: str = config.FUSEKI_ENDPOINT):
+        """
+        Open RDFlib SPARQL store with query URL at `endpoint`.
+
+        Args:
+            endpoint (str, optional): Defaults to config.FUSEKI_ENDPOINT.
+        """
+
+        self.sparql_store = SPARQLStore(endpoint)
+        self.sparql_store.open(endpoint)
+
+    def _get_triples_from_store(
+        self, spo: tuple = (None, None, None)
+    ) -> Iterable[tuple]:
+        """
+        Get triples with the mask (subject, predicate, object). Returns generator of tuples, where 
+        each tuple is a triple (ignores graph names).
+
+        By default the SPARQL store is at the endpoint specified by FUSEKI_ENDPOINT in config. If you want 
+        to change this, call `self._open_sparql_store(endpoint='http://my_endpoint')` first.
+        """
+        if not hasattr(self, "sparqlstore"):
+            self._open_sparql_store()
+
+        return self.sparql_store.triples(spo)
 
     def _add_instanceof_distances_to_inmemory_cache(self, batch_instanceof_comparisons):
         """

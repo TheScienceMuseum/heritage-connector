@@ -1,6 +1,7 @@
 from heritageconnector.disambiguation import retrieve, pipelines
 from heritageconnector.namespace import OWL, SKOS
 import numpy as np
+from rdflib import URIRef, Literal
 import pytest
 
 
@@ -34,6 +35,21 @@ def test_disambiguator_get_unique_predicates():
     assert (
         len(set(res).intersection(set(predicates_ignore))) == 0
     )  # none of the predicates to ignore in the list
+
+
+@pytest.mark.skip(reason="relies on local fuseki instance running")
+def test_disambiguator_get_triples():
+    d = pipelines.Disambiguator()
+    res = d._get_triples_from_store(
+        (
+            None,
+            URIRef("http://www.w3.org/2004/02/skos/core#hasTopConcept"),
+            Literal("PERSON"),
+        )
+    )
+    res_list = [i for i in res]
+
+    assert len(res_list) > 0
 
 
 def test_disambiguator_make_training_data():
