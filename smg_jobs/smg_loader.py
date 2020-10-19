@@ -28,7 +28,7 @@ logger = logging.get_logger(__name__)
 pd.options.mode.chained_assignment = None
 
 # set to None for no limit
-max_records = None
+max_records = 20000
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -183,8 +183,9 @@ def load_maker_data():
     maker_df["LINK_ID"] = people_prefix + maker_df["LINK_ID"].astype(str)
     maker_df = maker_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
 
-    logger.info("loading maker data")
+    logger.info("loading maker data (maker & made)")
     add_triples(maker_df, FOAF.maker, subject_col="SUBJECT", object_col="OBJECT")
+    add_triples(maker_df, FOAF.made, subject_col="OBJECT", object_col="SUBJECT")
 
     return
 
@@ -197,8 +198,11 @@ def load_user_data():
     user_df["LINK_ID"] = people_prefix + user_df["LINK_ID"].astype(str)
     user_df = user_df.rename(columns={"MKEY": "OBJECT", "LINK_ID": "SUBJECT"})
 
-    logger.info("loading user data")
-    add_triples(user_df, PROV.used, subject_col="SUBJECT", object_col="OBJECT")
+    logger.info("loading user data (used by & used)")
+    # uses
+    add_triples(user_df, WDT.P2283, subject_col="SUBJECT", object_col="OBJECT")
+    # used by
+    add_triples(user_df, WDT.P1535, subject_col="OBJECT", object_col="SUBJECT")
 
     return
 
@@ -519,11 +523,11 @@ if __name__ == "__main__":
     load_object_data()
     load_maker_data()
     load_user_data()
-    load_sameas_from_wikidata()
-    load_sameas_from_wikidata_smg_people_id()
-    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    load_crowdsourced_links(
-        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
-    )
+    # load_sameas_from_wikidata()
+    # load_sameas_from_wikidata_smg_people_id()
+    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    # load_crowdsourced_links(
+    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    # )
