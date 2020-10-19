@@ -39,6 +39,7 @@ dgl = "==0.4.3"
 dglke = "*"
 click = "*"
 coverage = "*"
+elastic-wikidata = ">=0.3.6"
 
 [requires]
 python_version = "3.7"

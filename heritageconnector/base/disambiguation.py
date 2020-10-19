@@ -47,3 +47,24 @@ class TextSearch(ABC):
             df["score"] = df["score"].apply(lambda x: x / sum_confidence)
 
         return df
+
+
+class Classifier(ABC):
+    def __init__(self):
+        super().__init__()
+
+    @abstractmethod
+    def fit(self, X, y, **kwargs):
+        pass
+
+    @abstractmethod
+    def predict_proba(self, X):
+        pass
+
+    @abstractmethod
+    def predict(self, X):
+        pass
+
+    @abstractmethod
+    def score(self, X, y) -> float:
+        pass

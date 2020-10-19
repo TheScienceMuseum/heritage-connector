@@ -1,15 +1,29 @@
 from heritageconnector.disambiguation import retrieve, search
+import re
 
 
 def test_get_wikidata_fields():
+    qids = ["Q203545", "Q706475", "Q18637243"]  # all humans
+    pids = ["P31", "P21", "P735", "P734", "P1971", "P36"]
+    pids_nolabel = ["P21", "P31"]
+
     res_df = retrieve.get_wikidata_fields(
-        pids=["P569", "P570"], qids=["Q106481", "Q46633"]
+        pids=pids, qids=qids, pids_nolabel=pids_nolabel
     )
 
-    assert res_df.shape == (2, 6)
+    assert res_df.shape == (3, 10)
     assert set(res_df.columns.tolist()) == set(
-        ["item", "itemLabel", "itemDescription", "altLabel", "P569", "P570"]
+        ["qid", "label", "description", "aliases"] + pids
     )
+
+    # all values in nolabels cols should be QIDs or empty
+    vals_nolabel = res_df["P31"].tolist() + res_df["P21"].tolist()
+    assert all(
+        [(len(re.findall(r"(Q\d+)", val)) == 1) or val == "" for val in vals_nolabel]
+    )
+
+    # no humans have property P36 (capital) so all values should be empty strings
+    assert all([val == "" for val in res_df["P36"].tolist()])
 
 
 def test_es_text_search():
