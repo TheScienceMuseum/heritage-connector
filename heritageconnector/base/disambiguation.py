@@ -54,25 +54,6 @@ class Classifier(ABC):
         super().__init__()
 
     @abstractmethod
-    def get_params(self) -> dict:
-        """
-        Returns parameter names mapped to their values.
-
-        Returns:
-            dict
-        """
-
-        pass
-
-    @abstractmethod
-    def set_params(self, **params):
-        """
-        Set parameter names.
-        """
-
-        return self
-
-    @abstractmethod
     def fit(self, X, y, **kwargs):
         pass
 
@@ -85,5 +66,5 @@ class Classifier(ABC):
         pass
 
     @abstractmethod
-    def score(self, X, y, sample_weight=None) -> float:
+    def score(self, X, y) -> float:
         pass

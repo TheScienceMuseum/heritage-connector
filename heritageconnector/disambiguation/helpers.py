@@ -26,9 +26,6 @@ def load_training_data(
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"No such directory: {data_path}")
 
-    X = np.load(os.path.join(data_path, "X.npy"))
-    y = np.load(os.path.join(data_path, "y.npy"))
-
     pairs = pd.read_csv(
         os.path.join(data_path, "ids.txt"),
         header=None,
@@ -39,7 +36,14 @@ def load_training_data(
         os.path.join(data_path, "pids.txt"), header=None, names=["column"]
     )["column"].tolist()
 
-    return X, y, pairs, pids
+    X = np.load(os.path.join(data_path, "X.npy"))
+
+    if os.path.exists(os.path.join(data_path, "y.npy")):
+        y = np.load(os.path.join(data_path, "y.npy"))
+
+        return X, y, pairs, pids
+    else:
+        return X, pairs, pids
 
 
 def plot_performance_curves(y_true, y_pred_proba):

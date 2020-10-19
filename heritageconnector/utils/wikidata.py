@@ -15,7 +15,7 @@ logger = logging.get_logger(__name__)
 
 
 class wbentities:
-    def __init__(self, api_timeout=6):
+    def __init__(self, api_timeout=8):
         self.timeout = api_timeout
         self.ge = get_entities()
 
@@ -399,6 +399,10 @@ def is_qid(val: str, case_sensitive=False) -> bool:
     Returns:
         bool
     """
+
+    if not isinstance(val, str):
+        return False
+
     if case_sensitive:
         return len(re.findall(r"(Q\d+)", val)) == 1
     else:
