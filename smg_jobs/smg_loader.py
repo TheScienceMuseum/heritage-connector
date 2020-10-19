@@ -13,7 +13,7 @@ import os
 from tqdm.auto import tqdm
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, SKOS, WD, WDT
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
@@ -48,6 +48,7 @@ context = [
     {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
     {"@prov": "http://www.w3.org/ns/prov#", "@language": "en"},
     {"@rdfs": "http://www.w3.org/2000/01/rdf-schema#", "@language": "en"},
+    {"@skos": "http://www.w3.org/2004/02/skos/core#", "@language": "en"},
 ]
 
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
@@ -470,6 +471,8 @@ def serialize_to_jsonld(
 
     g = Graph()
     record = URIRef(uri)
+
+    g.add((record, SKOS.hasTopConcept, Literal(table_name)))
 
     # Add RDF:type
     # Need to check for isinstance otherwise this will fail silently during bulk load, causing the entire record to not load
