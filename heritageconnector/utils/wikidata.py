@@ -4,171 +4,150 @@ from tqdm import tqdm
 import re
 import os
 from itertools import product
+import pandas as pd
+from elastic_wikidata.wd_entities import get_entities, simplify_wbgetentities_result
 from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.utils.generic import cache, paginate_list
+from heritageconnector.utils.generic import cache, paginate_list, flatten_list_of_lists
 from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
 
 
-class entities:
-    def __init__(self, qcodes: Union[list, str], lang="en", page_limit=50):
+class wbentities:
+    def __init__(self, api_timeout=6):
+        self.timeout = api_timeout
+        self.ge = get_entities()
+
+    def get_properties(
+        self,
+        qids: list,
+        pids: list,
+        pids_to_label: Union[list, str] = None,
+        page_size: int = 50,
+    ) -> pd.DataFrame:
         """
-        One instance of this class per list of qcodes. The JSON response for a list of qcodes is made to Wikidata on 
-        creation of a class instance. 
+        Get Wikidata properties specified by `pids` and `pids_to_label` for entities specified by `qids`.
 
         Args:
-            qcodes (str/list): Wikidata qcode or list of qcodes/
-            lang (str, optional): Defaults to 'en'.
-            page_limit (int): page limit for Wikidata API. Usually 50, can reach 500. 
+            qids (list): list of Wikidata entities
+            pids (list): list of Wikidata properties
+            pids_to_label (Union[list, str], optional): list of Wikidata properties to get labels for (if their values are entities).
+                Use "all" to get labels for all PIDs; None to get labels for no PIDs; or a list of PIDs to get labels for a subset of PIDs.
+                If any PIDs in `pids_to_label` aren't in `pids`, values will still be returned for them. Defaults to None.
+            page_size (int, optional): page size for API calls. Defaults to 50.
+
+        Returns:
+            pd.DataFrame: table of specified property values for entities, with null values specified by empty strings.
         """
-        self.endpoint = (
-            "http://www.wikidata.org/w/api.php?action=wbgetentities&format=json"
+        res_generator = self.ge.result_generator(
+            qids, page_limit=page_size, timeout=self.timeout
         )
 
-        if isinstance(qcodes, str):
-            qcodes = [qcodes]
+        if pids_to_label is not None:
+            if isinstance(pids_to_label, list):
+                pids_all = pids + pids_to_label
+            elif pids_to_label == "all":
+                pids_all = pids
+                pids_to_label = pids_all
+        else:
+            pids_all = pids
 
-        self.qcodes = qcodes
-        self.properties = ["labels", "claims", "aliases"]
-        self.lang = lang
-        self.page_limit = page_limit
-
-        # get json response
-        self.response = self.get_json()
-
-    @staticmethod
-    def _param_join(params: List[str]) -> str:
-        """
-        Joins list of parameters for the URL. ['a', 'b'] -> "a%7Cb"
-
-        Args:
-            params (list): list of parameters (strings)
-
-        Returns:
-            str
-        """
-
-        return "%7C".join(params) if len(params) > 1 else params[0]
-
-    def get_json(self) -> dict:
-        """
-        Get json response through the `wbgetentities` API.
-
-        Returns:
-            dict: raw JSON response from API
-        """
-
-        qcodes_paginated = paginate_list(self.qcodes, self.page_limit)
-
-        all_responses = {}
-        logger.info(
-            f"Getting {len(self.qcodes)} wikidata documents in pages of {self.page_limit}"
+        docs = flatten_list_of_lists(
+            [
+                simplify_wbgetentities_result(
+                    doc, lang="en", properties=pids_all, use_redirected_qid=False
+                )
+                for doc in res_generator
+            ]
         )
+        doc_df = pd.json_normalize(docs)
 
-        for page in tqdm(qcodes_paginated):
-            url = f"http://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={self._param_join(page)}&props={self._param_join(self.properties)}&languages=en&languagefallback=1&formatversion=2"
-            response = requests.get(url).json()
-            all_responses.update(response["entities"])
+        # add columns with empty string values for any that are missing
+        proposed_cols = self._pids_to_df_cols(pids_all)
+        actual_cols = [col for col in doc_df.columns if col.startswith("claims")]
+        extra_cols = list(set(proposed_cols) - set(actual_cols))
 
-        return {"entities": all_responses}
+        for c in extra_cols:
+            doc_df[c] = ""
 
-    def get_labels(self, qcodes=None) -> Union[list, str]:
-        """
-        Get label from Wikidata qcodes. Returns string if string is passed; list if list is passed.
+        self.doc_df = doc_df
 
-        Args: 
-            qcodes (list, optional): subset of all qcodes to pass in
+        if pids_to_label is not None:
+            self.get_labels_for_properties(pids_to_label)
 
-        Returns:
-            str/list: label or labels
-        """
+    def _pids_to_df_cols(self, pids: list) -> list:
+        """Transform PIDs to doc_df column names: P79 -> claims.P79"""
+        return [f"claims.{pid}" for pid in pids]
 
-        if qcodes is not None:
-            assert all(elem in self.qcodes for elem in self.qcodes)
+    def _replace_qid_with_label(self, v):
+        """Replace QID with label from qid_label_mapping. Return original value if 
+        QID is not in keys of qid_label_mapping."""
+        if (not isinstance(v, list)) or len(v) == 0:
+            return v
+
         else:
-            qcodes = self.qcodes
+            return [self.qid_label_mapping.get(i, i) for i in v]
 
-        labels = []
-        for qcode in qcodes:
-            try:
-                labels.append(
-                    self.response["entities"][qcode]["labels"][self.lang]["value"]
-                )
-            except KeyError:
-                # if there is no value in the correct language, return an empty string
-                labels.append("")
-
-        return labels if len(labels) > 1 else labels[0]
-
-    def get_aliases(self, qcodes=None) -> list:
+    def _copy_and_clean_df_for_export(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Get aliases from Wikidata qcodes. Returns list if string is passed; list of lists if list is passed.
-
-        Args: 
-            qcodes (list, optional): subset of all qcodes to pass in
-
-        Returns:
-            list: of aliases
+        Replace one-item lists with strings across the dataframe.
+        Replace empty lists with empty strings.
+        Replace nan values with empty strings.
         """
 
-        if qcodes is not None:
-            assert all(elem in self.qcodes for elem in self.qcodes)
-        else:
-            qcodes = self.qcodes
+        export_df = df.copy()
 
-        aliases = []
+        export_df = export_df.applymap(
+            lambda i: i[0] if isinstance(i, list) and len(i) == 1 else i
+        )
+        export_df = export_df.applymap(
+            lambda i: "" if isinstance(i, list) and len(i) == 0 else i
+        )
+        export_df = export_df.fillna("")
 
-        for qcode in qcodes:
-            response_aliases = self.response["entities"][qcode]["aliases"]
-            if len(response_aliases) == 0:
-                aliases.append([])
-            else:
-                aliases.append([item["value"] for item in response_aliases[self.lang]])
+        return export_df
 
-        return aliases if len(aliases) > 1 else aliases[0]
-
-    def get_property_values(self, property_id, qcodes=None) -> Union[str, list]:
+    def get_labels_for_properties(self, pids: list):
         """
-        Get the value or values for a given property ID.
+        Get labels for properties and add to self.doc_df.
 
         Args:
-            property_id: ID to get the value of from a Wikidata record. 
-
-        Returns:
-            str/list: value or values of the specified property ID. 
+            pids (list): PIDs to get labels for
         """
+        cols = self._pids_to_df_cols(pids)
 
-        if qcodes is not None:
-            assert all(elem in self.qcodes for elem in self.qcodes)
-        else:
-            qcodes = self.qcodes
+        # make list of qids to get labels for
+        qids_getlabels = []
+        for idx, row in self.doc_df.iterrows():
+            for col in cols:
+                if isinstance(row[col], str) and is_qid(row[col]):
+                    qids_getlabels.append(row[col])
 
-        property_vals = []
+                elif isinstance(row[col], list):
+                    [qids_getlabels.append(val) for val in row[col] if is_qid(val)]
 
-        for qcode in qcodes:
-            try:
-                property_data = self.response["entities"][qcode]["claims"][property_id]
-            except KeyError:
-                raise KeyError(
-                    f"Property {property_id} does not exist for item {qcode}. Check the Wikidata page or try another property ID."
+        # get labels if the list is not empty
+        if len(qids_getlabels) > 0:
+            qids_getlabels = list(set(qids_getlabels))
+            self.qid_label_mapping = self.ge.get_labels(
+                qids_getlabels, timeout=self.timeout
+            )
+
+            for col in cols:
+                self.doc_df[col] = self.doc_df[col].map(
+                    lambda i: self._replace_qid_with_label(i)
                 )
 
-            qcode_vals = []
-            for item in property_data:
-                qcode_vals.append(item["mainsnak"]["datavalue"]["value"]["id"])
-
-            property_vals.append(qcode_vals)
-
-        return property_vals if len(property_vals) > 1 else property_vals[0]
-
-    def get_property_instance_of(self, qcodes=None) -> Union[str, list]:
+    def get_results(self) -> pd.DataFrame:
         """
-        Gets the value of the 'instance of' property for each Wikidata item. 
+        Get dataframe with results.
+
+        Returns:
+            pd.DataFrame
         """
 
-        return self.get_property_values("P31", qcodes)
+        return self._copy_and_clean_df_for_export(self.doc_df)
 
 
 @cache(os.path.join(os.path.dirname(__file__), "../entitydistance.cache"))
@@ -407,6 +386,23 @@ def raise_invalid_qid(qid: str) -> str:
 
     if len(re.findall(r"(Q\d+)", qid)) != 1:
         raise ValueError(f"QID {qid} is not a valid QID")
+
+
+def is_qid(val: str, case_sensitive=False) -> bool:
+    """
+    Returns boolean describing whether provided string is a QID.
+
+    Args:
+        val (str)
+        case_sensitive (bool, optional): Defaults to False.
+
+    Returns:
+        bool
+    """
+    if case_sensitive:
+        return len(re.findall(r"(Q\d+)", val)) == 1
+    else:
+        return len(re.findall(r"(q\d+)", val.lower())) == 1
 
 
 def join_qids_for_sparql_values_clause(qids: list) -> str:
