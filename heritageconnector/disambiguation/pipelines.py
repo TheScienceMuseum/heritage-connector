@@ -7,7 +7,7 @@ from itertools import islice
 import numpy as np
 from tqdm.auto import tqdm
 import pandas as pd
-from typing import Tuple
+from typing import Tuple, List, Union
 import time
 import os
 import csv
@@ -27,7 +27,8 @@ from heritageconnector.utils.wikidata import (
     is_qid,
 )
 from heritageconnector.utils.generic import paginate_generator
-from heritageconnector.namespace import OWL, RDF, RDFS
+from heritageconnector.utils.sparql import get_sparql_results
+from heritageconnector.namespace import OWL, RDF, RDFS, SKOS
 from heritageconnector.disambiguation.retrieve import get_wikidata_fields
 from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.disambiguation import compare_fields as compare
@@ -435,6 +436,39 @@ class Disambiguator(Classifier):
             search_res = islice(search_res, limit)
 
         return search_res
+
+    def _get_predicates_for_top_concept(
+        self,
+        top_concept: str,
+        predicates_ignore: List[str] = [OWL.sameAs, SKOS.hasTopConcept],
+    ) -> List[str]:
+        """
+        Get a unique list of predicates for a SKOS:hasTopConcept value. These will form the columns of X.
+
+        Args:
+            top_concept (str): SKOS:hasTopConcept value, e.g. 'PERSON'
+
+        Returns:
+            list of URLs for each predicate, excluding those in `predicates_ignore`
+        """
+
+        # TODO: remove this when using pydantic as it will coerce rdflib.term.URIRef to string
+        predicates_ignore = [str(i) for i in predicates_ignore]
+
+        query = """
+        SELECT DISTINCT ?predicate
+        WHERE {
+        ?subject <http://www.w3.org/2004/02/skos/core#hasTopConcept> 'PERSON'.
+        ?subject ?predicate ?object.
+        }"""
+
+        res = get_sparql_results(config.FUSEKI_ENDPOINT, query)["results"]["bindings"]
+
+        if len(res) > 0:
+            return [i["predicate"]["value"] for i in res if i not in predicates_ignore]
+
+        else:
+            return []
 
     def _add_instanceof_distances_to_inmemory_cache(self, batch_instanceof_comparisons):
         """

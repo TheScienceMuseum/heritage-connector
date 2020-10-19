@@ -1,5 +1,7 @@
 from heritageconnector.disambiguation import retrieve, pipelines
+from heritageconnector.namespace import OWL, SKOS
 import numpy as np
+import pytest
 
 
 def test_disambiguator_process_wbgetentities_results():
@@ -16,6 +18,22 @@ def test_disambiguator_process_wbgetentities_results():
 
     # years can be converted to int
     assert all([(str(int(val)) == str(val)) for val in dates_processed if val != ""])
+
+
+@pytest.mark.skip(reason="relies on local fuseki instance running")
+def test_disambiguator_get_unique_predicates():
+    predicates_ignore = [OWL.sameAs, SKOS.hasTopConcept]
+
+    d = pipelines.Disambiguator()
+    res = d._get_predicates_for_top_concept(
+        "PERSON", predicates_ignore=predicates_ignore
+    )
+
+    assert len(res) > 0
+    assert len(set(res)) == len(res)  # unique values
+    assert (
+        len(set(res).intersection(set(predicates_ignore))) == 0
+    )  # none of the predicates to ignore in the list
 
 
 def test_disambiguator_make_training_data():
