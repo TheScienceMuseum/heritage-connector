@@ -9,7 +9,7 @@ def test_disambiguator_process_wbgetentities_results():
     qids = ["Q2897681", "Q75931117", "Q6198902", "Q3805088"]
     pids = ["P735", "P734", "P21", "P569", "P570", "P106", "P31"]
 
-    d = pipelines.Disambiguator()
+    d = pipelines.Disambiguator(table_name="PERSON")
     wikidata_results = retrieve.get_wikidata_fields(pids, qids)
 
     results_processed = d._process_wikidata_results(wikidata_results)
@@ -21,14 +21,12 @@ def test_disambiguator_process_wbgetentities_results():
     assert all([(str(int(val)) == str(val)) for val in dates_processed if val != ""])
 
 
-@pytest.mark.skip(reason="relies on local fuseki instance running")
+# @pytest.mark.skip(reason="relies on local fuseki instance running")
 def test_disambiguator_get_unique_predicates():
     predicates_ignore = [OWL.sameAs, SKOS.hasTopConcept]
 
-    d = pipelines.Disambiguator()
-    res = d._get_predicates_for_top_concept(
-        "PERSON", predicates_ignore=predicates_ignore
-    )
+    d = pipelines.Disambiguator(table_name="PERSON")
+    res = d._get_predicates_for_top_concept(predicates_ignore=predicates_ignore)
 
     assert len(res) > 0
     assert len(set(res)) == len(res)  # unique values
@@ -37,9 +35,9 @@ def test_disambiguator_get_unique_predicates():
     )  # none of the predicates to ignore in the list
 
 
-@pytest.mark.skip(reason="relies on local fuseki instance running")
+# @pytest.mark.skip(reason="relies on local fuseki instance running")
 def test_disambiguator_get_triples():
-    d = pipelines.Disambiguator()
+    d = pipelines.Disambiguator(table_name="PERSON")
     res = d._get_triples_from_store(
         (
             None,
@@ -53,9 +51,9 @@ def test_disambiguator_get_triples():
 
 
 def test_disambiguator_make_training_data():
-    d = pipelines.Disambiguator()
+    d = pipelines.Disambiguator(table_name="PERSON")
     X, y, X_columns, id_pair_list = d.build_training_data(
-        True, "PERSON", page_size=100, limit=200, search_limit=10
+        True, page_size=100, limit=200, search_limit=10
     )
 
     # array sizes

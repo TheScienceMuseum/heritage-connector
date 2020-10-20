@@ -42,6 +42,7 @@ logger = logging.get_logger(__name__)
 class Disambiguator(Classifier):
     def __init__(
         self,
+        table_name: str,
         random_state=42,
         max_depth=5,
         class_weight="balanced",
@@ -50,6 +51,9 @@ class Disambiguator(Classifier):
         max_features=None,
     ):
         super().__init__()
+
+        self.table_name = table_name.upper()
+        self.table_mapping = field_mapping.mapping[self.table_name]
 
         self.clf = DecisionTreeClassifier(
             random_state=random_state,
@@ -200,12 +204,7 @@ class Disambiguator(Classifier):
         self.clf = load(path)
 
     def save_training_data_to_folder(
-        self,
-        path: str,
-        table_name: str,
-        limit: int = None,
-        page_size=100,
-        search_limit=20,
+        self, path: str, limit: int = None, page_size=100, search_limit=20,
     ):
         """
         Make training data from the labelled records in the Heritage Connector and save it to a folder. The folder will contain:
@@ -218,7 +217,6 @@ class Disambiguator(Classifier):
 
         Args:
             path (str): path of folder to save files to
-            table_name (str): table name of entities to process
             limit (int, optional): Optionally limit the number of records processed. Defaults to None.
             page_size (int, optional): Batch size. Defaults to 100.
             search_limit (int, optional): Number of Wikidata candidates to process per SMG record, one of which
@@ -229,11 +227,7 @@ class Disambiguator(Classifier):
             errors.raise_file_not_found_error(path, "folder")
 
         X, y, pid_labels, id_pairs = self.build_training_data(
-            True,
-            table_name,
-            page_size=page_size,
-            limit=limit,
-            search_limit=search_limit,
+            True, page_size=page_size, limit=limit, search_limit=search_limit,
         )
 
         np.save(os.path.join(path, "X.npy"), X)
@@ -247,12 +241,7 @@ class Disambiguator(Classifier):
             wr.writerows(id_pairs)
 
     def save_test_data_to_folder(
-        self,
-        path: str,
-        table_name: str,
-        limit: int = None,
-        page_size=100,
-        search_limit=20,
+        self, path: str, limit: int = None, page_size=100, search_limit=20,
     ):
         """
         Make test data from the unlabelled records in the Heritage Connector and save it to a folder. The folder will contain:
@@ -264,7 +253,6 @@ class Disambiguator(Classifier):
 
         Args:
             path (str): path of folder to save files to
-            table_name (str): table name of entities to process
             limit (int, optional): Optionally limit the number of records processed. Defaults to None.
             page_size (int, optional): Batch size. Defaults to 100.
             search_limit (int, optional): Number of Wikidata candidates to process per SMG record, one of which
@@ -275,11 +263,7 @@ class Disambiguator(Classifier):
             errors.raise_file_not_found_error(path, "folder")
 
         X, pid_labels, id_pairs = self.build_training_data(
-            False,
-            table_name,
-            page_size=page_size,
-            limit=limit,
-            search_limit=search_limit,
+            False, page_size=page_size, limit=limit, search_limit=search_limit,
         )
 
         np.save(os.path.join(path, "X.npy"), X)
@@ -293,7 +277,6 @@ class Disambiguator(Classifier):
 
     def _get_pids(
         self,
-        table_name,
         ignore_pids=["description"],
         used_types=["numeric", "string", "categorical"],
     ) -> list:
@@ -303,11 +286,10 @@ class Disambiguator(Classifier):
         Returns:
             list
         """
-        table_mapping = field_mapping.mapping[table_name]
 
         pids = []
 
-        for _, v in table_mapping.items():
+        for _, v in self.table_mapping.items():
             if (
                 (("PID" in v) or (v.get("RDF") == RDFS.label))
                 and ("RDF" in v)
@@ -380,14 +362,11 @@ class Disambiguator(Classifier):
 
         return wikidata_results
 
-    def _get_labelled_records_from_elasticsearch(
-        self, table_name: str, limit: int = None
-    ):
+    def _get_labelled_records_from_elasticsearch(self, limit: int = None):
         """
         Get labelled records (with sameAs) from Elasticsearch for training.
 
         Args:
-            table_name (str):
             limit (int, optional): Defaults to None.
 
         """
@@ -397,7 +376,7 @@ class Disambiguator(Classifier):
                 "bool": {
                     "must": [
                         {"wildcard": {"graph.@owl:sameAs.@id": "*"}},
-                        {"term": {"type.keyword": table_name.upper()}},
+                        {"term": {"type.keyword": self.table_name.upper()}},
                     ]
                 }
             }
@@ -411,21 +390,18 @@ class Disambiguator(Classifier):
 
         return search_res
 
-    def _get_unlabelled_records_from_elasticsearch(
-        self, table_name: str, limit: int = None
-    ):
+    def _get_unlabelled_records_from_elasticsearch(self, limit: int = None):
         """
         Get unlabelled records (without sameAs) from Elasticsearch for inference.
 
         Args:
-            table_name (str)
             limit (int, optional): Defaults to None.
         """
 
         query = {
             "query": {
                 "bool": {
-                    "must": {"term": {"type.keyword": table_name.upper()}},
+                    "must": {"term": {"type.keyword": self.table_name.upper()}},
                     "must_not": {"exists": {"field": "graph.@owl:sameAs.@id"}},
                 }
             }
@@ -440,15 +416,13 @@ class Disambiguator(Classifier):
         return search_res
 
     def _get_predicates_for_top_concept(
-        self,
-        top_concept: str,
-        predicates_ignore: List[str] = [OWL.sameAs, SKOS.hasTopConcept],
+        self, predicates_ignore: List[str] = [OWL.sameAs, SKOS.hasTopConcept],
     ) -> List[str]:
         """
-        Get a unique list of predicates for a SKOS:hasTopConcept value. These will form the columns of X.
+        Get a unique list of predicates for the table. These will form the columns of X.
 
         Args:
-            top_concept (str): SKOS:hasTopConcept value, e.g. 'PERSON'
+            predicates_ignore (List[str]): predicates to ignore
 
         Returns:
             list of URLs for each predicate, excluding those in `predicates_ignore`
@@ -457,12 +431,12 @@ class Disambiguator(Classifier):
         # TODO: remove this when using pydantic as it will coerce rdflib.term.URIRef to string
         predicates_ignore = [str(i) for i in predicates_ignore]
 
-        query = """
+        query = f"""
         SELECT DISTINCT ?predicate
-        WHERE {
-        ?subject <http://www.w3.org/2004/02/skos/core#hasTopConcept> 'PERSON'.
+        WHERE {{
+        ?subject <http://www.w3.org/2004/02/skos/core#hasTopConcept> '{self.table_name}'.
         ?subject ?predicate ?object.
-        }"""
+        }}"""
 
         res = get_sparql_results(config.FUSEKI_ENDPOINT, query)["results"]["bindings"]
 
@@ -519,12 +493,7 @@ class Disambiguator(Classifier):
                     ] = get_distance_between_entities_multiple(ent_set, reciprocal=True)
 
     def build_training_data(
-        self,
-        train: bool,
-        table_name: str,
-        page_size: int = 100,
-        limit: int = None,
-        search_limit=20,
+        self, train: bool, page_size: int = 100, limit: int = None, search_limit=20,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get training arrays X, y from all the records in the Heritage Connector index with an existing sameAs
@@ -534,7 +503,6 @@ class Disambiguator(Classifier):
             wd_index (str): Elasticsearch index of the Wikidata dump
             train (str): whether to build training data (True) or data for inference (False). If True a y vector
                 is returned, otherwise one isn't.
-            table_name (str): table name in field_mapping config
             page_size (int, optional): the number of records to fetch from Wikidata per iteration. Larger numbers
                 will speed up the process but may cause the SPARQL query to time out. Defaults to 10.
                 (TODO: set better default)
@@ -546,13 +514,12 @@ class Disambiguator(Classifier):
         Returns:
             Tuple[np.ndarray, np.ndarray]: X, y
         """
-        table_mapping = field_mapping.mapping[table_name]
         wd_index = config.ELASTIC_SEARCH_WIKI_INDEX
         search = es_text_search(index=wd_index)
 
         filtered_mapping = {
             k: v
-            for (k, v) in table_mapping.items()
+            for (k, v) in self.table_mapping.items()
             if (("PID" in v) or (v.get("RDF") == RDFS.label))
             and ("RDF" in v)
             and (v.get("PID") != "description")
@@ -565,7 +532,7 @@ class Disambiguator(Classifier):
         # also get URI of instanceof property (P31)
         pids_nolabel = [
             url_to_pid(v["PID"])
-            for _, v in table_mapping.items()
+            for _, v in self.table_mapping.items()
             if v.get("wikidata_entity")
         ] + ["P31"]
         X_list = []
@@ -576,13 +543,9 @@ class Disambiguator(Classifier):
 
         # get records to process from Elasticsearch
         if train:
-            search_res = self._get_labelled_records_from_elasticsearch(
-                table_name, limit
-            )
+            search_res = self._get_labelled_records_from_elasticsearch(limit)
         else:
-            search_res = self._get_unlabelled_records_from_elasticsearch(
-                table_name, limit
-            )
+            search_res = self._get_unlabelled_records_from_elasticsearch(limit)
 
         search_res_paginated = paginate_generator(search_res, page_size)
 
@@ -730,12 +693,12 @@ class Disambiguator(Classifier):
         if train:
             X = np.column_stack([np.vstack(X_list), ent_similarity_list])
             y = np.asarray(y_list, dtype=bool)
-            X_columns = self._get_pids(table_name) + ["P31"]
+            X_columns = self._get_pids() + ["P31"]
 
             return X, y, X_columns, id_pair_list
 
         else:
             X = np.column_stack([np.vstack(X_list), ent_similarity_list])
-            X_columns = self._get_pids(table_name) + ["P31"]
+            X_columns = self._get_pids() + ["P31"]
 
             return X, X_columns, id_pair_list
