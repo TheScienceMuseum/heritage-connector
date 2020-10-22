@@ -10,7 +10,11 @@ import pandas as pd
 
 
 def get_wikidata_fields(
-    pids: list, qids: list = [], id_qid_mapping: dict = {}, pids_nolabel: list = []
+    pids: list,
+    qids: list = [],
+    id_qid_mapping: dict = {},
+    pids_nolabel: list = [],
+    replace_values_with_labels: bool = False,
 ) -> pd.DataFrame:
     """
     Get information for Wikidata items specified by a set of Wikidata QIDs. Return columns specified by a set of Wikidata PIDs.
@@ -23,6 +27,9 @@ def get_wikidata_fields(
             mapping
         pids_nolabel (list, optional): PIDs for which the value should be returned instead of the label. Any pids not included 
             in `pids` will be added to the final result.
+        replace_values_with_labels (bool, optional): whether to replace QIDs with labels for the fields for which labels are 
+            retrieved. If False, labelled columns will be of the form "PxyLabel" and the original "Pxy" columns will be kept.
+            Defaults to False.
 
     Returns:
         pd.DataFrame: table of Wikidata results
@@ -37,11 +44,13 @@ def get_wikidata_fields(
         qids = list(set(flatten_list_of_lists(id_qid_mapping.values())))
 
     ent = wbentities()
-    ent.get_properties(qids, all_pids, pids_label)
+    ent.get_properties(qids, all_pids, pids_label, replace_values_with_labels)
     res_df = (
         ent.get_results()
         .rename(columns={"id": "qid", "labels": "label", "descriptions": "description"})
-        .rename(columns=lambda c: c.strip("claims.") if c.startswith("claims.") else c)
+        .rename(
+            columns=lambda c: c.replace("claims.", "") if c.startswith("claims.") else c
+        )
     )
 
     # this line checks that all the QIDs that were requested have ended up in the resulting dataframe

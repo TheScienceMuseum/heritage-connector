@@ -1,6 +1,9 @@
 from heritageconnector.disambiguation import compare_fields
 
 
+# TODO: write test for compare_fields.compare
+
+
 class TestSimilarities:
     def test_string_similarity(self):
         assert compare_fields.similarity_string("abc", "abc") == 1

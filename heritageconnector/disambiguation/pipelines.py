@@ -27,13 +27,14 @@ from heritageconnector.utils.wikidata import (
     get_distance_between_entities_multiple,
     qid_to_url,
     is_qid,
+    get_wikidata_equivalents_for_properties,
 )
 from heritageconnector.utils.generic import paginate_generator
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.namespace import OWL, RDF, RDFS, SKOS
+from heritageconnector.namespace import OWL, RDF, RDFS, SKOS, FOAF
 from heritageconnector.disambiguation.retrieve import get_wikidata_fields
 from heritageconnector.disambiguation.search import es_text_search
-from heritageconnector.disambiguation import compare_fields as compare
+from heritageconnector.disambiguation.compare_fields import compare
 from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
@@ -275,48 +276,14 @@ class Disambiguator(Classifier):
             wr = csv.writer(f, delimiter="\t")
             wr.writerows(id_pairs)
 
-    def _get_pids(
-        self,
-        ignore_pids=["description"],
-        used_types=["numeric", "string", "categorical"],
-    ) -> list:
-        """
-        Get an ordered list of PIDS that have been used for training (the column names of X).
-
-        Returns:
-            list
-        """
-
-        pids = []
-
-        for _, v in self.table_mapping.items():
-            if (
-                (("PID" in v) or (v.get("RDF") == RDFS.label))
-                and ("RDF" in v)
-                and (v.get("PID") not in ignore_pids)
-                and (v.get("type") in used_types)
-            ):
-                if "PID" in v:
-                    pids.append(url_to_pid(v["PID"]))
-                elif v.get("RDF") == RDFS.label:
-                    pids.append("label")
-
-        return pids
-
     def _process_wikidata_results(self, wikidata_results: pd.DataFrame) -> pd.DataFrame:
         """
         - fill empty firstname (P735) and lastname (P734) fields by taking the first and last words of the label field
-        - convert birthdate & deathdate (P569 & P570) to years
+        - convert any date-like values to positive or negative integers
         - add label column combining itemLabel and altLabel lists
         """
         firstname_from_label = lambda l: l.split(" ")[0]
         lastname_from_label = lambda l: l.split(" ")[-1]
-        year_from_wiki_date = (
-            # don't worry about converting to numeric type here as comparison functions handle this
-            lambda l: l[1:5]
-            if isinstance(l, str)
-            else [i[1:5] for i in l]
-        )
 
         # firstname, lastname
         if "P735" in wikidata_results.columns and "P734" in wikidata_results.columns:
@@ -331,23 +298,6 @@ class Disambiguator(Classifier):
                     if not row["P734"]
                     else row["P734"]
                 )
-
-        # date of birth, date of death
-        if "P569" in wikidata_results.columns and "P570" in wikidata_results.columns:
-            wikidata_results["P569"] = wikidata_results["P569"].apply(
-                year_from_wiki_date
-            )
-            wikidata_results["P570"] = wikidata_results["P570"].apply(
-                year_from_wiki_date
-            )
-
-        if "P571" in wikidata_results.columns and "P576" in wikidata_results.columns:
-            wikidata_results["P571"] = wikidata_results["P571"].apply(
-                year_from_wiki_date
-            )
-            wikidata_results["P576"] = wikidata_results["P576"].apply(
-                year_from_wiki_date
-            )
 
         # combine labels and aliases into one list: label
         wikidata_results["label"] = wikidata_results["label"].apply(
@@ -415,8 +365,81 @@ class Disambiguator(Classifier):
 
         return search_res
 
-    def _get_predicates_for_top_concept(
-        self, predicates_ignore: List[str] = [OWL.sameAs, SKOS.hasTopConcept],
+    def _get_labelled_records_from_sparql_store(
+        self, limit: int = None
+    ) -> Iterable[dict]:
+        """
+        Get all records with an owl:sameAs value (URIs and labels) from the Fuseki instance.
+
+        Args:
+            limit (int, optional): Defaults to None.
+
+        Returns:
+            Generator of dicts. Each dict has the form {"id": __, "label": ___}
+        """
+        query = f"""PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT DISTINCT ?item ?itemLabel
+        WHERE {{
+        ?item owl:sameAs ?object.
+        ?item rdfs:label ?itemLabel.
+        ?item skos:hasTopConcept '{self.table_name}'.
+        }}"""
+
+        if limit is not None:
+            query = query + f"LIMIT {limit}"
+
+        res = get_sparql_results(config.FUSEKI_ENDPOINT, query)["results"]["bindings"]
+
+        return (
+            {"id": item["item"]["value"], "label": item["itemLabel"]["value"]}
+            for item in res
+        )
+
+    def _get_unlabelled_records_from_sparql_store(
+        self, limit: int = None
+    ) -> Iterable[dict]:
+        """
+        Get all records without an owl:sameAs value (URIs and labels) from the Fuseki instance.
+
+        Args:
+            limit (int, optional): Defaults to None.
+
+        Returns:
+            Generator of dicts. Each dict has the form {"id": __, "label": ___}
+        """
+
+        query = f"""PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+        SELECT DISTINCT ?item ?itemLabel
+        WHERE {{
+        FILTER NOT EXISTS {{?item owl:sameAs ?object}}.
+        ?item rdfs:label ?itemLabel.
+        ?item skos:hasTopConcept '{self.table_name}'.
+        }}"""
+
+        if limit is not None:
+            query = query + f"LIMIT {limit}"
+
+        res = get_sparql_results(config.FUSEKI_ENDPOINT, query)["results"]["bindings"]
+
+        return (
+            {"id": item["item"]["value"], "label": item["itemLabel"]["value"]}
+            for item in res
+        )
+
+    def _get_predicates(
+        self,
+        predicates_ignore: List[str] = [
+            RDFS.label,
+            OWL.sameAs,
+            SKOS.hasTopConcept,
+            FOAF.title,
+        ],
     ) -> List[str]:
         """
         Get a unique list of predicates for the table. These will form the columns of X.
@@ -441,7 +464,11 @@ class Disambiguator(Classifier):
         res = get_sparql_results(config.FUSEKI_ENDPOINT, query)["results"]["bindings"]
 
         if len(res) > 0:
-            return [i["predicate"]["value"] for i in res if i not in predicates_ignore]
+            return [
+                i["predicate"]["value"]
+                for i in res
+                if i["predicate"]["value"] not in predicates_ignore
+            ]
 
         else:
             return []
@@ -492,15 +519,23 @@ class Disambiguator(Classifier):
                         hash((ent_1, ent_2))
                     ] = get_distance_between_entities_multiple(ent_set, reciprocal=True)
 
+    def _to_tuple(self, val):
+        """Convert lists to tuples, but leave values that aren't lists as they are."""
+        return tuple(val) if isinstance(val, list) else val
+
     def build_training_data(
-        self, train: bool, page_size: int = 100, limit: int = None, search_limit=20,
+        self,
+        train: bool,
+        page_size: int = 100,
+        limit: int = None,
+        search_limit=20,
+        pids_ignore: list = [],
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get training arrays X, y from all the records in the Heritage Connector index with an existing sameAs
         link to Wikidata.
 
         Args:
-            wd_index (str): Elasticsearch index of the Wikidata dump
             train (str): whether to build training data (True) or data for inference (False). If True a y vector
                 is returned, otherwise one isn't.
             page_size (int, optional): the number of records to fetch from Wikidata per iteration. Larger numbers
@@ -514,27 +549,18 @@ class Disambiguator(Classifier):
         Returns:
             Tuple[np.ndarray, np.ndarray]: X, y
         """
-        wd_index = config.ELASTIC_SEARCH_WIKI_INDEX
-        search = es_text_search(index=wd_index)
 
-        filtered_mapping = {
-            k: v
-            for (k, v) in self.table_mapping.items()
-            if (("PID" in v) or (v.get("RDF") == RDFS.label))
-            and ("RDF" in v)
-            and (v.get("PID") != "description")
+        predicates = self._get_predicates()
+        predicate_pid_mapping = get_wikidata_equivalents_for_properties(predicates)
+
+        # remove instanceof (P31) and add to end, as the type distance calculations are appended to X last
+        predicate_pid_mapping = {
+            k: url_to_pid(v)
+            for k, v in predicate_pid_mapping.items()
+            if v is not None and url_to_pid(v) not in pids_ignore + ["P31"]
         }
-        pids = [
-            url_to_pid(v["PID"])
-            for _, v in filtered_mapping.items()
-            if v["RDF"] != RDFS.label
-        ]
-        # also get URI of instanceof property (P31)
-        pids_nolabel = [
-            url_to_pid(v["PID"])
-            for _, v in self.table_mapping.items()
-            if v.get("wikidata_entity")
-        ] + ["P31"]
+        pids = list(predicate_pid_mapping.values()) + ["P31"]
+
         X_list = []
         if train:
             y_list = []
@@ -542,42 +568,36 @@ class Disambiguator(Classifier):
         id_pair_list = []
 
         # get records to process from Elasticsearch
+        search = es_text_search(index=config.ELASTIC_SEARCH_WIKI_INDEX)
+
         if train:
-            search_res = self._get_labelled_records_from_elasticsearch(limit)
+            search_res = self._get_labelled_records_from_sparql_store(limit)
         else:
-            search_res = self._get_unlabelled_records_from_elasticsearch(limit)
+            search_res = self._get_unlabelled_records_from_sparql_store(limit)
 
         search_res_paginated = paginate_generator(search_res, page_size)
 
-        total = math.ceil(limit / page_size) if limit is not None else None
+        total = None if limit is None else math.ceil(limit / page_size)
 
         # for each record, get Wikidata results and create X: feature matrix and y: boolean vector (correct/incorrect match)
         for item_list in tqdm(search_res_paginated, total=total):
             id_qid_mapping = dict()
             qid_instanceof_mapping = dict()
             batch_instanceof_comparisons = []
-            # below is used so graphs can be accessed between the first and second `for item in item_list` loop
-            graph_list = []
 
             logger.debug("Running search")
             start = time.time()
             for item in item_list:
-                g = Graph().parse(
-                    data=json.dumps(item["_source"]["graph"]), format="json-ld"
-                )
-                graph_list.append(g)
-                item_id = next(g.subjects())
-                item_label = g.label(next(g.subjects()))
-
-                # search for Wikidata matches and retrieve information (batched)
+                # text search for Wikidata matches
                 qids, qid_instanceof_temp = search.run_search(
-                    item_label,
+                    item["label"],
                     limit=search_limit,
                     include_aliases=True,
                     return_instanceof=True,
                 )
-                id_qid_mapping[item_id] = qids
+                id_qid_mapping[item["id"]] = qids
                 qid_instanceof_mapping.update(qid_instanceof_temp)
+
             end = time.time()
             logger.debug(f"...search complete in {end-start}s")
 
@@ -585,7 +605,7 @@ class Disambiguator(Classifier):
             logger.debug("Getting wikidata fields")
             start = time.time()
             wikidata_results_df = get_wikidata_fields(
-                pids=pids, id_qid_mapping=id_qid_mapping, pids_nolabel=pids_nolabel
+                pids=pids, id_qid_mapping=id_qid_mapping
             )
             end = time.time()
             logger.debug(f"...retrieved in {end-start}s")
@@ -593,31 +613,45 @@ class Disambiguator(Classifier):
             wikidata_results_df = self._process_wikidata_results(wikidata_results_df)
 
             # create X array for each record
-            for idx, item in enumerate(item_list):
+            for item in item_list:
+                # we get all the triples for the item here (rather than each triple in the for loop below)
+                # to reduce the load on the SPARQL DB
+                item_triples = list(
+                    self._get_triples_from_store((URIRef(item["id"]), None, None))
+                )
+
                 X_temp = []
-                g = graph_list[idx]
-                item_id = next(g.subjects())
                 qids_wikidata = wikidata_results_df.loc[
-                    wikidata_results_df["id"] == item_id, "qid"
+                    wikidata_results_df["id"] == item["id"], "qid"
                 ]
+
                 if train:
-                    item_qid = url_to_qid(next(g.objects(predicate=OWL.sameAs)))
+                    item_qid = url_to_qid(
+                        [i for i in item_triples if i[0][1] == OWL.sameAs][0][0][-1]
+                    )
                     y_item = [item_qid == qid for qid in qids_wikidata]
-                id_pairs = [[str(item_id), qid] for qid in qids_wikidata]
+
+                id_pairs = [[item["id"], qid] for qid in qids_wikidata]
 
                 # calculate instanceof distances
+                # TODO: what do we do here if RDF.type has more than one value?
                 try:
-                    item_instanceof = url_to_qid(next(g.objects(predicate=RDF.type)))
+                    item_instanceof = url_to_qid(
+                        [i for i in item_triples if i[0][1] == RDF.type][0][0][-1]
+                    )
                     wikidata_instanceof = wikidata_results_df.loc[
-                        wikidata_results_df["id"] == item_id, "P31"
+                        wikidata_results_df["id"] == item["id"], "P31"
                     ].tolist()
 
-                    to_tuple = lambda x: tuple(x) if isinstance(x, list) else x
                     batch_instanceof_comparisons += [
-                        (item_instanceof, to_tuple(url_to_qid(q, raise_invalid=False)))
+                        (
+                            item_instanceof,
+                            self._to_tuple(url_to_qid(q, raise_invalid=False)),
+                        )
                         for q in wikidata_instanceof
                     ]
                 except:  # noqa: E722
+                    # TODO: better error handling here. Why does this fail?
                     logger.warning("Getting types for comparison failed.")
 
                     batch_instanceof_comparisons += [
@@ -625,60 +659,45 @@ class Disambiguator(Classifier):
                         for q in range(
                             len(
                                 wikidata_results_df.loc[
-                                    wikidata_results_df["id"] == item_id, :
+                                    wikidata_results_df["id"] == item["id"], :
                                 ]
                             )
                         )
                     ]
 
-                for key, value in filtered_mapping.items():
-                    pid = (
-                        "label"
-                        if value["RDF"] == RDFS.label
-                        else url_to_pid(value["PID"])
-                    )
-                    rdf = value["RDF"]
-                    val_type = value["type"]
-
-                    # TODO: is there a better way than storing these graphs in memory then retrieving parts of the graph here?
-                    vals_internal = [str(i) for i in g.objects(predicate=rdf)]
-                    vals_wikidata = wikidata_results_df.loc[
-                        wikidata_results_df["id"] == item_id, pid
-                    ].tolist()
-                    # convert Wikidata QIDs to URL so they can be compared against RDF predicates of internal DB
-                    vals_wikidata = [
-                        qid_to_url(i) if is_qid(i) else i for i in vals_wikidata
+                for predicate, pid in predicate_pid_mapping.items():
+                    item_values = [
+                        i for i in item_triples if i[0][1] == URIRef(predicate)
                     ]
 
-                    if val_type == "string":
+                    # TODO: if entity is a SMG entity, do we want to get its sameAs link or label?
+                    wikidata_values = wikidata_results_df.loc[
+                        wikidata_results_df["id"] == item["id"], pid
+                    ].tolist()
+                    wikidata_labels = wikidata_results_df.loc[
+                        wikidata_results_df["id"] == item["id"], pid + "Label"
+                    ].tolist()
+
+                    if len(item_values) == 0:
+                        # if the internal item has no values for the PID return zero similarity
+                        # for this PID with each of the candidate QIDs
+                        sim_list = [0] * len(wikidata_values)
+
+                    else:
+                        item_values = [triple[0][-1] for triple in item_values]
                         sim_list = [
-                            compare.similarity_string(vals_internal, i)
-                            for i in vals_wikidata
+                            compare(item_values, wikidata_values[i], wikidata_labels[i])
+                            for i in range(len(wikidata_values))
                         ]
 
-                    elif val_type == "numeric":
-                        sim_list = [
-                            compare.similarity_numeric(vals_internal, i)
-                            if str(i) != ""
-                            else 0
-                            for i in vals_wikidata
-                        ]
-
-                    elif val_type == "categorical":
-                        sim_list = [
-                            compare.similarity_categorical(
-                                vals_internal, i, raise_on_diff_types=False
-                            )
-                            for i in vals_wikidata
-                        ]
-
-                    if val_type in ["string", "numeric", "categorical"]:
-                        X_temp.append(sim_list)
+                    X_temp.append(sim_list)
 
                 X_item = np.asarray(X_temp, dtype=np.float32).transpose()
                 X_list.append(X_item)
+
                 if train:
                     y_list += y_item
+
                 id_pair_list += id_pairs
 
             self._add_instanceof_distances_to_inmemory_cache(
@@ -693,12 +712,12 @@ class Disambiguator(Classifier):
         if train:
             X = np.column_stack([np.vstack(X_list), ent_similarity_list])
             y = np.asarray(y_list, dtype=bool)
-            X_columns = self._get_pids() + ["P31"]
+            X_columns = pids
 
             return X, y, X_columns, id_pair_list
 
         else:
             X = np.column_stack([np.vstack(X_list), ent_similarity_list])
-            X_columns = self._get_pids() + ["P31"]
+            X_columns = pids
 
             return X, X_columns, id_pair_list
