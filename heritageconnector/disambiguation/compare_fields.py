@@ -40,15 +40,20 @@ def compare(
         wikidata_label (str): label of Wikidata entity
     """
 
-    if not isinstance(internal_val, (rdflib.Literal, rdflib.URIRef)):
-        raise ValueError(
-            f"Input value internal_val must be either rdflib.Literal or rdflib.URIRef ({type(internal_val)} passed)"
-        )
-
     if isinstance(internal_val, list):
+        if not all(
+            [isinstance(val, (rdflib.Literal, rdflib.URIRef)) for val in internal_val]
+        ):
+            raise ValueError(
+                f"Input value internal_val must be either rdflib.Literal or rdflib.URIRef ({type(internal_val)} passed)"
+            )
         list_input = True
         internal_val_test = [i for i in internal_val if bool(i)][0]
     else:
+        if not isinstance(internal_val, (rdflib.Literal, rdflib.URIRef)):
+            raise ValueError(
+                f"Input value internal_val must be either rdflib.Literal or rdflib.URIRef ({type(internal_val)} passed)"
+            )
         list_input = False
         internal_val_test = internal_val
 

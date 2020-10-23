@@ -634,18 +634,19 @@ class Disambiguator(Classifier):
                 id_pairs = [[item["id"], qid] for qid in qids_wikidata]
 
                 # calculate instanceof distances
-                # TODO: what do we do here if RDF.type has more than one value?
                 try:
-                    item_instanceof = url_to_qid(
-                        [i for i in item_triples if i[0][1] == RDF.type][0][0][-1]
-                    )
+                    item_instanceof = [
+                        url_to_qid(i[0][-1])
+                        for i in item_triples
+                        if i[0][1] == RDF.type
+                    ]
                     wikidata_instanceof = wikidata_results_df.loc[
                         wikidata_results_df["id"] == item["id"], "P31"
                     ].tolist()
 
                     batch_instanceof_comparisons += [
                         (
-                            item_instanceof,
+                            self._to_tuple(item_instanceof),
                             self._to_tuple(url_to_qid(q, raise_invalid=False)),
                         )
                         for q in wikidata_instanceof
