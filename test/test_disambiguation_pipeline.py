@@ -51,10 +51,9 @@ def test_disambiguator_get_triples():
 
 
 def test_disambiguator_make_training_data():
-    pids_ignore = ["P2283", "P27"]
     d = pipelines.Disambiguator(table_name="PERSON")
     X, y, X_columns, id_pair_list = d.build_training_data(
-        True, page_size=100, limit=200, search_limit=10, pids_ignore=pids_ignore
+        True, page_size=100, limit=200, search_limit=10
     )
 
     # array sizes
@@ -68,12 +67,12 @@ def test_disambiguator_make_training_data():
     # for different types
     for idx, col in enumerate(X_columns):
         print(col)
-        if col in ["label", "P735", "P734", "P31", "P569", "P570", "P106"]:
+        if col in ["label", "P735", "P734", "P31", "P569", "P570"]:
             # text and numerical similarity are continuous, so some values won't
             # exactly round to 2 decimal places
             # TODO: occupations should be in the categorical list below, once they've been resolved to Wikidata entities
             assert (X[:, idx].round(2) != X[:, idx]).any()
 
-        elif col in ["P21"]:
+        elif col in ["P21", "P106"]:
             # categorical similarity is in [0,1]
             assert (np.isin(X[:, idx], [0, 1])).all()

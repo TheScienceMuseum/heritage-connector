@@ -34,7 +34,10 @@ from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.namespace import OWL, RDF, RDFS, SKOS, FOAF
 from heritageconnector.disambiguation.retrieve import get_wikidata_fields
 from heritageconnector.disambiguation.search import es_text_search
-from heritageconnector.disambiguation.compare_fields import compare
+from heritageconnector.disambiguation.compare_fields import (
+    compare,
+    similarity_categorical,
+)
 from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
@@ -524,12 +527,7 @@ class Disambiguator(Classifier):
         return tuple(val) if isinstance(val, list) else val
 
     def build_training_data(
-        self,
-        train: bool,
-        page_size: int = 100,
-        limit: int = None,
-        search_limit=20,
-        pids_ignore: list = [],
+        self, train: bool, page_size: int = 100, limit: int = None, search_limit=20,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get training arrays X, y from all the records in the Heritage Connector index with an existing sameAs
@@ -552,6 +550,8 @@ class Disambiguator(Classifier):
 
         predicates = self._get_predicates()
         predicate_pid_mapping = get_wikidata_equivalents_for_properties(predicates)
+        pids_ignore = (config.PIDS_IGNORE).split(" ")
+        pids_categorical = (config.PIDS_CATEGORICAL).split(" ")
 
         # remove instanceof (P31) and add to end, as the type distance calculations are appended to X last
         predicate_pid_mapping = {
@@ -685,10 +685,20 @@ class Disambiguator(Classifier):
 
                     else:
                         item_values = [triple[0][-1] for triple in item_values]
-                        sim_list = [
-                            compare(item_values, wikidata_values[i], wikidata_labels[i])
-                            for i in range(len(wikidata_values))
-                        ]
+                        if pid in pids_categorical:
+                            sim_list = [
+                                similarity_categorical(
+                                    item_values, label, raise_on_diff_types=False
+                                )
+                                for label in wikidata_labels
+                            ]
+                        else:
+                            sim_list = [
+                                compare(
+                                    item_values, wikidata_values[i], wikidata_labels[i]
+                                )
+                                for i in range(len(wikidata_values))
+                            ]
 
                     X_temp.append(sim_list)
 
