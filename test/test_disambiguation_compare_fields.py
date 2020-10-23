@@ -1,7 +1,25 @@
 from heritageconnector.disambiguation import compare_fields
+from heritageconnector.namespace import WD
+from rdflib import URIRef, Literal
+import pytest
 
 
-# TODO: write test for compare_fields.compare
+def test_compare():
+    with pytest.raises(ValueError):
+        # first argument must either be URIRef or Literal
+        assert compare_fields.compare("Arthur", "Q670277", "Arthur Russell") == 1
+
+    # comparing entities
+    assert compare_fields.compare(WD.Q670277, "Q670277", "Arthur Russell") == 1
+
+    # comparing Literal to label (string)
+    assert (
+        compare_fields.compare(Literal("Arthur Russell"), "Q670277", "Arthur Russell")
+        == 1
+    )
+
+    # comparing Literal to entity value (float)
+    assert compare_fields.compare(Literal(4), "4", "label") == 1
 
 
 class TestSimilarities:
