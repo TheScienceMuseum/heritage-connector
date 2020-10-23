@@ -11,9 +11,11 @@ def test_get_wikidata_fields():
         pids=pids, qids=qids, pids_nolabel=pids_nolabel
     )
 
-    assert res_df.shape == (3, 10)
+    assert res_df.shape == (3, 14)
     assert set(res_df.columns.tolist()) == set(
-        ["qid", "label", "description", "aliases"] + pids
+        ["qid", "label", "description", "aliases"]
+        + pids
+        + [pid + "Label" for pid in pids if pid not in pids_nolabel]
     )
 
     # all values in nolabels cols should be QIDs or empty
