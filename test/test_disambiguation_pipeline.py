@@ -64,6 +64,9 @@ def test_disambiguator_make_training_data():
     assert (X >= 0).all()
     assert (X <= 1).all()
 
+    # each column has a sum greater than zero (i.e. no column is empty)
+    assert all([i > 0 for i in X.sum(axis=0)])
+
     # for different types
     for idx, col in enumerate(X_columns):
         print(col)

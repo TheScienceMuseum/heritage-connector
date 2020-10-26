@@ -37,6 +37,7 @@ from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.disambiguation.compare_fields import (
     compare,
     similarity_categorical,
+    similarity_string,
 )
 from heritageconnector import logging, errors
 
@@ -289,17 +290,20 @@ class Disambiguator(Classifier):
         lastname_from_label = lambda l: l.split(" ")[-1]
 
         # firstname, lastname
-        if "P735" in wikidata_results.columns and "P734" in wikidata_results.columns:
+        if (
+            "P735Label" in wikidata_results.columns
+            and "P734Label" in wikidata_results.columns
+        ):
             for idx, row in wikidata_results.iterrows():
-                wikidata_results.loc[idx, "P735"] = (
+                wikidata_results.loc[idx, "P735Label"] = (
                     firstname_from_label(row["label"])
-                    if not row["P735"]
-                    else row["P735"]
+                    if not row["P735Label"]
+                    else row["P735Label"]
                 )
-                wikidata_results.loc[idx, "P734"] = (
+                wikidata_results.loc[idx, "P734Label"] = (
                     lastname_from_label(row["label"])
-                    if not row["P734"]
-                    else row["P734"]
+                    if not row["P734Label"]
+                    else row["P734Label"]
                 )
 
         # combine labels and aliases into one list: label
@@ -560,6 +564,7 @@ class Disambiguator(Classifier):
             if v is not None and url_to_pid(v) not in pids_ignore + ["P31"]
         }
         pids = list(predicate_pid_mapping.values()) + ["P31"]
+        predicate_pid_mapping.update({RDFS.label: "label"})
 
         X_list = []
         if train:
@@ -612,13 +617,27 @@ class Disambiguator(Classifier):
 
             wikidata_results_df = self._process_wikidata_results(wikidata_results_df)
 
+            logger.debug("Calculating field similarities for batch..")
             # create X array for each record
             for item in item_list:
                 # we get all the triples for the item here (rather than each triple in the for loop below)
                 # to reduce the load on the SPARQL DB
-                item_triples = list(
-                    self._get_triples_from_store((URIRef(item["id"]), None, None))
-                )
+                try:
+                    item_triples = list(
+                        self._get_triples_from_store((URIRef(item["id"]), None, None))
+                    )
+
+                except:  # noqa: E722
+                    # sparql store has crashed
+                    sleep_time = 120
+                    logger.debug(
+                        f"get_triples query failed. Retrying in {sleep_time} seconds"
+                    )
+                    time.sleep(sleep_time)
+                    self._open_sparql_store()
+                    item_triples = list(
+                        self._get_triples_from_store((URIRef(item["id"]), None, None))
+                    )
 
                 X_temp = []
                 qids_wikidata = wikidata_results_df.loc[
@@ -671,35 +690,52 @@ class Disambiguator(Classifier):
                         i for i in item_triples if i[0][1] == URIRef(predicate)
                     ]
 
-                    # TODO: if entity is a SMG entity, do we want to get its sameAs link or label?
-                    wikidata_values = wikidata_results_df.loc[
-                        wikidata_results_df["id"] == item["id"], pid
-                    ].tolist()
-                    wikidata_labels = wikidata_results_df.loc[
-                        wikidata_results_df["id"] == item["id"], pid + "Label"
-                    ].tolist()
-
-                    if len(item_values) == 0:
-                        # if the internal item has no values for the PID return zero similarity
-                        # for this PID with each of the candidate QIDs
-                        sim_list = [0] * len(wikidata_values)
+                    # RDFS.label is a special case that has no associated PID. We just want to compare it
+                    # to the 'label' column which is the labels + aliases for each Wikidata item.
+                    if predicate == RDFS.label:
+                        item_labels = [str(triple[0][-1]) for triple in item_values]
+                        wikidata_labels = wikidata_results_df.loc[
+                            wikidata_results_df["id"] == item["id"], "label"
+                        ].tolist()
+                        sim_list = [
+                            similarity_string(item_labels, label_list)
+                            for label_list in wikidata_labels
+                        ]
 
                     else:
-                        item_values = [triple[0][-1] for triple in item_values]
-                        if pid in pids_categorical:
-                            sim_list = [
-                                similarity_categorical(
-                                    item_values, label, raise_on_diff_types=False
-                                )
-                                for label in wikidata_labels
-                            ]
+                        # TODO: if entity is a SMG entity, do we want to get its sameAs link or label?
+                        wikidata_values = wikidata_results_df.loc[
+                            wikidata_results_df["id"] == item["id"], pid
+                        ].tolist()
+                        wikidata_labels = wikidata_results_df.loc[
+                            wikidata_results_df["id"] == item["id"], pid + "Label"
+                        ].tolist()
+
+                        if len(item_values) == 0:
+                            # if the internal item has no values for the PID return zero similarity
+                            # for this PID with each of the candidate QIDs
+                            sim_list = [0] * len(wikidata_values)
+
                         else:
-                            sim_list = [
-                                compare(
-                                    item_values, wikidata_values[i], wikidata_labels[i]
-                                )
-                                for i in range(len(wikidata_values))
-                            ]
+                            item_values = [triple[0][-1] for triple in item_values]
+                            if pid in pids_categorical:
+                                sim_list = [
+                                    similarity_categorical(
+                                        [str(i) for i in item_values],
+                                        label,
+                                        raise_on_diff_types=False,
+                                    )
+                                    for label in wikidata_labels
+                                ]
+                            else:
+                                sim_list = [
+                                    compare(
+                                        item_values,
+                                        wikidata_values[i],
+                                        wikidata_labels[i],
+                                    )
+                                    for i in range(len(wikidata_values))
+                                ]
 
                     X_temp.append(sim_list)
 
@@ -723,12 +759,12 @@ class Disambiguator(Classifier):
         if train:
             X = np.column_stack([np.vstack(X_list), ent_similarity_list])
             y = np.asarray(y_list, dtype=bool)
-            X_columns = pids
+            X_columns = list(predicate_pid_mapping.values()) + ["P31"]
 
             return X, y, X_columns, id_pair_list
 
         else:
             X = np.column_stack([np.vstack(X_list), ent_similarity_list])
-            X_columns = pids
+            X_columns = list(predicate_pid_mapping.values()) + ["P31"]
 
             return X, X_columns, id_pair_list
