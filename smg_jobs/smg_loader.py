@@ -172,6 +172,11 @@ def load_orgs_data():
     logger.info("loading orgs data")
     add_records(table_name, org_df)
 
+    # also add type organization (Q43229)
+    org_df["URI"] = org_df["ID"].apply(lambda i: people_prefix + str(i))
+    org_df["type_org"] = qid_to_url("Q43229")
+    add_triples(org_df, RDF.type, subject_col="URI", object_col="type_org")
+
     return
 
 
