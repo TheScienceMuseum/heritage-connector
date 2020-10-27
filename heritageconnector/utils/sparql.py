@@ -6,12 +6,14 @@ import time
 import json
 import sys
 import requests
+from tenacity import retry, stop_after_attempt, wait_fixed
 from heritageconnector.config import config
 from heritageconnector import logging
 
 logger = logging.get_logger(__name__)
 
 
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
 def get_sparql_results(endpoint_url: str, query: str) -> dict:
     """
     Makes a SPARQL query to endpoint_url.

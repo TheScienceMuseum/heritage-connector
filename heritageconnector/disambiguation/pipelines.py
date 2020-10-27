@@ -740,6 +740,8 @@ class Disambiguator(Classifier):
                     X_temp.append(sim_list)
 
                 X_item = np.asarray(X_temp, dtype=np.float32).transpose()
+
+                # TODO (checkpoint): here we would want to save X_list, y_list, id_pair_list, self.entity_distance_cache to disk
                 X_list.append(X_item)
 
                 if train:
