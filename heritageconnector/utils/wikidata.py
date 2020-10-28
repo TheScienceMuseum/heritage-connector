@@ -166,22 +166,35 @@ class wbentities:
 
 @cache(os.path.join(os.path.dirname(__file__), "../entitydistance.cache"))
 def get_distance_between_entities_cached(
-    qcode_set: Set[str], reciprocal: bool = False, max_path_length: int = 10,
+    qcode_set: Set[str],
+    bidirectional: bool = False,
+    vertex_pid: str = "P279",
+    reciprocal: bool = False,
+    max_path_length: int = 10,
 ) -> float:
-    res = get_distance_between_entities(qcode_set, reciprocal, max_path_length)
+    res = get_distance_between_entities(
+        qcode_set, bidirectional, vertex_pid, reciprocal, max_path_length
+    )
 
     return res
 
 
 def get_distance_between_entities(
-    qcode_set: Set[str], reciprocal: bool = False, max_path_length: int = 10,
+    qcode_set: Set[str],
+    bidirectional: bool = False,
+    vertex_pid: str = "P279",
+    reciprocal: bool = False,
+    max_path_length: int = 10,
 ) -> float:
     """
-    Get the length of the shortest path between two entities in `qcode_set`along the 'subclass of' axis. Flag `reciprocal=True`
-    returns 1/(1+l) where l is the length of the shortest path, which can be treated as a similarity measure.
+    Get the length of the shortest path between two entities in `qcode_set`along the 'subclass of' axis. 
+    Flag `reciprocal=True` returns 1/(1+l) where l is the length of the shortest path, which can be treated as a similarity measure.
 
     Args:
         qcode_set (Set[str])
+        bidirectional (bool, optional): If True, paths between entities where the direction is reversed (only once) will be considered. 
+            Otherwise only the forward direction specified by the PID in `link_type` will be considered. Defaults to False.
+        vertex_pid (str, optional): this PID specifies the edge types to use for the calculation.
         reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
         max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is
             greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
@@ -206,32 +219,63 @@ def get_distance_between_entities(
         raise_invalid_qid(qcodes[0])
         raise_invalid_qid(qcodes[1])
 
-    link_type = "P279"
+    if bidirectional:
+        query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
 
-    query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
+        SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[0]} ;
+                        gas:traversalDirection "Forward" ;
+                        gas:out ?super ;
+                        gas:out1 ?aLength ;
+                        gas:maxIterations {max_path_length} ;
+                        gas:linkType wdt:{vertex_pid} .
+        }}
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[1]} ;
+                        gas:traversalDirection "Forward" ;
+                        gas:out ?super ;
+                        gas:out1 ?bLength ;
+                        gas:maxIterations {max_path_length} ;
+                        gas:linkType wdt:{vertex_pid} .
+        }}  
+        }} ORDER BY ?length
+        LIMIT 1
+        """
+    else:
+        # NOTE: two distances are returned in this query to account for the fact that we don't know whether
+        # qcodes[0] or qcodes[1] is higher in the hierarchy, and setting gas:traversalDirection "Undirected"
+        # gives a WDQS error. One of these distances is zero as it's the distance between an entity and itself,
+        # so the max of the two is returned by this function.
 
-    SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
-    SERVICE gas:service {{
-        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                    gas:in wd:{qcodes[0]} ;
-                    gas:traversalDirection "Forward" ;
-                    gas:out ?super ;
-                    gas:out1 ?aLength ;
-                    gas:maxIterations {max_path_length} ;
-                    gas:linkType wdt:{link_type} .
-    }}
-    SERVICE gas:service {{
-        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                    gas:in wd:{qcodes[1]} ;
-                    gas:traversalDirection "Forward" ;
-                    gas:out ?super ;
-                    gas:out1 ?bLength ;
-                    gas:maxIterations {max_path_length} ;
-                    gas:linkType wdt:{link_type} .
-    }}  
-    }} ORDER BY ?length
-    LIMIT 1
-    """
+        query = f"""
+        PREFIX gas: <http://www.bigdata.com/rdf/gas#>
+
+        SELECT ?aLength ?bLength WHERE {{
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[0]} ;
+            gas:traversalDirection "Forward" ;
+                                gas:out ?super ;
+                                gas:out1 ?aLength ;
+                                gas:maxIterations {max_path_length} ;
+            gas:linkType wdt:P279 .
+        }}
+
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[1]} ;
+            gas:traversalDirection "Forward" ;
+                                gas:out ?super ;
+                                gas:out1 ?bLength ;
+                                gas:maxIterations {max_path_length} ;
+            gas:linkType wdt:{vertex_pid} .
+        }} 
+        FILTER (?super in (wd:{qcodes[0]}, wd:{qcodes[1]})).
+        }}
+        """
 
     result = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
         "bindings"
@@ -240,13 +284,23 @@ def get_distance_between_entities(
     if len(result) == 0:
         distance = 10 * max_path_length
     else:
-        distance = int(float(result[0]["length"]["value"]))
+        if bidirectional:
+            distance = int(float(result[0]["length"]["value"]))
+        else:
+            distance = int(
+                max(
+                    float(result[0]["aLength"]["value"]),
+                    float(result[0]["bLength"]["value"]),
+                )
+            )
 
     return 1 / (1 + distance) if reciprocal else distance
 
 
 def get_distance_between_entities_multiple(
     qcode_set: Set[Union[str, tuple]],
+    bidirectional: bool = False,
+    vertex_pid: str = "P279",
     reciprocal: bool = False,
     max_path_length: int = 10,
     use_cache: bool = True,
@@ -317,14 +371,22 @@ def get_distance_between_entities_multiple(
         for q1, q2 in combinations:
             result_list.append(
                 get_distance_between_entities_cached(
-                    {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
+                    {q1, q2},
+                    bidirectional=bidirectional,
+                    vertex_pid=vertex_pid,
+                    reciprocal=reciprocal,
+                    max_path_length=max_path_length,
                 )
             )
     else:
         for q1, q2 in combinations:
             result_list.append(
                 get_distance_between_entities(
-                    {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
+                    {q1, q2},
+                    bidirectional=bidirectional,
+                    vertex_pid=vertex_pid,
+                    reciprocal=reciprocal,
+                    max_path_length=max_path_length,
                 )
             )
 
