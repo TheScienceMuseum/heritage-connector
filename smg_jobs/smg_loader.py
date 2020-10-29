@@ -354,6 +354,15 @@ def load_sameas_from_wikidata_smg_people_id():
     add_triples(df, OWL.sameAs, subject_col="external_url", object_col="wikidata_url")
 
 
+def load_sameas_from_people_disambiguator(path):
+    logger.info("adding sameAs relationships from people disambiguator")
+
+    df = pd.read_csv(path)
+    df["wikidata_url"] = df["wikidata_id"].apply(qid_to_url)
+
+    add_triples(df, OWL.sameAs, subject_col="internal_id", object_col="wikidata_url")
+
+
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
 
 
@@ -560,4 +569,7 @@ if __name__ == "__main__":
     load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
     load_crowdsourced_links(
         "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    )
+    load_sameas_from_people_disambiguator(
+        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv"
     )
