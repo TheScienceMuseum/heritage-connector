@@ -54,6 +54,7 @@ class Disambiguator(Classifier):
         min_samples_split=2,
         min_samples_leaf=5,
         max_features=None,
+        bidirectional_distance=False,
     ):
         super().__init__()
 
@@ -68,6 +69,9 @@ class Disambiguator(Classifier):
             min_samples_leaf=min_samples_leaf,
             max_features=max_features,
         )
+
+        # whether to use an entity distance measure that can change direction
+        self.bidirectional_distance = bidirectional_distance
 
         # in-memory caching for entity similarities, prefilled with case for where there is no type specified
         self.entity_distance_cache = {hash((None, None)): 0}
@@ -524,7 +528,11 @@ class Disambiguator(Classifier):
                 if hash((ent_1, ent_2)) not in self.entity_distance_cache:
                     self.entity_distance_cache[
                         hash((ent_1, ent_2))
-                    ] = get_distance_between_entities_multiple(ent_set, reciprocal=True)
+                    ] = get_distance_between_entities_multiple(
+                        ent_set,
+                        bidirectional=self.bidirectional_distance,
+                        reciprocal=True,
+                    )
 
     def _to_tuple(self, val):
         """Convert lists to tuples, but leave values that aren't lists as they are."""
