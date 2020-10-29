@@ -13,12 +13,14 @@ import os
 from tqdm.auto import tqdm
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
+from heritageconnector.entity_matching.lookup import DenonymConverter
 from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
-from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
     get_sameas_links_from_external_id,
 )
+from heritageconnector.utils.data_transformation import get_year_from_date_value
+from heritageconnector.utils.generic import flatten_list_of_lists
 from heritageconnector.utils.wikidata import qid_to_url
 from heritageconnector import logging
 
@@ -62,6 +64,17 @@ non_graph_pids = [
     WDT.P19,  # place of birth
     WDT.P20,  # place of death
 ]
+
+denonym_converter = DenonymConverter()
+
+
+def get_country_from_nationality(nationality):
+    country = denonym_converter.get_country_from_nationality(nationality)
+
+    if country is not None:
+        return country
+    else:
+        return nationality
 
 
 def process_text(text: str):
@@ -130,6 +143,10 @@ def load_people_data():
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(split_list_string)
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+    )
+
     # remove newlines and tab chars
     people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
         process_text

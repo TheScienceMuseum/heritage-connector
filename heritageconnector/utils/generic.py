@@ -59,9 +59,18 @@ def add_dicts(dict1, dict2) -> dict:
 def flatten_list_of_lists(l: list) -> list:
     """
     [[1, 2], [3]] -> [1, 2, 3]
+    [[1, 2], 3] -> [1, 2, 3]
     """
 
-    return [item for sublist in l for item in sublist]
+    res = []
+
+    for item in l:
+        if isinstance(item, list):
+            res = res + item
+        else:
+            res.append(item)
+
+    return res
 
 
 def paginate_list(l: list, page_size: int) -> List[list]:
