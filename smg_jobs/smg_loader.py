@@ -13,7 +13,7 @@ import os
 from tqdm.auto import tqdm
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, WD, WDT
+from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, SKOS, WD, WDT
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
@@ -48,6 +48,7 @@ context = [
     {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
     {"@prov": "http://www.w3.org/ns/prov#", "@language": "en"},
     {"@rdfs": "http://www.w3.org/2000/01/rdf-schema#", "@language": "en"},
+    {"@skos": "http://www.w3.org/2004/02/skos/core#", "@language": "en"},
 ]
 
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
@@ -171,21 +172,48 @@ def load_orgs_data():
     logger.info("loading orgs data")
     add_records(table_name, org_df)
 
+    # also add type organization (Q43229)
+    org_df["URI"] = org_df["ID"].apply(lambda i: people_prefix + str(i))
+    org_df["type_org"] = qid_to_url("Q43229")
+    add_triples(org_df, RDF.type, subject_col="URI", object_col="type_org")
+
     return
 
 
 def load_maker_data():
     """Load object -> maker -> people relationships from CSV files and add to existing records """
-    # identifier in field mapping
+    # import people_orgs so we can split maker_df into people and organisations using the gender column
+    #
     maker_df = pd.read_csv(maker_data_path, low_memory=False, nrows=max_records)
+    people_orgs_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
 
+    maker_df = maker_df.merge(people_orgs_df[["LINK_ID", "GENDER"]], how="left")
     maker_df["MKEY"] = collection_prefix + maker_df["MKEY"].astype(str)
     maker_df["LINK_ID"] = people_prefix + maker_df["LINK_ID"].astype(str)
-    maker_df = maker_df.rename(columns={"MKEY": "SUBJECT", "LINK_ID": "OBJECT"})
+    maker_df = maker_df.rename(
+        columns={"MKEY": "OBJECT_ID", "LINK_ID": "PERSON_ORG_ID"}
+    )
 
-    logger.info("loading maker data (maker & made)")
-    add_triples(maker_df, FOAF.maker, subject_col="SUBJECT", object_col="OBJECT")
-    add_triples(maker_df, FOAF.made, subject_col="OBJECT", object_col="SUBJECT")
+    logger.info("loading maker data for people and orgs")
+    people_makers = maker_df[maker_df["GENDER"].isin(["M", "F"])]
+    add_triples(
+        people_makers, FOAF.maker, subject_col="OBJECT_ID", object_col="PERSON_ORG_ID"
+    )
+
+    # where we don't have gender information use FOAF.maker as it's human-readable
+    undefined_makers = maker_df[maker_df["GENDER"].isna()]
+    add_triples(
+        undefined_makers,
+        FOAF.maker,
+        subject_col="OBJECT_ID",
+        object_col="PERSON_ORG_ID",
+    )
+
+    # use 'product or material produced' Wikidata property for organisations
+    orgs_makers = maker_df[maker_df["GENDER"] == "N"]
+    add_triples(
+        orgs_makers, WDT.P1056, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
+    )
 
     return
 
@@ -324,6 +352,15 @@ def load_sameas_from_wikidata_smg_people_id():
     )
 
     add_triples(df, OWL.sameAs, subject_col="external_url", object_col="wikidata_url")
+
+
+def load_sameas_from_people_disambiguator(path):
+    logger.info("adding sameAs relationships from people disambiguator")
+
+    df = pd.read_csv(path)
+    df["wikidata_url"] = df["wikidata_id"].apply(qid_to_url)
+
+    add_triples(df, OWL.sameAs, subject_col="internal_id", object_col="wikidata_url")
 
 
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
@@ -471,6 +508,8 @@ def serialize_to_jsonld(
     g = Graph()
     record = URIRef(uri)
 
+    g.add((record, SKOS.hasTopConcept, Literal(table_name)))
+
     # Add RDF:type
     # Need to check for isinstance otherwise this will fail silently during bulk load, causing the entire record to not load
     if add_type and isinstance(add_type, rdflib.term.URIRef):
@@ -530,4 +569,7 @@ if __name__ == "__main__":
     load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
     load_crowdsourced_links(
         "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    )
+    load_sameas_from_people_disambiguator(
+        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv"
     )

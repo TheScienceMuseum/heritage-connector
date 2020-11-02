@@ -1,6 +1,7 @@
 from heritageconnector.utils import wikidata, generic
 import time
 import os
+import pytest
 
 
 class TestWikidataUtils:
@@ -44,6 +45,32 @@ class TestWikidataUtils:
 
         assert isinstance(filtered_qids_2, list)
         assert len(filtered_qids_2) == 3
+
+    def test_get_wikidata_equivalents_for_properties(self):
+        properties = [
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+            "http://xmlns.com/foaf/0.1/maker",
+            "http://no_wikidata_equivalent.org",
+            "http://www.wikidata.org/prop/direct/P21",
+        ]
+
+        # running with raise_missing=True should raise an error as one URI doesn't have a Wikidata equivalent
+        with pytest.raises(ValueError):
+            _ = wikidata.get_wikidata_equivalents_for_properties(
+                properties, raise_missing=True
+            )
+
+        results = wikidata.get_wikidata_equivalents_for_properties(
+            properties, raise_missing=False
+        )
+
+        assert len(results.keys()) == len(properties)
+        assert all(["wikidata" in v for v in results.values() if v is not None])
+        assert results["http://no_wikidata_equivalent.org"] is None
+        assert (
+            results["http://www.wikidata.org/prop/direct/P21"]
+            == "http://www.wikidata.org/prop/direct/P21"
+        )
 
 
 class TestGenericUtils:

@@ -5,8 +5,6 @@ sys.path.append("..")
 from heritageconnector.namespace import XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, WD, WDT
 
 
-wikidump_index = "wikidump2"
-
 mapping = {
     "PERSON": {
         "ID": {"type": "index"},
@@ -18,16 +16,20 @@ mapping = {
         "LASTSUFF_NAME": {"PID": WDT.P734, "RDF": FOAF.familyName, "type": "string"},
         "GENDER": {
             "PID": WDT.P21,
-            "RDF": XSD.gender,
+            "RDF": SDO.gender,
             "type": "categorical",
             "wikidata_entity": True,
         },
         # TODO: add date -> year guidance in docs
-        "BIRTH_DATE": {"PID": WDT.P569, "RDF": XSD.birthDate, "type": "numeric"},
-        "DEATH_DATE": {"PID": WDT.P570, "RDF": XSD.deathDate, "type": "numeric"},
+        "BIRTH_DATE": {"PID": WDT.P569, "RDF": SDO.birthDate, "type": "numeric"},
+        "DEATH_DATE": {"PID": WDT.P570, "RDF": SDO.deathDate, "type": "numeric"},
         "BIRTH_PLACE": {"PID": WDT.P19, "RDF": XSD.birthPlace, "type": "location"},
         "DEATH_PLACE": {"PID": WDT.P20, "RDF": XSD.deathPlace, "type": "location"},
-        "OCCUPATION": {"PID": WDT.P106, "RDF": XSD.occupation, "type": "categorical"},
+        "OCCUPATION": {
+            "PID": WDT.P106,
+            "RDF": SDO.hasOccupation,
+            "type": "categorical",
+        },
         "NATIONALITY": {"RDF": SDO.nationality, "type": "categorical"},
         "BIOGRAPHY": {"PID": "description", "RDF": XSD.description, "type": "str"},
         "NOTES": {"type": "str"},
