@@ -18,17 +18,16 @@ def cli(train_or_test, output_folder, table_name, limit):
     page_size = 100
     search_limit = 20
 
-    d = Disambiguator()
+    d = Disambiguator(table_name)
 
     if train_or_test == "train":
-        d.save_training_data_to_folder(
-            output_folder, table_name, limit, page_size, search_limit
-        )
+        d.save_training_data_to_folder(output_folder, limit, page_size, search_limit)
     elif train_or_test == "test":
-        d.save_test_data_to_folder(
-            output_folder, table_name, limit, page_size, search_limit
-        )
+        d.save_test_data_to_folder(output_folder, limit, page_size, search_limit)
 
 
 if __name__ == "__main__":
     cli()
+
+    # DEBUG
+    # cli("train", "/Volumes/Kalyan_SSD/SMG/disambiguation/people_231020/train", "PERSON", 200)

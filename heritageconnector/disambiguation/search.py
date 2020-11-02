@@ -2,6 +2,8 @@ from fuzzywuzzy import fuzz
 import pandas as pd
 import re
 
+from tenacity import retry, stop_after_attempt, wait_fixed
+
 from heritageconnector.base.disambiguation import TextSearch
 from heritageconnector.config import config
 from heritageconnector.nlp.string_pairs import fuzzy_match_lists
@@ -242,6 +244,7 @@ class es_text_search(TextSearch):
 
         self.index = index
 
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
     def run_search(
         self,
         text: str,

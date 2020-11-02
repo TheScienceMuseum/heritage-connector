@@ -2,6 +2,14 @@ from fuzzywuzzy import fuzz
 from typing import Union
 from itertools import product
 import numpy as np
+import rdflib
+import re
+
+from heritageconnector.namespace import WD
+from heritageconnector.utils.wikidata import url_to_qid, year_from_wiki_date
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 # Similarity measures to compare fields of different types
 # Each function should use the following template:
@@ -11,6 +19,83 @@ import numpy as np
 #   # 0 <= sim <= 1
 #   return sim
 # ```
+
+
+def compare(
+    internal_val: Union[rdflib.Literal, rdflib.URIRef],
+    wikidata_entity: str,
+    wikidata_label: str,
+):
+    """
+    High-level comparison function for a pair of values. Determines which similarity measure to use
+    depending on the type of `internal_val` and trying to coerce literal values to different python
+    types.
+
+    If a list passed to `internal_val` the method uses the first truthy element of the list to determine 
+    which similarity measure to use, then passes the whole list to the similarity function.
+
+    Args:
+        internal_val (Union[rdflib.Literal, rdflib.URIRef]): value from Heritage Connector graph.
+        wikidata_entity (str): Wikidata entity (QID or value)
+        wikidata_label (str): label of Wikidata entity
+    """
+
+    if isinstance(internal_val, list):
+        if not all(
+            [isinstance(val, (rdflib.Literal, rdflib.URIRef)) for val in internal_val]
+        ):
+            raise ValueError(
+                f"Input value internal_val must be either rdflib.Literal or rdflib.URIRef ({type(internal_val)} passed)"
+            )
+        list_input = True
+        internal_val_test = [i for i in internal_val if bool(i)][0]
+    else:
+        if not isinstance(internal_val, (rdflib.Literal, rdflib.URIRef)):
+            raise ValueError(
+                f"Input value internal_val must be either rdflib.Literal or rdflib.URIRef ({type(internal_val)} passed)"
+            )
+        list_input = False
+        internal_val_test = internal_val
+
+    # convert wikidata_entity from date to integer if it's date-like
+    # if not, wikidata_entity keeps the same value
+    wikidata_entity = year_from_wiki_date(wikidata_entity)
+
+    if isinstance(internal_val_test, rdflib.URIRef) and str(
+        internal_val_test
+    ).startswith(str(WD)):
+        # Wikidata entity: categorical comparison between entities
+        val_as_qid = (
+            url_to_qid(str(internal_val))
+            if not list_input
+            else [url_to_qid(str(item)) for item in internal_val]
+        )
+
+        return similarity_categorical(
+            val_as_qid, wikidata_entity, raise_on_diff_types=False
+        )
+
+    elif isinstance(internal_val_test, rdflib.Literal):
+        try:
+            # value is numeric
+            float(internal_val_test)
+
+            val_as_numeric = (
+                float(internal_val)
+                if not list_input
+                else [float(item) for item in internal_val]
+            )
+            return similarity_numeric(val_as_numeric, wikidata_entity)
+
+        except ValueError:
+            # assume value is string: compare with label
+            val_as_string = (
+                str(internal_val)
+                if not list_input
+                else [str(item) for item in internal_val]
+            )
+
+            return similarity_string(val_as_string, wikidata_label)
 
 
 def similarity_string(
@@ -89,6 +174,9 @@ def similarity_numeric(
         )
     except ValueError:
         # if either value can't be converted to a float, return 0 similarity
+        logger.warning(
+            f"Numeric similarity failed for values {val1} and {val2}. 0 similarity returned."
+        )
         return 0
 
     diff = 1 - (abs(val1 - val2) / np.max([abs(val1), abs(val2)]))

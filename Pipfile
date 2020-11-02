@@ -40,6 +40,8 @@ dglke = "*"
 click = "*"
 coverage = "*"
 elastic-wikidata = ">=0.3.6"
+tenacity = "*"
+s3fs = "*"
 
 [requires]
 python_version = "3.7"

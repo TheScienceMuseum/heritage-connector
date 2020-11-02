@@ -10,6 +10,7 @@ from heritageconnector.config import config
 from heritageconnector.utils.sparql import get_sparql_results
 from heritageconnector.utils.generic import cache, paginate_list, flatten_list_of_lists
 from heritageconnector import logging, errors
+from heritageconnector.namespace import WDT
 
 logger = logging.get_logger(__name__)
 
@@ -24,6 +25,7 @@ class wbentities:
         qids: list,
         pids: list,
         pids_to_label: Union[list, str] = None,
+        replace_values_with_labels: bool = False,
         page_size: int = 50,
     ) -> pd.DataFrame:
         """
@@ -46,12 +48,12 @@ class wbentities:
 
         if pids_to_label is not None:
             if isinstance(pids_to_label, list):
-                pids_all = pids + pids_to_label
+                pids_all = list(set(pids + pids_to_label))
             elif pids_to_label == "all":
-                pids_all = pids
+                pids_all = list(set(pids))
                 pids_to_label = pids_all
         else:
-            pids_all = pids
+            pids_all = list(set(pids))
 
         docs = flatten_list_of_lists(
             [
@@ -74,17 +76,19 @@ class wbentities:
         self.doc_df = doc_df
 
         if pids_to_label is not None:
-            self.get_labels_for_properties(pids_to_label)
+            self.get_labels_for_properties(
+                pids_to_label, replace_qids=replace_values_with_labels
+            )
 
     def _pids_to_df_cols(self, pids: list) -> list:
         """Transform PIDs to doc_df column names: P79 -> claims.P79"""
         return [f"claims.{pid}" for pid in pids]
 
-    def _replace_qid_with_label(self, v):
-        """Replace QID with label from qid_label_mapping. Return original value if 
+    def _replace_qid_with_label(self, v, return_v_if_missing: bool):
+        """Replace QID with label from qid_label_mapping. Return original value if
         QID is not in keys of qid_label_mapping."""
         if (not isinstance(v, list)) or len(v) == 0:
-            return v
+            return v if return_v_if_missing else ""
 
         else:
             return [self.qid_label_mapping.get(i, i) for i in v]
@@ -108,7 +112,7 @@ class wbentities:
 
         return export_df
 
-    def get_labels_for_properties(self, pids: list):
+    def get_labels_for_properties(self, pids: list, replace_qids: bool):
         """
         Get labels for properties and add to self.doc_df.
 
@@ -134,10 +138,20 @@ class wbentities:
                 qids_getlabels, timeout=self.timeout
             )
 
-            for col in cols:
-                self.doc_df[col] = self.doc_df[col].map(
-                    lambda i: self._replace_qid_with_label(i)
-                )
+            if replace_qids:
+                for col in cols:
+                    self.doc_df[col] = self.doc_df[col].map(
+                        lambda i: self._replace_qid_with_label(
+                            i, return_v_if_missing=True
+                        )
+                    )
+            else:
+                for col in cols:
+                    self.doc_df[col + "Label"] = self.doc_df[col].map(
+                        lambda i: self._replace_qid_with_label(
+                            i, return_v_if_missing=False
+                        )
+                    )
 
     def get_results(self) -> pd.DataFrame:
         """
@@ -152,24 +166,37 @@ class wbentities:
 
 @cache(os.path.join(os.path.dirname(__file__), "../entitydistance.cache"))
 def get_distance_between_entities_cached(
-    qcode_set: Set[str], reciprocal: bool = False, max_path_length: int = 10,
+    qcode_set: Set[str],
+    bidirectional: bool = False,
+    vertex_pid: str = "P279",
+    reciprocal: bool = False,
+    max_path_length: int = 10,
 ) -> float:
-    res = get_distance_between_entities(qcode_set, reciprocal, max_path_length)
+    res = get_distance_between_entities(
+        qcode_set, bidirectional, vertex_pid, reciprocal, max_path_length
+    )
 
     return res
 
 
 def get_distance_between_entities(
-    qcode_set: Set[str], reciprocal: bool = False, max_path_length: int = 10,
+    qcode_set: Set[str],
+    bidirectional: bool = False,
+    vertex_pid: str = "P279",
+    reciprocal: bool = False,
+    max_path_length: int = 10,
 ) -> float:
     """
-    Get the length of the shortest path between two entities in `qcode_set`along the 'subclass of' axis. Flag `reciprocal=True` 
-    returns 1/(1+l) where l is the length of the shortest path, which can be treated as a similarity measure.
+    Get the length of the shortest path between two entities in `qcode_set`along the 'subclass of' axis. 
+    Flag `reciprocal=True` returns 1/(1+l) where l is the length of the shortest path, which can be treated as a similarity measure.
 
     Args:
         qcode_set (Set[str])
+        bidirectional (bool, optional): If True, paths between entities where the direction is reversed (only once) will be considered. 
+            Otherwise only the forward direction specified by the PID in `link_type` will be considered. Defaults to False.
+        vertex_pid (str, optional): this PID specifies the edge types to use for the calculation.
         reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
-        max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
+        max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is
             greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
 
     Returns:
@@ -192,32 +219,63 @@ def get_distance_between_entities(
         raise_invalid_qid(qcodes[0])
         raise_invalid_qid(qcodes[1])
 
-    link_type = "P279"
+    if bidirectional:
+        query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
 
-    query = f"""PREFIX gas: <http://www.bigdata.com/rdf/gas#>
+        SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[0]} ;
+                        gas:traversalDirection "Forward" ;
+                        gas:out ?super ;
+                        gas:out1 ?aLength ;
+                        gas:maxIterations {max_path_length} ;
+                        gas:linkType wdt:{vertex_pid} .
+        }}
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[1]} ;
+                        gas:traversalDirection "Forward" ;
+                        gas:out ?super ;
+                        gas:out1 ?bLength ;
+                        gas:maxIterations {max_path_length} ;
+                        gas:linkType wdt:{vertex_pid} .
+        }}  
+        }} ORDER BY ?length
+        LIMIT 1
+        """
+    else:
+        # NOTE: two distances are returned in this query to account for the fact that we don't know whether
+        # qcodes[0] or qcodes[1] is higher in the hierarchy, and setting gas:traversalDirection "Undirected"
+        # gives a WDQS error. One of these distances is zero as it's the distance between an entity and itself,
+        # so the max of the two is returned by this function.
 
-    SELECT ?super (?aLength + ?bLength as ?length) WHERE {{
-    SERVICE gas:service {{
-        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                    gas:in wd:{qcodes[0]} ;
-                    gas:traversalDirection "Forward" ;
-                    gas:out ?super ;
-                    gas:out1 ?aLength ;
-                    gas:maxIterations {max_path_length} ;
-                    gas:linkType wdt:{link_type} .
-    }}
-    SERVICE gas:service {{
-        gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
-                    gas:in wd:{qcodes[1]} ;
-                    gas:traversalDirection "Forward" ;
-                    gas:out ?super ;
-                    gas:out1 ?bLength ;
-                    gas:maxIterations {max_path_length} ;
-                    gas:linkType wdt:{link_type} .
-    }}  
-    }} ORDER BY ?length
-    LIMIT 1
-    """
+        query = f"""
+        PREFIX gas: <http://www.bigdata.com/rdf/gas#>
+
+        SELECT ?aLength ?bLength WHERE {{
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[0]} ;
+            gas:traversalDirection "Forward" ;
+                                gas:out ?super ;
+                                gas:out1 ?aLength ;
+                                gas:maxIterations {max_path_length} ;
+            gas:linkType wdt:P279 .
+        }}
+
+        SERVICE gas:service {{
+            gas:program gas:gasClass "com.bigdata.rdf.graph.analytics.SSSP" ;
+                        gas:in wd:{qcodes[1]} ;
+            gas:traversalDirection "Forward" ;
+                                gas:out ?super ;
+                                gas:out1 ?bLength ;
+                                gas:maxIterations {max_path_length} ;
+            gas:linkType wdt:{vertex_pid} .
+        }} 
+        FILTER (?super in (wd:{qcodes[0]}, wd:{qcodes[1]})).
+        }}
+        """
 
     result = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
         "bindings"
@@ -226,13 +284,23 @@ def get_distance_between_entities(
     if len(result) == 0:
         distance = 10 * max_path_length
     else:
-        distance = int(float(result[0]["length"]["value"]))
+        if bidirectional:
+            distance = int(float(result[0]["length"]["value"]))
+        else:
+            distance = int(
+                max(
+                    float(result[0]["aLength"]["value"]),
+                    float(result[0]["bLength"]["value"]),
+                )
+            )
 
     return 1 / (1 + distance) if reciprocal else distance
 
 
 def get_distance_between_entities_multiple(
     qcode_set: Set[Union[str, tuple]],
+    bidirectional: bool = False,
+    vertex_pid: str = "P279",
     reciprocal: bool = False,
     max_path_length: int = 10,
     use_cache: bool = True,
@@ -247,7 +315,7 @@ def get_distance_between_entities_multiple(
     Args:
         qcode_set (Set[Union[str, list], Union[str, list]])
         reciprocal (bool, optional): Return 1/(1+l), where l is the length of the shortest path. Defaults to False.
-        max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is  
+        max_iterations (int, optional): Maximum iterations to look for the shortest path. If the actual shortest path is
             greater than max_iterations, 10*max_iterations (reciprocal=False) or 1/(1+10*max_iterations) (reciprocal=True) is returned.
         use_cache (bool, optional): whether to use a query cache stored on disk. Defaults to True
 
@@ -303,14 +371,22 @@ def get_distance_between_entities_multiple(
         for q1, q2 in combinations:
             result_list.append(
                 get_distance_between_entities_cached(
-                    {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
+                    {q1, q2},
+                    bidirectional=bidirectional,
+                    vertex_pid=vertex_pid,
+                    reciprocal=reciprocal,
+                    max_path_length=max_path_length,
                 )
             )
     else:
         for q1, q2 in combinations:
             result_list.append(
                 get_distance_between_entities(
-                    {q1, q2}, reciprocal=reciprocal, max_path_length=max_path_length
+                    {q1, q2},
+                    bidirectional=bidirectional,
+                    vertex_pid=vertex_pid,
+                    reciprocal=reciprocal,
+                    max_path_length=max_path_length,
                 )
             )
 
@@ -320,12 +396,68 @@ def get_distance_between_entities_multiple(
         return min(result_list)
 
 
+def get_wikidata_equivalents_for_properties(
+    properties: List[str], raise_missing=False, warn_missing=True
+) -> dict:
+    """
+    Get Wikidata equivalents for RDF properties.
+
+    Args:
+        properties (List[str]): list of URIs of properties
+        raise_missing (bool, optional): If True, raises a ValueError if Wikidata equivalents
+            can't be found for any of the specified properties. Defaults to False.
+        warn_missing (bool, optional): If True, logs a warning if Wikidata equivalents
+            can't be found for any of the specified properties. Defaults to True.
+
+    Returns:
+        dict: {property: wikidata_value, ...}. Any properties that don't have a corresponding
+            Wikidata value will have value None unless they are already a Wikidata property value,
+            in which case their key is the same as their value.
+    """
+
+    wiki_properties = [p for p in properties if p.startswith(str(WDT))]
+    lookup_properties = list(set(properties) - set(wiki_properties))
+
+    values_slug = " ".join(["<" + uri + ">" for uri in lookup_properties])
+
+    query = f"""SELECT * WHERE {{
+    VALUES ?internal_property {{ {values_slug} }}.
+    ?wiki_property wdt:P1628 ?internal_property.
+    }}"""
+
+    res = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
+        "bindings"
+    ]
+
+    internal_wikidata_mapping = {
+        item["internal_property"]["value"]: item["wiki_property"]["value"]
+        for item in res
+    }
+    internal_wikidata_mapping.update({p: p for p in wiki_properties})
+
+    missing_internal_vals = set(properties) - set(internal_wikidata_mapping.keys())
+
+    if len(missing_internal_vals) > 0:
+        if raise_missing:
+            raise ValueError(
+                f"Values {missing_internal_vals} are missing from results. To disable this raising an exception, set input raise_missing to False."
+            )
+
+        if warn_missing:
+            logger.warning(f"Values {missing_internal_vals} are missing from results.")
+
+    for val in missing_internal_vals:
+        internal_wikidata_mapping[val] = None
+
+    return internal_wikidata_mapping
+
+
 def url_to_qid(url: Union[str, list], raise_invalid=True) -> Union[str, list]:
     """
     Maps Wikidata URL of an entity to QID e.g. http://www.wikidata.org/entity/Q7187777 -> Q7187777.
 
     Args:
-        raise_invalid (bool, optional): whether to raise if a QID can't be found in the URL. If False, 
+        raise_invalid (bool, optional): whether to raise if a QID can't be found in the URL. If False,
             for any string in which a QID can't be found an empty string is returned.
     """
 
@@ -424,11 +556,48 @@ def join_qids_for_sparql_values_clause(qids: list) -> str:
     return " ".join([f"wd:{i}" for i in qids])
 
 
+def year_from_wiki_date(datestr: Union[str, list], raise_invalid: bool = False) -> int:
+    """
+    Get the year from a date returned by the Wikidata wbgetentities API.
+    Examples of dates are +1665-01-01T00:00:00Z, -0347-00-00T00:00:00Z.
+    If a list is passed in, the function is called for each item in the list.
+
+    Args:
+        datestr (str): date string returned by the wbgetentities API
+        raise_invalid (bool, optional): if False, the original value of datestr 
+            is returned if it doesn't look like a date
+
+    Returns:
+        int: year (positive or negative)
+    """
+
+    if isinstance(datestr, list):
+        return [year_from_wiki_date(item) for item in datestr]
+
+    if len(re.findall(r"^(?:\+|-)\d{4}", str(datestr))) == 0:
+        # invalid wikidate
+        if raise_invalid:
+            raise ValueError(
+                f"Parameter datestr ({datestr}) doesn't start with +/- so is probably an invalid wbgetentities date."
+            )
+        else:
+            return datestr
+
+    if datestr[0] == "+":
+        multiplier = 1
+    elif datestr[0] == "-":
+        multiplier = -1
+
+    year = int(datestr[1:5])
+
+    return multiplier * year
+
+
 def filter_qids_in_class_tree(
     qids: list, higher_class: Union[str, list], classes_exclude: Union[str, list] = None
 ) -> list:
     """
-    Returns filtered list of QIDs that exist in the class tree below the QID or any of 
+    Returns filtered list of QIDs that exist in the class tree below the QID or any of
     the QIDs defined by `higher_class`. Raises if higher_class is not a valid QID.
 
     Args:
