@@ -23,8 +23,8 @@ mapping = {
         # TODO: add date -> year guidance in docs
         "BIRTH_DATE": {"PID": WDT.P569, "RDF": SDO.birthDate, "type": "numeric"},
         "DEATH_DATE": {"PID": WDT.P570, "RDF": SDO.deathDate, "type": "numeric"},
-        "BIRTH_PLACE": {"PID": WDT.P19, "RDF": XSD.birthPlace, "type": "location"},
-        "DEATH_PLACE": {"PID": WDT.P20, "RDF": XSD.deathPlace, "type": "location"},
+        "BIRTH_PLACE": {"PID": WDT.P19, "RDF": SDO.birthPlace, "type": "location"},
+        "DEATH_PLACE": {"PID": WDT.P20, "RDF": SDO.deathPlace, "type": "location"},
         "OCCUPATION": {
             "PID": WDT.P106,
             "RDF": SDO.hasOccupation,
