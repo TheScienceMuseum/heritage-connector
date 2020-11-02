@@ -18,7 +18,10 @@ from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
     get_sameas_links_from_external_id,
+    DenonymConverter
 )
+from heritageconnector.utils.data_transformation import get_year_from_date_value
+from heritageconnector.utils.generic import flatten_list_of_lists
 from heritageconnector.utils.wikidata import qid_to_url
 from heritageconnector import logging
 
@@ -60,9 +63,45 @@ non_graph_pids = [
     # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
     # WDT.P735, # first name
     # WDT.P734, # last name
-    WDT.P19,  # place of birth
-    WDT.P20,  # place of death
 ]
+
+denonym_converter = DenonymConverter()
+
+# columns of interest are 'place name', 'qid', 'country qid'
+placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qids.pkl")
+
+
+def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.URIRef:
+    """
+    Get URI of QID from place name. `get_country` flag returns the QID of the country instead of the place.
+    """
+
+    if str(place_name).lower() not in placename_qid_mapping["place name"].tolist():
+        return None
+
+    if get_country:
+        return_uri = placename_qid_mapping.loc[
+            placename_qid_mapping["place name"] == str(place_name).lower(),
+            "country_qid",
+        ].values[0]
+    else:
+        return_uri = placename_qid_mapping.loc[
+            placename_qid_mapping["place name"] == str(place_name).lower(), "qid"
+        ].values[0]
+
+    if str(return_uri) == "nan":
+        return None
+    else:
+        return URIRef(return_uri)
+
+
+def get_country_from_nationality(nationality):
+    country = denonym_converter.get_country_from_nationality(nationality)
+
+    if country is not None:
+        return country
+    else:
+        return nationality
 
 
 def process_text(text: str):
@@ -131,6 +170,17 @@ def load_people_data():
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(split_list_string)
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+    )
+
+    people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
+        lambda i: get_wiki_uri_from_placename(i, False)
+    )
+    people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
+        lambda i: get_wiki_uri_from_placename(i, False)
+    )
+
     # remove newlines and tab chars
     people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
         process_text
@@ -168,6 +218,10 @@ def load_orgs_data():
     org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
     org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+    )
+    # org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(lambda x: [get_wiki_uri_from_placename(i, True) for i in x])
 
     logger.info("loading orgs data")
     add_records(table_name, org_df)

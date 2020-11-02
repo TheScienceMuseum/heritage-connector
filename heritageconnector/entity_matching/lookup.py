@@ -417,3 +417,34 @@ def get_sameas_links_from_external_id(
         )
 
         return res_df
+
+
+class DenonymConverter:
+    def __init__(self):
+        self.demonym_mapping = pd.read_csv(
+            "https://raw.githubusercontent.com/knowitall/chunkedextractor/master/src/main/resources/edu/knowitall/chunkedextractor/demonyms.csv",
+            header=None,
+            names=["people", "country"],
+        )
+        self.demonym_mapping = self.demonym_mapping.applymap(lambda i: str(i).lower())
+
+    def get_country_from_nationality(self, nationality: str) -> Union[str, list, None]:
+        """
+        Get the country name from a nationality, i.e. 'british' -> 'united kingdom'.
+        Returns a list if there is more than one value, else a string. Not case-sensitive.
+        """
+
+        nationality = str(nationality).lower()
+
+        if nationality in self.demonym_mapping.country.tolist():
+            return nationality
+
+        elif nationality in self.demonym_mapping.people.tolist():
+            countries = self.demonym_mapping.loc[
+                self.demonym_mapping["people"] == nationality, "country"
+            ].values.tolist()
+
+            return countries[0] if len(countries) == 1 else countries
+
+        else:
+            return None
