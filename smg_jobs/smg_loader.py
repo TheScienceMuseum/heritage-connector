@@ -61,11 +61,36 @@ non_graph_pids = [
     # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
     # WDT.P735, # first name
     # WDT.P734, # last name
-    WDT.P19,  # place of birth
-    WDT.P20,  # place of death
 ]
 
 denonym_converter = DenonymConverter()
+
+# columns of interest are 'place name', 'qid', 'country qid'
+placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qids.pkl")
+
+
+def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.URIRef:
+    """
+    Get URI of QID from place name. `get_country` flag returns the QID of the country instead of the place.
+    """
+
+    if str(place_name).lower() not in placename_qid_mapping["place name"].tolist():
+        return None
+
+    if get_country:
+        return_uri = placename_qid_mapping.loc[
+            placename_qid_mapping["place name"] == str(place_name).lower(),
+            "country_qid",
+        ].values[0]
+    else:
+        return_uri = placename_qid_mapping.loc[
+            placename_qid_mapping["place name"] == str(place_name).lower(), "qid"
+        ].values[0]
+
+    if str(return_uri) == "nan":
+        return None
+    else:
+        return URIRef(return_uri)
 
 
 def get_country_from_nationality(nationality):
@@ -145,6 +170,13 @@ def load_people_data():
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(split_list_string)
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
         lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+    )
+
+    people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
+        lambda i: get_wiki_uri_from_placename(i, False)
+    )
+    people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
+        lambda i: get_wiki_uri_from_placename(i, False)
     )
 
     # remove newlines and tab chars
@@ -536,15 +568,15 @@ if __name__ == "__main__":
 
     datastore.create_index()
     load_people_data()
-    load_orgs_data()
-    load_object_data()
-    load_maker_data()
-    load_user_data()
-    load_sameas_from_wikidata()
-    load_sameas_from_wikidata_smg_people_id()
-    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    load_crowdsourced_links(
-        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
-    )
+    # load_orgs_data()
+    # load_object_data()
+    # load_maker_data()
+    # load_user_data()
+    # load_sameas_from_wikidata()
+    # load_sameas_from_wikidata_smg_people_id()
+    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    # load_crowdsourced_links(
+    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    # )
