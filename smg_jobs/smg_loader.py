@@ -216,6 +216,10 @@ def load_orgs_data():
     org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
     org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+    )
+    # org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(lambda x: [get_wiki_uri_from_placename(i, True) for i in x])
 
     logger.info("loading orgs data")
     add_records(table_name, org_df)
@@ -568,15 +572,15 @@ if __name__ == "__main__":
 
     datastore.create_index()
     load_people_data()
-    # load_orgs_data()
-    # load_object_data()
-    # load_maker_data()
-    # load_user_data()
-    # load_sameas_from_wikidata()
-    # load_sameas_from_wikidata_smg_people_id()
-    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    # load_crowdsourced_links(
-    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
-    # )
+    load_orgs_data()
+    load_object_data()
+    load_maker_data()
+    load_user_data()
+    load_sameas_from_wikidata()
+    load_sameas_from_wikidata_smg_people_id()
+    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    load_crowdsourced_links(
+        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    )
