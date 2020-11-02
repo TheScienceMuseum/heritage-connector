@@ -50,7 +50,7 @@ mapping = {
             "type": "str",
         },
         "OCCUPATION": {"RDF": XSD.additionalType, "type": "categorical"},
-        "NATIONALITY": {"RDF": SDO.nationality, "type": "categorical"},
+        "NATIONALITY": {"RDF": SDO.addressCountry, "type": "categorical"},
         "BIRTH_DATE": {"PID": WDT.P571, "RDF": SDO.foundingDate, "type": "numeric"},
         "DEATH_DATE": {"PID": WDT.P576, "RDF": SDO.dissolutionDate, "type": "numeric"},
     },
