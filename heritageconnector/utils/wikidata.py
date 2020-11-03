@@ -594,7 +594,10 @@ def year_from_wiki_date(datestr: Union[str, list], raise_invalid: bool = False) 
 
 
 def filter_qids_in_class_tree(
-    qids: list, higher_class: Union[str, list], classes_exclude: Union[str, list] = None
+    qids: list,
+    higher_class: Union[str, list],
+    classes_exclude: Union[str, list] = None,
+    include_instanceof: bool = False,
 ) -> list:
     """
     Returns filtered list of QIDs that exist in the class tree below the QID or any of
@@ -604,6 +607,8 @@ def filter_qids_in_class_tree(
         qids (list): list of QIDs
         higher_class (Union[str, list]): QID or QIDs of higher class to filter on
         classes_exclude (Union[str, list]): QID or QIDs of higher classes to exclude. Defaults to None.
+        include_instanceof (bool, optional): whether to include an initial instance of (P31) step in the class tree.
+            Defaults to False.
 
     Returns:
         list: unique list of filtered QIDs
@@ -613,6 +618,11 @@ def filter_qids_in_class_tree(
 
     # assume format of each item of qids has already been checked
     # TODO: what's a good pattern for coordinating this checking so it's not done multiple times?
+
+    if include_instanceof:
+        class_tree = "wdt:P31/wdt:P279*"
+    else:
+        class_tree = "wdt:P279*"
 
     generate_exclude_slug = (
         lambda c: f"""MINUS {{?item wdt:P279* wd:{c}. hint:Prior hint:gearing "forward".}}."""
@@ -640,7 +650,7 @@ def filter_qids_in_class_tree(
 
         query = f"""SELECT DISTINCT ?item WHERE {{
         VALUES ?item {{ {formatted_qids} }}
-        ?item wdt:P279* wd:{higher_class}.
+        ?item {class_tree} wd:{higher_class}.
         hint:Prior hint:gearing "forward".
         {exclude_slug}
         }}"""
@@ -651,7 +661,7 @@ def filter_qids_in_class_tree(
 
         query = f"""SELECT DISTINCT ?item WHERE {{
         VALUES ?item {{ {formatted_qids} }}
-        ?item wdt:P279* ?tree.
+        ?item {class_tree} ?tree.
         hint:Prior hint:gearing "forward".
         FILTER (?tree in ({classes_str}))
         {exclude_slug}
