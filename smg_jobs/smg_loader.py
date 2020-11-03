@@ -18,9 +18,8 @@ from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
     get_sameas_links_from_external_id,
-    DenonymConverter
+    DenonymConverter,
 )
-from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.utils.generic import flatten_list_of_lists
 from heritageconnector.utils.wikidata import qid_to_url
 from heritageconnector import logging
@@ -408,8 +407,8 @@ def load_sameas_from_wikidata_smg_people_id():
     add_triples(df, OWL.sameAs, subject_col="external_url", object_col="wikidata_url")
 
 
-def load_sameas_from_people_disambiguator(path):
-    logger.info("adding sameAs relationships from people disambiguator")
+def load_sameas_from_disambiguator(path: str, name: str):
+    logger.info(f"adding sameAs relationships from {name} disambiguator")
 
     df = pd.read_csv(path)
     df["wikidata_url"] = df["wikidata_id"].apply(qid_to_url)
@@ -624,6 +623,11 @@ if __name__ == "__main__":
     load_crowdsourced_links(
         "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
     )
-    load_sameas_from_people_disambiguator(
-        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv"
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
+        "people",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
+        "organisations",
     )
