@@ -12,14 +12,17 @@ from heritageconnector.utils.generic import cache, paginate_list, flatten_list_o
 from heritageconnector import logging, errors
 from heritageconnector.namespace import WDT
 
+from tenacity import retry, stop_after_attempt, wait_fixed
+
 logger = logging.get_logger(__name__)
 
 
 class wbentities:
-    def __init__(self, api_timeout=8):
+    def __init__(self, api_timeout=20):
         self.timeout = api_timeout
         self.ge = get_entities()
 
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     def get_properties(
         self,
         qids: list,
@@ -112,6 +115,7 @@ class wbentities:
 
         return export_df
 
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     def get_labels_for_properties(self, pids: list, replace_qids: bool):
         """
         Get labels for properties and add to self.doc_df.
