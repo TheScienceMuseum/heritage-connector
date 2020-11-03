@@ -28,6 +28,7 @@ from heritageconnector.utils.wikidata import (
     qid_to_url,
     is_qid,
     get_wikidata_equivalents_for_properties,
+    filter_qids_in_class_tree,
 )
 from heritageconnector.utils.generic import paginate_generator
 from heritageconnector.utils.sparql import get_sparql_results
@@ -113,7 +114,7 @@ class Disambiguator(Classifier):
     ) -> pd.DataFrame:
         """
         Returns a dataframe of highest ranked Wikidata candidate for each internal record based on the classifier output.
-        Any predictions below the threshold aren't counted. If there are multiple Wikidata candidates with the same 
+        Any predictions below the threshold aren't counted. If there are multiple Wikidata candidates with the same
         predicted probability, all candidates with the maximum probability are returned.
 
         Args:
@@ -323,6 +324,21 @@ class Disambiguator(Classifier):
 
         return wikidata_results
 
+    def _get_geographic_properties(self, pids: List[str]) -> List[str]:
+        """
+        Filter list of properties to ones which are geographic properties. Used so
+        they can be compared using a separate similarity function.
+
+        Args:
+            pids (list): Wikidata properties
+
+        Returns:
+            list: geographic properties only
+        """
+
+        # Q18615777 is 'Wikidata property to indicate a location'
+        return filter_qids_in_class_tree(pids, "Q18615777", include_instanceof=True)
+
     def _get_labelled_records_from_elasticsearch(self, limit: int = None):
         """
         Get labelled records (with sameAs) from Elasticsearch for training.
@@ -499,10 +515,10 @@ class Disambiguator(Classifier):
         self, spo: tuple = (None, None, None)
     ) -> Iterable[tuple]:
         """
-        Get triples with the mask (subject, predicate, object). Returns generator of tuples, where 
+        Get triples with the mask (subject, predicate, object). Returns generator of tuples, where
         each tuple is a triple (ignores graph names).
 
-        By default the SPARQL store is at the endpoint specified by FUSEKI_ENDPOINT in config. If you want 
+        By default the SPARQL store is at the endpoint specified by FUSEKI_ENDPOINT in config. If you want
         to change this, call `self._open_sparql_store(endpoint='http://my_endpoint')` first.
         """
         if not hasattr(self, "sparqlstore"):
@@ -573,6 +589,8 @@ class Disambiguator(Classifier):
         }
         pids = list(predicate_pid_mapping.values()) + ["P31"]
         predicate_pid_mapping.update({RDFS.label: "label"})
+
+        pids_geographical = self._get_geographic_properties(pids)
 
         X_list = []
         if train:
@@ -709,6 +727,30 @@ class Disambiguator(Classifier):
                             similarity_string(item_labels, label_list)
                             for label_list in wikidata_labels
                         ]
+
+                    elif pid in pids_geographical:
+                        item_values = self._to_tuple(
+                            url_to_qid(
+                                [triple[0][-1] for triple in item_values],
+                                raise_invalid=False,
+                            )
+                        )
+
+                        wikidata_values = wikidata_results_df.loc[
+                            wikidata_results_df["id"] == item["id"], pid
+                        ].tolist()
+
+                        if len(item_values) == 0:
+                            sim_list = [1] * len(wikidata_values)
+                        else:
+                            sim_list = [
+                                get_distance_between_entities_multiple(
+                                    {self._to_tuple(wiki_val), item_values},
+                                    vertex_pid="P131",
+                                    reciprocal=True,
+                                )
+                                for wiki_val in wikidata_values
+                            ]
 
                     else:
                         # TODO: if entity is a SMG entity, do we want to get its sameAs link or label?
