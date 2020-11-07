@@ -1,0 +1,3 @@
+# remove scholarly articles, taxon, chemical compound, wikimedia list article, wikimedia disambiguation page, wikinews article
+# page showing categories is here: https://www.wikidata.org/wiki/Wikidata:Statistics
+nice -n+19 pigz -d < wikidata-dump.json.gz | nice -n+19 load-balance-lines wikibase-dump-filter --claim '~P31:Q13442814&~P31:Q16521&~P31:Q11173&~P31:Q13406463&~P31:Q4167410&~P31:Q17633526' --languages en > all_no_articles.ndjson

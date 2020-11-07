@@ -248,7 +248,7 @@ class wikidata_id:
 
         Args:
             url (str)
-        Returns: 
+        Returns:
             qcode (str)
         """
 
@@ -274,13 +274,13 @@ class wikidata_id:
     @classmethod
     def from_getty(self, url: str) -> str:
         """
-        Given a Getty URL e.g. 
-        https://www.getty.edu/vow/ULANFullDisplay?find=Wheldon&role=&nation=&prev_page=1&subjectid=500044753 
+        Given a Getty URL e.g.
+        https://www.getty.edu/vow/ULANFullDisplay?find=Wheldon&role=&nation=&prev_page=1&subjectid=500044753
         or http://vocab.getty.edu/page/ulan/500044753, return the Wikidata ID.
 
         Args:
             url (str)
-        Returns: 
+        Returns:
             qcode (str)
         """
 
@@ -305,7 +305,7 @@ class wikidata_id:
 
         Args:
             url (str)
-        Returns: 
+        Returns:
             qcode (str)
         """
 
@@ -319,24 +319,25 @@ class wikidata_id:
 
 
 def get_internal_urls_from_wikidata(
-    url_pattern: str, wikidata_endpoint="https://query.wikidata.org/sparql"
+    url_pattern: str, wikidata_endpoint=config.WIKIDATA_SPARQL_ENDPOINT
 ):
     """
-    Get all Wikidata records with property P973 'described at URL' following the pattern in url_pattern. 
+    Get all Wikidata records with property P973 'described at URL' following the pattern in url_pattern. HTTPS is enforced on internal URLs,
+    but Wikidata URLs start with "http://".
 
     Args:
         url_pattern (str): the regex pattern to describe collection URLs. The Science Museum's is 'collection.sciencemuseum.org.uk'.
-        wikidata_endpoint (str, optional): SPARQL endpoint for Wikidata. Defaults to "https://query.wikidata.org/sparql".
+        wikidata_endpoint (str, optional): SPARQL endpoint for Wikidata.
 
     Returns:
-        pd.DataFrame: columns item (qcode), itemLabel (label) and URL (internal URL)
+        pd.DataFrame: columns item (Wikidata URL), itemLabel (label) and internalURL (internal URL)
     """
 
     query = f"""
-        SELECT DISTINCT ?item ?itemLabel ?URL WHERE {{
-            ?item wdt:P973 ?URL
+        SELECT DISTINCT ?item ?itemLabel ?internalURL WHERE {{
+            ?item wdt:P973 ?internalURL
 
-            filter( regex(str(?URL), "{url_pattern}" ) )
+            filter( regex(str(?internalURL), "{url_pattern}" ) )
 
             SERVICE wikibase:label {{
             bd:serviceParam wikibase:language "en" .
@@ -348,9 +349,102 @@ def get_internal_urls_from_wikidata(
     res_df = pd.json_normalize(res)
 
     if len(res_df) > 0:
-        res_df = res_df[["item.value", "itemLabel.value", "URL.value"]].rename(
+        res_df = res_df[["item.value", "itemLabel.value", "internalURL.value"]].rename(
             columns=lambda x: x.replace(".value", "")
         )
-        res_df["item"] = res_df["item"].apply(lambda i: re.findall(r"(Q\d+)", i)[0])
+
+        res_df["internalURL"] = res_df["internalURL"].apply(
+            lambda x: x.replace("http://", "https://")
+        )
 
     return res_df
+
+
+def get_sameas_links_from_external_id(
+    pid: str, formatter_url: str = None
+) -> pd.DataFrame:
+    """
+    Get sameAs links between Wikidata and another database using its external identifier PID.
+
+    Args:
+        pid (str): PID for an external identifier
+        formatter_url (str, optional): URL to map IDs to full URLs, with $1 in place of the ID,
+            e.g. "https://collection.sciencemuseum.org.uk/$1".
+
+    Returns:
+        pd.DataFrame: columns wikidata_url, external_url
+    """
+
+    if formatter_url is None:
+        # get formatter URL
+        query = f"""SELECT * WHERE {{
+        wd:{pid} wdt:P1630 ?url  
+        }}
+        """
+        res = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
+            "bindings"
+        ]
+
+        if len(res) == 0:
+            raise ValueError(
+                "No formatter URL found. Specify it in the `formatter_url` argument to this function instead."
+            )
+
+        formatter_url = res[0]["url"]["value"]
+
+    elif "$1" not in formatter_url:
+        raise ValueError(
+            "Argument formatter_url must contain $1, describing where the ID appears."
+        )
+
+    # get wikidata urls and internal IDs for PID
+    query = f"""SELECT * WHERE {{
+    ?wiki_url wdt:{pid} ?external_id .
+    }}"""
+
+    res = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)["results"][
+        "bindings"
+    ]
+    if len(res) > 0:
+        res_df = pd.json_normalize(res)[["wiki_url.value", "external_id.value"]].rename(
+            columns={
+                "wiki_url.value": "wikidata_url",
+                "external_id.value": "external_url",
+            }
+        )
+        res_df["external_url"] = res_df["external_url"].apply(
+            lambda i: formatter_url.replace("$1", i)
+        )
+
+        return res_df
+
+
+class DenonymConverter:
+    def __init__(self):
+        self.demonym_mapping = pd.read_csv(
+            "https://raw.githubusercontent.com/knowitall/chunkedextractor/master/src/main/resources/edu/knowitall/chunkedextractor/demonyms.csv",
+            header=None,
+            names=["people", "country"],
+        )
+        self.demonym_mapping = self.demonym_mapping.applymap(lambda i: str(i).lower())
+
+    def get_country_from_nationality(self, nationality: str) -> Union[str, list, None]:
+        """
+        Get the country name from a nationality, i.e. 'british' -> 'united kingdom'.
+        Returns a list if there is more than one value, else a string. Not case-sensitive.
+        """
+
+        nationality = str(nationality).lower()
+
+        if nationality in self.demonym_mapping.country.tolist():
+            return nationality
+
+        elif nationality in self.demonym_mapping.people.tolist():
+            countries = self.demonym_mapping.loc[
+                self.demonym_mapping["people"] == nationality, "country"
+            ].values.tolist()
+
+            return countries[0] if len(countries) == 1 else countries
+
+        else:
+            return None

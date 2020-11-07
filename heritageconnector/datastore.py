@@ -1,11 +1,14 @@
 from elasticsearch import helpers
 from elasticsearch import Elasticsearch
 from rdflib import Graph, Literal, RDF, URIRef
-from rdflib.namespace import XSD, FOAF, OWL
 from rdflib.serializer import Serializer
-from heritageconnector.config import config
 import json
 from tqdm.auto import tqdm
+from heritageconnector.namespace import XSD, FOAF, OWL, PROV
+from heritageconnector.config import config
+from heritageconnector import logging
+
+logger = logging.get_logger(__name__)
 
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
@@ -16,11 +19,14 @@ if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
         http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
     )
 else:
+    # use localhost
     es = Elasticsearch()
 
-index = "heritageconnector"
-
-es_config = {"chunk_size": 1000, "queue_size": 8}
+index = config.ELASTIC_SEARCH_INDEX
+es_config = {
+    "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
+    "queue_size": int(config.ES_BULK_QUEUE_SIZE),
+}
 
 context = [
     {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
@@ -32,16 +38,14 @@ context = [
 def create_index():
     """Delete the exiting ES index if it exists and create a new index and mappings"""
 
-    print("Wiping existing index: " + index)
+    logger.info("Wiping existing index: " + index)
     es.indices.delete(index=index, ignore=[400, 404])
 
     # setup any mappings etc.
     indexSettings = {"settings": {"number_of_shards": 1, "number_of_replicas": 0}}
 
-    print("Creating new index: " + index)
+    logger.info("Creating new index: " + index)
     es.indices.create(index=index, body=indexSettings)
-
-    return
 
 
 def es_bulk(action_generator, total_iterations=None):
@@ -109,8 +113,6 @@ def delete(id):
 
     es.delete(id)
 
-    return
-
 
 def get_by_uri(uri):
     """Return an existing ElasticSearch record"""
@@ -118,8 +120,6 @@ def get_by_uri(uri):
     res = es.search(index=index, body={"query": {"term": {"uri.keyword": uri}}})
     if len(res["hits"]["hits"]):
         return res["hits"]["hits"][0]
-    else:
-        return
 
 
 def get_by_type(type, size=1000):
@@ -152,12 +152,6 @@ def get_graph_by_type(type):
     return g
 
 
-def search(query, filter):
-    """Return an optionally filtered list of matching objects"""
-
-    return
-
-
 def add_same_as(s_uri, o_uri):
     """Adds a sameAs relationship to an existing record"""
 
@@ -173,11 +167,10 @@ def add_maker(uri, relationship, maker_uri):
 def add_user(uri, relationship, user_uri):
     """Adds a user relationship to an existing record"""
 
-    # TODO: need to find a RDF term for USER/USED?
-    update_graph(uri, FOAF.knows, user_uri)
+    update_graph(user_uri, PROV.used, uri)
 
 
-def es_to_rdflib_graph(return_format=None):
+def es_to_rdflib_graph(g=None, return_format=None):
     """
     Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
     format is specified, else an object with the specified format which could be written
@@ -191,9 +184,17 @@ def es_to_rdflib_graph(return_format=None):
     total = es.count(index=index)["count"]
 
     # create graph
-    g = Graph()
-    for item in tqdm(res, total=total):
-        g += Graph().parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
+    if g is None:
+        g = Graph()
+
+        for item in tqdm(res, total=total):
+            g += Graph().parse(
+                data=json.dumps(item["_source"]["graph"]), format="json-ld"
+            )
+    else:
+        logger.debug("Using existing graph")
+        for item in tqdm(res, total=total):
+            g.parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
 
     if return_format is None:
         return g

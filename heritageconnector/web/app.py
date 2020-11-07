@@ -2,12 +2,11 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from heritageconnector import datastore
-import logging
 import os
+from heritageconnector import datastore, logging
 
 this_path = os.path.dirname(__file__)
-logger = logging.getLogger("heritageconnector.app")
+logger = logging.get_logger(__name__)
 
 app = FastAPI()
 app.mount(
@@ -69,5 +68,4 @@ def query(sparql: str):
 
 
 if __name__ == "__main__":
-    logger.setLevel(logging.DEBUG)
     uvicorn.run(app, host="0.0.0.0", port=9000)
