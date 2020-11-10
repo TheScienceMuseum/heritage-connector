@@ -51,8 +51,8 @@ context = [
     {"@skos": "http://www.w3.org/2004/02/skos/core#", "@language": "en"},
 ]
 
-document_prefix = "https://collection.sciencemuseumgroup.org.uk/documents/aa"
-people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/ap"
+document_prefix = "https://collection.sciencemuseumgroup.org.uk/documents/"
+people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/"
 
 # PIDs from field_mapping to store in ES separate to the graph object
 non_graph_pids = [
@@ -159,7 +159,7 @@ def load_document_data():
     # lifecycle.creation.0.date.0.to.latest
     # lifecycle.creation.0.maker.0.admin.uid = ap27804
     # lifecycle.creation.0.maker.0.@link.type = reference
-    # lifecycle.creation.0.maker.0.summary_title = Bates Ferguson, William
+    # lifecycle.creation.0.maker.0.summary_title = Bates Ferguson§, William
     # identifier.0.type = NMeM Inventory Number
     # identifier.0.value = 1985-1306
     # institutions.0.admin.uid = ap27647
@@ -174,11 +174,11 @@ def load_document_data():
     document_df = document_df.rename(columns={"content.description.0.value": "DESCRIPTION"})
     document_df = document_df.rename(columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"})
 
-    # SUBJECT / ITEM NAMES / OBJECT TYPES
-    # document_df['subjects'] = ""
-    # subject_cols = [col for col in document_df.columns if col.startswith("content.subjects")]
-    # for idx, row in document_df.iterrows():
-    #     document_df.at[idx, 'ITEM_NAME'] = [item for item in row[subject_cols].tolist() if str(item) != 'nan']  
+    # SUBJECT (ie. photography)
+    document_df['SUBJECT'] = ""
+    subject_cols = [col for col in document_df.columns if col.startswith("content.subjects")]
+    for idx, row in document_df.iterrows():
+        document_df.at[idx, 'SUBJECT'] = [item for item in row[subject_cols].tolist() if str(item) != 'nan']  
 
     # fonds, maker, agents, web/urls, date-range, measurements, materials?
     document_df["PREFIX"] = document_prefix
@@ -191,9 +191,11 @@ def load_document_data():
     add_records(table_name, document_df)
 
     # makers / users / agents
-    # document_df["UID"] = document_prefix + document_df["ID"].astype(str)
-    # add_triples(document_df, FOAF.maker, subject_col="lifecycle.creation.0.maker.0.admin.uid", object_col="UID")
-    # add_triples(document_df, PROV.used, subject_col="content.agents.0.admin.uid", object_col="UID")
+    document_df["UID"] = document_prefix + document_df["ID"].astype(str)
+    document_df["lifecycle.creation.0.maker.0.admin.uid"] = people_prefix + document_df["lifecycle.creation.0.maker.0.admin.uid"].astype(str)
+    add_triples(document_df, FOAF.maker, subject_col="lifecycle.creation.0.maker.0.admin.uid", object_col="UID")
+    document_df["content.agents.0.admin.uid"] = people_prefix + document_df["content.agents.0.admin.uid"].astype(str)
+    add_triples(document_df, PROV.used, subject_col="content.agents.0.admin.uid", object_col="UID")
 
     return
 
@@ -260,6 +262,7 @@ def load_people_data():
     people_df = people_df.rename(columns={"gender": "GENDER"})
 
     people_df["PREFIX"] = people_prefix
+
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     # people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
@@ -298,12 +301,34 @@ def load_orgs_data():
     org_df = org_df[org_df["type.type"] == 'institution']
     org_df = org_df.rename(columns={"admin.uid": "ID"})
     org_df = org_df.rename(columns={"name.0.value": "PREFERRED_NAME"})
-    org_df = org_df.rename(columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_DATE"})
-    org_df = org_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_DATE"})
+    org_df = org_df.rename(columns={"lifecycle.birth.0.date.0.value": "BIRTH_DATE"})
+    org_df = org_df.rename(columns={"lifecycle.death.0.date.0.value": "DEATH_DATE"})
+    org_df = org_df.rename(columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_PLACE"})
+    org_df = org_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_PLACE"})
     org_df = org_df.rename(columns={"name.0.title_prefix": "PREFIX"})
     org_df = org_df.rename(columns={"nationality.0": "NATIONALITY"})
     org_df = org_df.rename(columns={"description.0.value": "DESCRIPTION"})
 
+    org_df["PREFIX"] = people_prefix
+
+    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+    )
+
+    org_df["BIRTH_PLACE"] = org_df["BIRTH_PLACE"].apply(
+        lambda i: get_wiki_uri_from_placename(i, False)
+    )
+    org_df["DEATH_PLACE"] = org_df["DEATH_PLACE"].apply(
+        lambda i: get_wiki_uri_from_placename(i, False)
+    )
+
+    # remove newlines and tab chars
+    org_df.loc[:, "DESCRIPTION"] = org_df.loc[:, "DESCRIPTION"].apply(
+        process_text
+    )
     logger.info("loading adlib orgs data")
     add_records(table_name, org_df)
 
@@ -638,21 +663,21 @@ if __name__ == "__main__":
 
     datastore.create_index()
     load_people_data()
-    # load_orgs_data()
+    load_orgs_data()
     load_document_data()
-    # load_sameas_from_wikidata()
-    # load_sameas_from_wikidata_smg_people_id()
-    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    # load_crowdsourced_links(
-    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
-    #     "people",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
-    #     "organisations",
-    # )
+    load_sameas_from_wikidata()
+    load_sameas_from_wikidata_smg_people_id()
+    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    load_crowdsourced_links(
+        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
+        "people",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
+        "organisations",
+    )
