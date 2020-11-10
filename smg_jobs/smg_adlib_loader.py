@@ -51,7 +51,7 @@ context = [
     {"@skos": "http://www.w3.org/2004/02/skos/core#", "@language": "en"},
 ]
 
-collection_prefix = "https://collection.sciencemuseumgroup.org.uk/documents/aa"
+document_prefix = "https://collection.sciencemuseumgroup.org.uk/documents/aa"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/ap"
 
 # PIDs from field_mapping to store in ES separate to the graph object
@@ -129,7 +129,7 @@ def load_document_data():
 
     table_name = "OBJECT"
 
-    table_name = "DOCUMENT"
+    table_name = "DOCUMENT_ADLIB"
     document_df = pd.read_csv(document_data_path, low_memory=False, nrows=max_records)
 
     # summary_title = *** The Papers and Pamphlets of W.B. Ferguson **
@@ -171,14 +171,17 @@ def load_document_data():
     # PREPROCESS
     document_df = document_df.rename(columns={"MKEY": "admin.uid"})
     document_df = document_df.rename(columns={"TITLE": "summary_title"})
-    document_df = document_df.rename(columns={"ITEM_NAME": "content.subjects.0.name.0.value"})  # we have multile values in content.subjects
     document_df = document_df.rename(columns={"DESCRIPTION": "content.description.0.value"})
     document_df = document_df.rename(columns={"DATE_MADE": "lifecycle.creation.0.date.0.note.0.value"})
 
-    # fonds, maker, agents, web/urls, date-range, measurements, materials?
+    # SUBJECT / ITEM NAMES / OBJECT TYPES
+    document_df['subjects'] = ""
+    subject_cols = [col for col in people_df.columns if col.startswith("content.subjects")]
+    for idx, row in document_df.iterrows():
+        document_df.at[idx, 'ITEM_NAME'] = [item for item in row[subject_cols].tolist() if str(item) != 'nan']  
 
-    document_df["PREFIX"] = collection_prefix
-    document_df["ITEM_NAME"] = document_df["ITEM_NAME"].apply(split_list_string)
+    # fonds, maker, agents, web/urls, date-range, measurements, materials?
+    document_df["PREFIX"] = document_prefix
     document_df["DESCRIPTION"] = document_df["DESCRIPTION"].apply(process_text)
     document_df["DATE_MADE"] = document_df["DATE_MADE"].apply(
         get_year_from_date_value
@@ -186,6 +189,14 @@ def load_document_data():
 
     logger.info("loading object data")
     add_records(table_name, document_df)
+
+    # makers
+    document_df["UID"] = document_prefix + document_df["MKEY"].astype(str)
+    add_triples(document_df, FOAF.maker, subject_col="lifecycle.creation.0.maker.0.admin.uid", object_col="UID")
+
+    # users / agents
+    document_df["UID"] = document_prefix + document_df["MKEY"].astype(str)
+    add_triples(document_df, PROV.used, subject_col="content.agents.0.admin.uid", object_col="UID")
 
     return
 
@@ -231,29 +242,21 @@ def load_people_data():
     # lifecycle.death.0.place.0.summary_title
 
     # identifier in field_mapping
-    table_name = "PERSON"  # Do we use the same table here for AdLib?
+    table_name = "PERSON_ADLIB"  # Do we use the same table here for AdLib?
 
     people_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
 
-    # TODO: set individual / org flag here
-    # [type.type]
-
     # PREPROCESS
-    people_df = people_df.rename(columns={"LINK_ID": "admin.uid"})
-    people_df = people_df.rename(columns={"BIRTH_DATE": "lifecycle.birth.0.place.0.summary_title"})
-    people_df = people_df.rename(columns={"DEATH_DATE": "lifecycle.death.0.place.0.summary_title"})
-    people_df = people_df.rename(columns={"PREFIX": "name.0.title_prefix"})
-    people_df = people_df.rename(columns={"NATIONALITY": "nationality.0"})
-    people_df = people_df.rename(columns={"DESCRIPTION": "description.0.value"})
-    people_df = people_df.rename(columns={"GENDER": "gender"})
+    people_df = people_df[people_df["type.type"]=='person']
+    people_df = people_df.rename(columns={"admin.uid": "ID"})
+    people_df = people_df.rename(columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_DATE"})
+    people_df = people_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_DATE"})
+    people_df = people_df.rename(columns={"name.0.title_prefix": "PREFIX"})
+    people_df = people_df.rename(columns={"nationality.0": "NATIONALITY"})
+    people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION": })
+    people_df = people_df.rename(columns={"gender": "GENDER"})
 
     people_df["PREFIX"] = people_prefix
-    # remove punctuation and capitalise first letter
-    # people_df["TITLE_NAME"] = people_df["TITLE_NAME"].apply(
-    #    lambda i: str(i)
-    #    .capitalize()
-    #    .translate(str.maketrans("", "", string.punctuation))
-    # )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
@@ -275,7 +278,7 @@ def load_people_data():
     )
 
     people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
-        {"F": WD.Q6581072, "M": WD.Q6581097}
+        {"female": WD.Q6581072, "male": WD.Q6581097}
     )
 
     logger.info("loading people data")
@@ -284,21 +287,18 @@ def load_people_data():
 
 def load_orgs_data():
     # identifier in field_mapping
-    table_name = "ORGANISATION"
+    table_name = "ORGANISATION_ADLIB"
 
     org_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
 
-    # TODO: set individual / org flag here
-    # [type.type]
-
     # PREPROCESS
+    org_df = org_df[org_df["type.type"]=='institution']
     org_df = org_df.rename(columns={"LINK_ID": "admin.uid"})
     org_df = org_df.rename(columns={"BIRTH_DATE": "lifecycle.birth.0.place.0.summary_title"})
     org_df = org_df.rename(columns={"DEATH_DATE": "lifecycle.death.0.place.0.summary_title"})
     org_df = org_df.rename(columns={"PREFIX": "name.0.title_prefix"})
     org_df = org_df.rename(columns={"NATIONALITY": "nationality.0"})
     org_df = org_df.rename(columns={"DESCRIPTION": "description.0.value"})
-    org_df = org_df.rename(columns={"GENDER": "gender"})
     logger.info("loading orgs data")
     add_records(table_name, org_df)
 
@@ -387,7 +387,7 @@ def load_object_types(object_type_df_path):
     ]
 
     object_type_df["MKEY"] = object_type_df["MKEY"].astype(str)
-    object_type_df["ID"] = collection_prefix + object_type_df["MKEY"]
+    object_type_df["ID"] = document_prefix + object_type_df["MKEY"]
     object_type_df["ITEM_NAME_resolved"] = object_type_df["ITEM_NAME_resolved"].apply(
         qid_to_url
     )
