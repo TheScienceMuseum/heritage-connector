@@ -169,14 +169,14 @@ def load_document_data():
     document_df = pd.read_csv(document_data_path, low_memory=False, nrows=max_records)
 
     # PREPROCESS
-    document_df = document_df.rename(columns={"MKEY": "admin.uid"})
-    document_df = document_df.rename(columns={"TITLE": "summary_title"})
-    document_df = document_df.rename(columns={"DESCRIPTION": "content.description.0.value"})
-    document_df = document_df.rename(columns={"DATE_MADE": "lifecycle.creation.0.date.0.note.0.value"})
+    document_df = document_df.rename(columns={"admin.uid": "ID"})
+    document_df = document_df.rename(columns={"summary_title": "TITLE"})
+    document_df = document_df.rename(columns={"content.description.0.value": "DESCRIPTION"})
+    document_df = document_df.rename(columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"})
 
     # SUBJECT / ITEM NAMES / OBJECT TYPES
     document_df['subjects'] = ""
-    subject_cols = [col for col in people_df.columns if col.startswith("content.subjects")]
+    subject_cols = [col for col in document_df.columns if col.startswith("content.subjects")]
     for idx, row in document_df.iterrows():
         document_df.at[idx, 'ITEM_NAME'] = [item for item in row[subject_cols].tolist() if str(item) != 'nan']  
 
@@ -247,15 +247,19 @@ def load_people_data():
     people_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
 
     # PREPROCESS
-    people_df = people_df[people_df["type.type"]=='person']
+    people_df = people_df[people_df["type.type"] == 'person']
     people_df = people_df.rename(columns={"admin.uid": "ID"})
+    people_df = people_df.rename(columns={"name.0.title_prefix": "TITLE_NAME"})
+    people_df = people_df.rename(columns={"name.0.first_name": "FIRSTMID_NAME"})
+    people_df = people_df.rename(columns={"name.0.last_name": "LASTSUFF_NAME"})
+    people_df = people_df.rename(columns={"name.0.value": "PREFERRED_NAME"})
     people_df = people_df.rename(columns={"lifecycle.birth.0.date.0.value": "BIRTH_DATE"})
     people_df = people_df.rename(columns={"lifecycle.death.0.date.0.value": "DEATH_DATE"})
     people_df = people_df.rename(columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_PLACE"})
     people_df = people_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_PLACE"})
     people_df = people_df.rename(columns={"name.0.title_prefix": "PREFIX"})
     people_df = people_df.rename(columns={"nationality.0": "NATIONALITY"})
-    people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION" })
+    people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION"})
     people_df = people_df.rename(columns={"gender": "GENDER"})
 
     people_df["PREFIX"] = people_prefix
@@ -294,13 +298,14 @@ def load_orgs_data():
     org_df = pd.read_csv(people_data_path, low_memory=False, nrows=max_records)
 
     # PREPROCESS
-    org_df = org_df[org_df["type.type"]=='institution']
-    org_df = org_df.rename(columns={"LINK_ID": "admin.uid"})
-    org_df = org_df.rename(columns={"BIRTH_DATE": "lifecycle.birth.0.place.0.summary_title"})
-    org_df = org_df.rename(columns={"DEATH_DATE": "lifecycle.death.0.place.0.summary_title"})
-    org_df = org_df.rename(columns={"PREFIX": "name.0.title_prefix"})
-    org_df = org_df.rename(columns={"NATIONALITY": "nationality.0"})
-    org_df = org_df.rename(columns={"DESCRIPTION": "description.0.value"})
+    org_df = org_df[org_df["type.type"] == 'institution']
+    org_df = org_df.rename(columns={"admin.uid": "ID"})
+    org_df = org_df.rename(columns={"name.0.value": "PREFERRED_NAME"})
+    org_df = org_df.rename(columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_DATE"})
+    org_df = org_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_DATE"})
+    org_df = org_df.rename(columns={"name.0.title_prefix": "PREFIX"})
+    org_df = org_df.rename(columns={"nationality.0": "NATIONALITY"})
+    org_df = org_df.rename(columns={"description.0.value": "DESCRIPTION"})
     logger.info("loading orgs data")
     add_records(table_name, org_df)
 
