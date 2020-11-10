@@ -175,10 +175,10 @@ def load_document_data():
     document_df = document_df.rename(columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"})
 
     # SUBJECT / ITEM NAMES / OBJECT TYPES
-    document_df['subjects'] = ""
-    subject_cols = [col for col in document_df.columns if col.startswith("content.subjects")]
-    for idx, row in document_df.iterrows():
-        document_df.at[idx, 'ITEM_NAME'] = [item for item in row[subject_cols].tolist() if str(item) != 'nan']  
+    # document_df['subjects'] = ""
+    # subject_cols = [col for col in document_df.columns if col.startswith("content.subjects")]
+    # for idx, row in document_df.iterrows():
+    #     document_df.at[idx, 'ITEM_NAME'] = [item for item in row[subject_cols].tolist() if str(item) != 'nan']  
 
     # fonds, maker, agents, web/urls, date-range, measurements, materials?
     document_df["PREFIX"] = document_prefix
@@ -187,16 +187,13 @@ def load_document_data():
         get_year_from_date_value
     )
 
-    logger.info("loading object data")
+    logger.info("loading adlib document data")
     add_records(table_name, document_df)
 
-    # makers
-    document_df["UID"] = document_prefix + document_df["MKEY"].astype(str)
-    add_triples(document_df, FOAF.maker, subject_col="lifecycle.creation.0.maker.0.admin.uid", object_col="UID")
-
-    # users / agents
-    document_df["UID"] = document_prefix + document_df["MKEY"].astype(str)
-    add_triples(document_df, PROV.used, subject_col="content.agents.0.admin.uid", object_col="UID")
+    # makers / users / agents
+    # document_df["UID"] = document_prefix + document_df["ID"].astype(str)
+    # add_triples(document_df, FOAF.maker, subject_col="lifecycle.creation.0.maker.0.admin.uid", object_col="UID")
+    # add_triples(document_df, PROV.used, subject_col="content.agents.0.admin.uid", object_col="UID")
 
     return
 
@@ -287,7 +284,7 @@ def load_people_data():
         {"female": WD.Q6581072, "male": WD.Q6581097}
     )
 
-    logger.info("loading people data")
+    logger.info("loading adlib people data")
     add_records(table_name, people_df, add_type=WD.Q5)
 
 
@@ -306,7 +303,8 @@ def load_orgs_data():
     org_df = org_df.rename(columns={"name.0.title_prefix": "PREFIX"})
     org_df = org_df.rename(columns={"nationality.0": "NATIONALITY"})
     org_df = org_df.rename(columns={"description.0.value": "DESCRIPTION"})
-    logger.info("loading orgs data")
+
+    logger.info("loading adlib orgs data")
     add_records(table_name, org_df)
 
     # also add type organization (Q43229)
@@ -640,21 +638,21 @@ if __name__ == "__main__":
 
     datastore.create_index()
     load_people_data()
-    load_orgs_data()
+    # load_orgs_data()
     load_document_data()
-    load_sameas_from_wikidata()
-    load_sameas_from_wikidata_smg_people_id()
-    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    load_crowdsourced_links(
-        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
-    )
-    load_sameas_from_disambiguator(
-        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
-        "people",
-    )
-    load_sameas_from_disambiguator(
-        "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
-        "organisations",
-    )
+    # load_sameas_from_wikidata()
+    # load_sameas_from_wikidata_smg_people_id()
+    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    # load_crowdsourced_links(
+    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+    # )
+    # load_sameas_from_disambiguator(
+    #     "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
+    #     "people",
+    # )
+    # load_sameas_from_disambiguator(
+    #     "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
+    #     "organisations",
+    # )
