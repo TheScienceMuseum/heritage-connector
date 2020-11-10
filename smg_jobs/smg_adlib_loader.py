@@ -253,7 +253,7 @@ def load_people_data():
     people_df = people_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_DATE"})
     people_df = people_df.rename(columns={"name.0.title_prefix": "PREFIX"})
     people_df = people_df.rename(columns={"nationality.0": "NATIONALITY"})
-    people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION": })
+    people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION" })
     people_df = people_df.rename(columns={"gender": "GENDER"})
 
     people_df["PREFIX"] = people_prefix
