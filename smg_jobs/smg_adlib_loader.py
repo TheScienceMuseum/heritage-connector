@@ -249,8 +249,10 @@ def load_people_data():
     # PREPROCESS
     people_df = people_df[people_df["type.type"]=='person']
     people_df = people_df.rename(columns={"admin.uid": "ID"})
-    people_df = people_df.rename(columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_DATE"})
-    people_df = people_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_DATE"})
+    people_df = people_df.rename(columns={"lifecycle.birth.0.date.0.value": "BIRTH_DATE"})
+    people_df = people_df.rename(columns={"lifecycle.death.0.date.0.value": "DEATH_DATE"})
+    people_df = people_df.rename(columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_PLACE"})
+    people_df = people_df.rename(columns={"lifecycle.death.0.place.0.summary_title": "DEATH_PLACE"})
     people_df = people_df.rename(columns={"name.0.title_prefix": "PREFIX"})
     people_df = people_df.rename(columns={"nationality.0": "NATIONALITY"})
     people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION" })
@@ -259,7 +261,7 @@ def load_people_data():
     people_df["PREFIX"] = people_prefix
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
-    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
+    # people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(split_list_string)
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
         lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
