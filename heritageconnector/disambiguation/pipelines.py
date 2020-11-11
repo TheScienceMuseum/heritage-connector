@@ -46,6 +46,28 @@ logger = logging.get_logger(__name__)
 
 
 class Disambiguator(Classifier):
+    """
+    Implementation of a classifier for finding sameAs links between items in the Heritage Connector and items on Wikidata.
+    TODO: link to documentation on exactly how this works.
+
+    Attributes:
+        table_name (str): `skos:hasTopConcept` value to use for disambiguator. This should 
+            have been set to refer to its original data source when importing data to the graph.
+        random_state (int, optional): random state for all methods involving randomness. Defaults to 42.
+        TODO: tune these decision tree params automatically when training the classifier.
+        max_depth (int, optional): max depth of the decision tree classifier.
+        class_weight (str, optional): See sklearn.tree.DecisionTreeClassifier docs. Defaults to "balanced".
+        min_samples_split (int, optional): See sklearn.tree.DecisionTreeClassifier docs. Defaults to 2.
+        min_samples_leaf (int, optional): See sklearn.tree.DecisionTreeClassifier docs. Defaults to 5.
+        max_features (int, optional): See sklearn.tree.DecisionTreeClassifier docs. Defaults to None.
+        bidirectional_distance (bool, optional): whether to include Wikidata types not in the immediate 
+            class tree when calculating similarity between entity types. Defaults to False, i.e. only considers 
+            types to have a similarity greater than 0 if they are in the same instance of/subclass of Wikidata 
+            hierarchy.
+        enforce_entities_have_type (bool, optional): only entities with values for `rdf:type` will be retrieved
+            from the heritage connector graph. Defaults to True.
+    """
+
     def __init__(
         self,
         table_name: str,
@@ -56,11 +78,13 @@ class Disambiguator(Classifier):
         min_samples_leaf=5,
         max_features=None,
         bidirectional_distance=False,
+        enforce_entities_have_type=True,
     ):
         super().__init__()
 
         self.table_name = table_name.upper()
         self.table_mapping = field_mapping.mapping[self.table_name]
+        self.enforce_entities_have_type = enforce_entities_have_type
 
         self.clf = DecisionTreeClassifier(
             random_state=random_state,
@@ -392,6 +416,14 @@ class Disambiguator(Classifier):
 
         return search_res
 
+    def _get_type_constraint(self) -> str:
+        """For _get_labelled_records_from_sparql_store/_get_unlabelled_records_from_sparql_store"""
+
+        if self.enforce_entities_have_type:
+            return "?item rdf:type ?type."
+        else:
+            return ""
+
     def _get_labelled_records_from_sparql_store(
         self, limit: int = None
     ) -> Iterable[dict]:
@@ -404,15 +436,12 @@ class Disambiguator(Classifier):
         Returns:
             Generator of dicts. Each dict has the form {"id": __, "label": ___}
         """
-        query = f"""PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-        SELECT DISTINCT ?item ?itemLabel
-        WHERE {{
-        ?item owl:sameAs ?object.
-        ?item rdfs:label ?itemLabel.
-        ?item skos:hasTopConcept '{self.table_name}'.
+        query = f"""SELECT DISTINCT ?item ?itemLabel WHERE {{
+            ?item owl:sameAs ?object.
+            ?item rdfs:label ?itemLabel.
+            {self._get_type_constraint()}
+            ?item skos:hasTopConcept '{self.table_name}'.
         }}"""
 
         if limit is not None:
@@ -438,15 +467,11 @@ class Disambiguator(Classifier):
             Generator of dicts. Each dict has the form {"id": __, "label": ___}
         """
 
-        query = f"""PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-        SELECT DISTINCT ?item ?itemLabel
-        WHERE {{
-        FILTER NOT EXISTS {{?item owl:sameAs ?object}}.
-        ?item rdfs:label ?itemLabel.
-        ?item skos:hasTopConcept '{self.table_name}'.
+        query = f"""SELECT DISTINCT ?item ?itemLabel WHERE {{
+            FILTER NOT EXISTS {{?item owl:sameAs ?object}}.
+            ?item rdfs:label ?itemLabel.
+            {self._get_type_constraint()}
+            ?item skos:hasTopConcept '{self.table_name}'.
         }}"""
 
         if limit is not None:
