@@ -604,7 +604,7 @@ def filter_qids_in_class_tree(
     include_instanceof: bool = False,
 ) -> list:
     """
-    Returns filtered list of QIDs that exist in the class tree below the QID or any of
+    Returns filtered list of QIDs/PIDs that exist in the class tree below the QID or any of
     the QIDs defined by `higher_class`. Raises if higher_class is not a valid QID.
 
     Args:
@@ -676,4 +676,7 @@ def filter_qids_in_class_tree(
 
     res = get_sparql_results(config.WIKIDATA_SPARQL_ENDPOINT, query)
 
-    return [url_to_qid(i["item"]["value"]) for i in res["results"]["bindings"]]
+    return [
+        i["item"]["value"].replace("http://www.wikidata.org/entity/", "")
+        for i in res["results"]["bindings"]
+    ]
