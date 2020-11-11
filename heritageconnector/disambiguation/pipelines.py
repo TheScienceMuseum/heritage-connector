@@ -30,9 +30,9 @@ from heritageconnector.utils.wikidata import (
     get_wikidata_equivalents_for_properties,
     filter_qids_in_class_tree,
 )
-from heritageconnector.utils.generic import paginate_generator
+from heritageconnector.utils.generic import paginate_generator, flatten_list_of_lists
 from heritageconnector.utils.sparql import get_sparql_results
-from heritageconnector.namespace import OWL, RDF, RDFS, SKOS, FOAF
+from heritageconnector.namespace import OWL, RDF, RDFS, SKOS, FOAF, is_internal_uri
 from heritageconnector.disambiguation.retrieve import get_wikidata_fields
 from heritageconnector.disambiguation.search import es_text_search
 from heritageconnector.disambiguation.compare_fields import (
@@ -51,7 +51,7 @@ class Disambiguator(Classifier):
     TODO: link to documentation on exactly how this works.
 
     Attributes:
-        table_name (str): `skos:hasTopConcept` value to use for disambiguator. This should 
+        table_name (str): `skos:hasTopConcept` value to use for disambiguator. This should
             have been set to refer to its original data source when importing data to the graph.
         random_state (int, optional): random state for all methods involving randomness. Defaults to 42.
         TODO: tune these decision tree params automatically when training the classifier.
@@ -60,9 +60,9 @@ class Disambiguator(Classifier):
         min_samples_split (int, optional): See sklearn.tree.DecisionTreeClassifier docs. Defaults to 2.
         min_samples_leaf (int, optional): See sklearn.tree.DecisionTreeClassifier docs. Defaults to 5.
         max_features (int, optional): See sklearn.tree.DecisionTreeClassifier docs. Defaults to None.
-        bidirectional_distance (bool, optional): whether to include Wikidata types not in the immediate 
-            class tree when calculating similarity between entity types. Defaults to False, i.e. only considers 
-            types to have a similarity greater than 0 if they are in the same instance of/subclass of Wikidata 
+        bidirectional_distance (bool, optional): whether to include Wikidata types not in the immediate
+            class tree when calculating similarity between entity types. Defaults to False, i.e. only considers
+            types to have a similarity greater than 0 if they are in the same instance of/subclass of Wikidata
             hierarchy.
         enforce_entities_have_type (bool, optional): only entities with values for `rdf:type` will be retrieved
             from the heritage connector graph. Defaults to True.
@@ -579,6 +579,33 @@ class Disambiguator(Classifier):
         """Convert lists to tuples, but leave values that aren't lists as they are."""
         return tuple(val) if isinstance(val, list) else val
 
+    def _replace_internal_id_with_sameas_or_label(
+        self, internal_url: rdflib.URIRef
+    ) -> Union[
+        rdflib.Literal, rdflib.URIRef, List[rdflib.Literal], List[rdflib.URIRef]
+    ]:
+        """
+        Replaces internal URL with Wikidata sameAs link (if exists) or label, in that order of preference. 
+        If neither exist, returns an empty string.
+        """
+
+        sameas_links = [
+            i[0][-1]
+            for i in self._get_triples_from_store((internal_url, OWL.sameAs, None))
+        ]
+        item_labels = [
+            i[0][-1]
+            for i in self._get_triples_from_store((internal_url, RDFS.label, None))
+        ]
+
+        if len(sameas_links) > 0:
+            return sameas_links
+        elif len(item_labels) > 0:
+            # an item can only have one rdfs.label
+            return item_labels[0]
+        else:
+            return ""
+
     def build_training_data(
         self, train: bool, page_size: int = 100, limit: int = None, search_limit=20,
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -778,7 +805,6 @@ class Disambiguator(Classifier):
                             ]
 
                     else:
-                        # TODO: if entity is a SMG entity, do we want to get its sameAs link or label?
                         wikidata_values = wikidata_results_df.loc[
                             wikidata_results_df["id"] == item["id"], pid
                         ].tolist()
@@ -793,24 +819,37 @@ class Disambiguator(Classifier):
 
                         else:
                             item_values = [triple[0][-1] for triple in item_values]
-                            if pid in pids_categorical:
-                                sim_list = [
-                                    similarity_categorical(
-                                        [str(i) for i in item_values],
-                                        label,
-                                        raise_on_diff_types=False,
-                                    )
-                                    for label in wikidata_labels
+                            item_values = flatten_list_of_lists(
+                                [
+                                    self._replace_internal_id_with_sameas_or_label(val)
+                                    if is_internal_uri(val)
+                                    else val
+                                    for val in item_values
                                 ]
+                            )
+
+                            if all([not bool(i) for i in item_values]):
+                                sim_list = [0] * len(wikidata_values)
+
                             else:
-                                sim_list = [
-                                    compare(
-                                        item_values,
-                                        wikidata_values[i],
-                                        wikidata_labels[i],
-                                    )
-                                    for i in range(len(wikidata_values))
-                                ]
+                                if pid in pids_categorical:
+                                    sim_list = [
+                                        similarity_categorical(
+                                            [str(i) for i in item_values],
+                                            label,
+                                            raise_on_diff_types=False,
+                                        )
+                                        for label in wikidata_labels
+                                    ]
+                                else:
+                                    sim_list = [
+                                        compare(
+                                            item_values,
+                                            wikidata_values[i],
+                                            wikidata_labels[i],
+                                        )
+                                        for i in range(len(wikidata_values))
+                                    ]
 
                     X_temp.append(sim_list)
 

@@ -83,6 +83,9 @@ def generate_user_agent() -> str:
 def generate_sparql_prefixes_header() -> str:
     """
     Generate the header for SPARQL queries containing all the namespaces in `heritageconnector.namespace`.
+    Namespaces are selected as variables which:
+    - are uppercase
+    - don't start with an underscore
 
     E.g.:
     ```
@@ -98,7 +101,7 @@ def generate_sparql_prefixes_header() -> str:
     rdf_names = [
         i
         for i in namespace.__dict__.keys()
-        if (not i.startswith("__")) and i != "Namespace"
+        if (i.upper() == i) and (not i.startswith("_"))
     ]
 
     prefix_header = ""
