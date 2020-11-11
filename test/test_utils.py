@@ -1,4 +1,4 @@
-from heritageconnector.utils import wikidata, generic
+from heritageconnector.utils import wikidata, generic, sparql
 import time
 import os
 import pytest
@@ -95,3 +95,23 @@ class TestGenericUtils:
         new_list = generic.paginate_list(original_list, page_size=3)
 
         assert new_list == [[1, 2, 3], [4, 5, 6], [7]]
+
+
+class TestSPARQLUtils:
+    def test_sparql_generate_sparql_prefixes_header(self):
+        sparql_header = sparql.generate_sparql_prefixes_header()
+        header_lines = sparql_header.split("\n")[
+            0:-1
+        ]  # exclude last val which is empty string
+
+        assert len(sparql_header) > 0
+        assert all([line.startswith("PREFIX") for line in header_lines])
+        assert all(["http" in line for line in header_lines])
+
+    def test_get_sparql_results(self):
+        endpoint = "https://query.wikidata.org/sparql"
+        query = "SELECT ?s ?p ?o WHERE {?s ?p ?o} LIMIT 20"
+        res = sparql.get_sparql_results(endpoint, query, add_prefixes=True)
+
+        assert "results" in res
+        assert "bindings" in res["results"]
