@@ -317,9 +317,9 @@ def load_sameas_people_orgs(pickle_path):
         )
 
 
-def load_sameas_from_wikidata():
-    """Load sameAs connections that already exist between the SMG records and Wikidata"""
-    logger.info("adding sameAs relationships from Wikidata URLs")
+def load_related_from_wikidata():
+    """Load relatedMatch connections that already exist between the SMG records and Wikidata"""
+    logger.info("adding relatedMatch relationships from Wikidata URLs")
 
     connection_df = get_internal_urls_from_wikidata(
         "collection.sciencemuseum.org.uk", config.WIKIDATA_SPARQL_ENDPOINT
@@ -332,7 +332,9 @@ def load_sameas_from_wikidata():
     connection_df["internalURL"] = connection_df["internalURL"].str.replace(
         "sciencemuseum.org.uk", "sciencemuseumgroup.org.uk"
     )
-    add_triples(connection_df, OWL.sameAs, subject_col="internalURL", object_col="item")
+    add_triples(
+        connection_df, SKOS.relatedMatch, subject_col="internalURL", object_col="item"
+    )
 
 
 def load_organisation_types(org_type_df_path):
@@ -615,13 +617,13 @@ if __name__ == "__main__":
     load_object_data()
     load_maker_data()
     load_user_data()
-    load_sameas_from_wikidata()
+    load_related_from_wikidata()
     load_sameas_from_wikidata_smg_people_id()
     load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
     load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
     load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
     load_crowdsourced_links(
-        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_151020.csv"
+        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
     )
     load_sameas_from_disambiguator(
         "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
