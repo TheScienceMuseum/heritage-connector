@@ -314,6 +314,7 @@ class Disambiguator(Classifier):
         - fill empty firstname (P735) and lastname (P734) fields by taking the first and last words of the label field
         - convert any date-like values to positive or negative integers
         - add label column combining itemLabel and altLabel lists
+        - join P31 and P279 columns
         """
         firstname_from_label = lambda l: l.split(" ")[0]
         lastname_from_label = lambda l: l.split(" ")[-1]
@@ -344,6 +345,22 @@ class Disambiguator(Classifier):
         )
         wikidata_results["label"] = (
             wikidata_results["label"] + wikidata_results["aliases"]
+        )
+
+        # join P31 and P279 columns
+        wikidata_results[["P31", "P279"]] = wikidata_results[["P31", "P279"]].applymap(
+            lambda i: [i] if not isinstance(i, list) else i
+        )
+        wikidata_results["P31_and_P279"] = (
+            wikidata_results["P31"] + wikidata_results["P279"]
+        ).apply(lambda i: list(set(i)))
+        # ensure that empty strings don't exist in the same list as valid QIDs
+        # [""] to ""; ["Q1234", ""] to ["Q1234"]
+        wikidata_results["P31_and_P279"] = wikidata_results["P31_and_P279"].apply(
+            lambda i: "" if i == [""] else i
+        )
+        wikidata_results["P31_and_P279"] = wikidata_results["P31_and_P279"].apply(
+            lambda i: [x for x in i if x != ""] if (len(i) > 1) else i
         )
 
         return wikidata_results
@@ -639,7 +656,8 @@ class Disambiguator(Classifier):
             for k, v in predicate_pid_mapping.items()
             if v is not None and url_to_pid(v) not in pids_ignore + ["P31"]
         }
-        pids = list(predicate_pid_mapping.values()) + ["P31"]
+        #  TODO: add P279 into here then combine P13 with P279 to form item_instanceof
+        pids = list(predicate_pid_mapping.values()) + ["P31", "P279"]
         predicate_pid_mapping.update({RDFS.label: "label"})
 
         pids_geographical = self._get_geographic_properties(pids)
@@ -738,7 +756,7 @@ class Disambiguator(Classifier):
                         if i[0][1] == RDF.type
                     ]
                     wikidata_instanceof = wikidata_results_df.loc[
-                        wikidata_results_df["id"] == item["id"], "P31"
+                        wikidata_results_df["id"] == item["id"], "P31_and_P279"
                     ].tolist()
 
                     batch_instanceof_comparisons += [
