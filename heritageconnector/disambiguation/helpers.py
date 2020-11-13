@@ -38,7 +38,8 @@ def load_training_data(
         os.path.join(data_path, "pids.txt"), header=None, names=["column"]
     )["column"].tolist()
 
-    pairs["is_type"] = X[:, 3] > 0.01
+    type_idx = pids.index("P31")
+    pairs["is_type"] = X[:, type_idx] > 0.01
 
     if os.path.exists(os.path.join(data_path, "y.npy")):
         y = np.load(os.path.join(data_path, "y.npy"))
