@@ -79,6 +79,7 @@ class Disambiguator(Classifier):
         max_features=None,
         bidirectional_distance=False,
         enforce_entities_have_type=True,
+        extra_sparql_lines: str = "",
     ):
         super().__init__()
 
@@ -100,6 +101,18 @@ class Disambiguator(Classifier):
 
         # in-memory caching for entity similarities, prefilled with case for where there is no type specified
         self.entity_distance_cache = {hash((None, None)): 0}
+
+        if extra_sparql_lines:
+            if not isinstance(extra_sparql_lines, str):
+                raise ValueError(
+                    f"Argument `extra_sparql_lines` must be a string. Type {type(extra_sparql_lines)} passed."
+                )
+            elif extra_sparql_lines[-1] != ".":
+                raise ValueError(
+                    f"Argument `extra_sparql_lines` must end in a full-stop. Value given was {extra_sparql_lines}"
+                )
+
+        self.extra_sparql_lines = extra_sparql_lines
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         self.clf = self.clf.fit(X, y)
@@ -458,6 +471,7 @@ class Disambiguator(Classifier):
             ?item owl:sameAs ?object.
             ?item rdfs:label ?itemLabel.
             {self._get_type_constraint()}
+            {self.extra_sparql_lines}
             ?item skos:hasTopConcept '{self.table_name}'.
         }}"""
 
@@ -488,6 +502,7 @@ class Disambiguator(Classifier):
             FILTER NOT EXISTS {{?item owl:sameAs ?object}}.
             ?item rdfs:label ?itemLabel.
             {self._get_type_constraint()}
+            {self.extra_sparql_lines}
             ?item skos:hasTopConcept '{self.table_name}'.
         }}"""
 
