@@ -1,6 +1,6 @@
 import requests
 from typing import List, Set, Union
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import re
 import os
 from itertools import product
@@ -21,6 +21,31 @@ class wbentities:
     def __init__(self, api_timeout=20):
         self.timeout = api_timeout
         self.ge = get_entities()
+
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+    def get_count_of_claims(self, qids: list, page_size: int = 50) -> dict:
+        """
+        Get nunber of claims for each QID given. 
+
+        Args:
+            qids (list)
+
+        Returns:
+            dict: {qid: count, ...}
+        """
+
+        res_generator = self.ge.result_generator(
+            qids, page_limit=page_size, timeout=self.timeout
+        )
+
+        claims_counts = dict()
+
+        for item_list in res_generator:
+            claims_counts.update(
+                {item["id"]: len(item["claims"]) for item in item_list}
+            )
+
+        return claims_counts
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     def get_properties(

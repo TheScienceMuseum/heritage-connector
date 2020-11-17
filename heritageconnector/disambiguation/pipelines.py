@@ -146,13 +146,11 @@ class Disambiguator(Classifier):
 
         return pred_proba >= threshold
 
-    def predict_top_ranked_pairs(
+    def get_predictions_table(
         self, X: np.ndarray, pairs: pd.DataFrame, threshold=0.5
     ) -> pd.DataFrame:
         """
-        Returns a dataframe of highest ranked Wikidata candidate for each internal record based on the classifier output.
-        Any predictions below the threshold aren't counted. If there are multiple Wikidata candidates with the same
-        predicted probability, all candidates with the maximum probability are returned.
+        Returns a `pairs` dataframe with predictions and probabilities (y_pred, y_pred_proba) made by the classifier.
 
         Args:
             X (np.ndarray)
@@ -169,7 +167,24 @@ class Disambiguator(Classifier):
         pairs_new["y_pred_proba"] = y_pred_proba
         pairs_new["y_pred"] = y_pred_proba >= threshold
 
-        pairs_true = pairs_new[pairs_new["y_pred"] == True]  # noqa: E712
+        return pairs_new
+
+    def get_top_ranked_pairs(self, predictions_table: pd.DataFrame) -> pd.DataFrame:
+        """
+        Returns a dataframe of highest ranked Wikidata candidate for each internal record based on the classifier output.
+        Any predictions below the threshold aren't counted. If there are multiple Wikidata candidates with the same
+        predicted probability, all candidates with the maximum probability are returned.
+
+        Args:
+            predictions_table: returned by `get_predictions_table`
+
+        Returns:
+            pd.DataFrame: with same columns as predictions_table (internal_id, wikidata_id, y_pred, y_pred_proba)
+        """
+
+        pairs = predictions_table.copy()
+
+        pairs_true = pairs[pairs["y_pred"] == True]  # noqa: E712
 
         pairs_true_filtered = pd.DataFrame()
 
