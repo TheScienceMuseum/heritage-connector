@@ -60,7 +60,8 @@ def get_wikidata_fields(
         return_df = pd.DataFrame()
         for item_id, item_qids in id_qid_mapping.items():
             tempdf = res_df.loc[res_df["qid"].isin(item_qids)]
-            tempdf["id"] = item_id
+            if len(tempdf) > 0:
+                tempdf.loc[:, "id"] = item_id
             return_df = return_df.append(tempdf, ignore_index=True)
 
         return return_df
