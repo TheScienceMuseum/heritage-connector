@@ -84,16 +84,20 @@ def filter_cased_wikidata_labels(pairs: pd.DataFrame) -> pd.DataFrame:
     return pairs_new[pairs_new["wikidata_id"].isin(qids_with_non_lowercase_label)]
 
 
-def remove_wikidata_items_with_no_claims(pairs: pd.DataFrame) -> pd.DataFrame:
+def remove_wikidata_items_with_min_claims(
+    pairs: pd.DataFrame, min_claims: int = 0
+) -> pd.DataFrame:
     """
-    Return only record pairs with a non-zero number of claims. Only needs column `wikidata_id`.
+    Return only record pairs with a number of claims greater than `min_claims`. Only needs column `wikidata_id`.
     """
 
     if "wikidata_id" not in pairs.columns.values:
         raise ValueError("DataFrame pairs must contain column `wikidata_id`.")
 
     qid_claim_counts = entities.get_count_of_claims(pairs["wikidata_id"].tolist())
-    qids_with_claims = [qid for qid, count in qid_claim_counts.items() if count > 0]
+    qids_with_claims = [
+        qid for qid, count in qid_claim_counts.items() if count > min_claims
+    ]
 
     pairs_new = pairs.copy()
 
