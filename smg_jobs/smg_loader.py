@@ -633,3 +633,15 @@ if __name__ == "__main__":
         "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
         "organisations",
     )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
+        "objects (photographic technology & aeronautics)",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
+        "objects (computing & space)",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
+        "objects (locomotives & rolling stock)",
+    )
