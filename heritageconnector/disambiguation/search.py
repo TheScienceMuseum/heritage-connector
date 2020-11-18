@@ -249,7 +249,7 @@ class es_text_search(TextSearch):
         self,
         text: str,
         limit=100,
-        similarity_thresh=50,
+        similarity_thresh=0,
         return_unique=True,
         return_exact_only: bool = False,
         field_exists_filter: str = None,
@@ -262,7 +262,7 @@ class es_text_search(TextSearch):
             text (str): text to search
             limit (int, optional): Defaults to 100.
             return_unique (bool, optional): whether to return unique IDs. Defaults to True.
-            similarity_thresh (int, optional): the text similarity cut-off to exclude items from search results. Defaults to 50.
+            similarity_thresh (int, optional): DISABLED AT THE MOMENT. the text similarity cut-off to exclude items from search results. Defaults to 0.
             return_exact_only (bool, optional): only return exact matches if any exact match exists. If no exact match exists the standard set of
                 results are returned.
             field_exists_filter (str, optional): if specified, all searches will be filtered to only documents which have a value for this field.
@@ -279,10 +279,10 @@ class es_text_search(TextSearch):
             dict (optional): dict of {QID: P31_value, ...} for all QIDs. For records with no P31 value, the corresponding value is None.
         """
 
-        if "fuzzy_scorer" not in kwargs:
-            fuzzy_scorer = fuzz.token_sort_ratio
-        else:
-            fuzzy_scorer = kwargs["fuzzy_scorer"]
+        # if "fuzzy_scorer" not in kwargs:
+        #     fuzzy_scorer = fuzz.token_sort_ratio
+        # else:
+        #     fuzzy_scorer = kwargs["fuzzy_scorer"]
 
         # get more results than we need to allow for removing values with return_unique flag
         duplicate_safety_factor = 1.2
@@ -346,12 +346,12 @@ class es_text_search(TextSearch):
                     [
                         item["_source"]["id"]
                         for item in res
-                        if fuzzy_match_lists(
-                            item["_source"].get("labels", ""),
-                            text,
-                            threshold=similarity_thresh,
-                            scorer=fuzzy_scorer,
-                        )
+                        # if fuzzy_match_lists(
+                        #     item["_source"].get("labels", ""),
+                        #     text,
+                        #     threshold=similarity_thresh,
+                        #     scorer=fuzzy_scorer,
+                        # )
                     ]
                 )
             )[0:limit]
@@ -360,12 +360,12 @@ class es_text_search(TextSearch):
             return [
                 item["_source"]["id"]
                 for item in res
-                if fuzzy_match_lists(
-                    item["_source"].get("labels", ""),
-                    text,
-                    threshold=similarity_thresh,
-                    scorer=fuzzy_scorer,
-                )
+                # if fuzzy_match_lists(
+                #     item["_source"].get("labels", ""),
+                #     text,
+                #     threshold=similarity_thresh,
+                #     scorer=fuzzy_scorer,
+                # )
             ][0:limit]
 
         if len(res) > 0:

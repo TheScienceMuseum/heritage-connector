@@ -57,9 +57,14 @@ def get_wikidata_fields(
     assert len(set(qids)) == len(set(res_df["qid"].tolist()))
 
     if id_qid_mapping:
-        res_df["id"] = res_df["qid"].apply(
-            lambda x: [key for key in id_qid_mapping if x in id_qid_mapping[key]][0]
-        )
-        res_df = res_df.sort_values("id")
+        return_df = pd.DataFrame()
+        for item_id, item_qids in id_qid_mapping.items():
+            tempdf = res_df.loc[res_df["qid"].isin(item_qids)]
+            if len(tempdf) > 0:
+                tempdf.loc[:, "id"] = item_id
+            return_df = return_df.append(tempdf, ignore_index=True)
 
-    return res_df
+        return return_df
+
+    else:
+        return res_df

@@ -110,8 +110,9 @@ mapping = {
         "TITLE": {"RDF": RDFS.label, "type": "str"},
         "DESCRIPTION": {"PID": "description", "RDF": XSD.description, "type": "str"},
         "ITEM_NAME": {"PID": WDT.P31, "RDF": XSD.additionalType, "type": "list"},
-        "MATERIALS": {"PID": WDT.P186, "RDF": XSD.material, "type": "list"},
+        "MATERIALS": {"PID": WDT.P186, "RDF": SDO.material, "type": "list"},
         "DATE_MADE": {"PID": WDT.P571, "RDF": SDO.dateCreated, "type": "date"},
+        "CATEGORY1": {"RDF": SDO.isPartOf, "type": "categorical"},
     },
     # NOTE: not being used at the moment
     "MAKERS": {
