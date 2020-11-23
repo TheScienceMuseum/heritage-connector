@@ -4,9 +4,11 @@ from rdflib import Graph, Literal, RDF, URIRef
 from rdflib.serializer import Serializer
 import json
 from tqdm.auto import tqdm
+from itertools import islice
+import os
 from heritageconnector.namespace import XSD, FOAF, OWL, PROV
 from heritageconnector.config import config
-from heritageconnector import logging
+from heritageconnector import logging, errors
 
 logger = logging.get_logger(__name__)
 
@@ -52,7 +54,7 @@ def es_bulk(action_generator, total_iterations=None):
     """Batch load a set of new records into ElasticSearch"""
 
     successes = 0
-    errors = []
+    errs = []
 
     for ok, action in tqdm(
         helpers.parallel_bulk(
@@ -66,10 +68,10 @@ def es_bulk(action_generator, total_iterations=None):
         total=total_iterations,
     ):
         if not ok:
-            errors.append(action)
+            errs.append(action)
         successes += ok
 
-    return successes, errors
+    return successes, errs
 
 
 def create(collection, record_type, data, jsonld):
@@ -200,3 +202,44 @@ def es_to_rdflib_graph(g=None, return_format=None):
         return g
     else:
         return g.serialize(format=return_format)
+
+
+def es_text_to_json(json_path: str, limit: int = None):
+    """
+    Saves an Elasticsearch dump to a json file in the location specified by `json_path`.
+    JSON file has keys 'uri', 'text'.
+    """
+
+    limit = -1 if limit is None else limit
+    text_field = "@xsd:description.@value"
+
+    res = helpers.scan(
+        client=es,
+        index=index,
+        query={"_source": f"graph.{text_field}", "query": {"match_all": {}}},
+        preserve_order=True,
+    )
+
+    total = es.count(index=index)["count"]
+
+    items_out = []
+    item_count = 0
+
+    logger.info(f"Getting documents with field {text_field}")
+    for item in tqdm(res, total=total):
+        # if there is no 'graph' key then `text_field` does not appear in the document
+        if "graph" in item["_source"]:
+            items_out.append(
+                {
+                    "uri": item["_id"],
+                    "text": item["_source"]["graph"]["@xsd:description"]["@value"],
+                }
+            )
+            item_count += 1
+
+        if item_count == limit:
+            break
+
+    logger.info(f"{len(items_out)} items exporting to {json_path}")
+    with open(json_path, "w") as f:
+        json.dump(items_out, f)
