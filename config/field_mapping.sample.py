@@ -2,7 +2,18 @@ import sys
 
 sys.path.append("..")
 
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, WD, WDT
+from heritageconnector.namespace import (
+    XSD,
+    FOAF,
+    OWL,
+    RDF,
+    RDFS,
+    PROV,
+    SDO,
+    WD,
+    WDT,
+    SKOS,
+)
 
 
 mapping = {
@@ -82,6 +93,8 @@ mapping = {
         "NATIONALITY": {"RDF": SDO.nationality, "type": "categorical"},
         "BIOGRAPHY": {"PID": "description", "RDF": XSD.description, "type": "str"},
         "NOTES": {"type": "str"},
+        "adlib_id": {"RDF": FOAF.page},
+        "adlib_ALIAS": {"RDF": SKOS.altLabel},
     },
     "ORGANISATION": {
         "ID": {"type": "index"},
@@ -93,15 +106,12 @@ mapping = {
             "RDF": XSD.description,
             "type": "str",
         },
-        "BRIEF_BIO": {
-            # "PID": "description",
-            "RDF": XSD.disambiguatingDescription,
-            "type": "str",
-        },
         "OCCUPATION": {"RDF": XSD.additionalType, "type": "categorical"},
         "NATIONALITY": {"RDF": SDO.addressCountry, "type": "categorical"},
         "BIRTH_DATE": {"PID": WDT.P571, "RDF": SDO.foundingDate, "type": "numeric"},
         "DEATH_DATE": {"PID": WDT.P576, "RDF": SDO.dissolutionDate, "type": "numeric"},
+        "adlib_id": {"RDF": FOAF.page},
+        "adlib_ALIAS": {"RDF": SKOS.altLabel},
     },
     "OBJECT": {
         "ID": {"type": "index"},
