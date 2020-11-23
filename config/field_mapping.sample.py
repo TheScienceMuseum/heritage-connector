@@ -101,11 +101,7 @@ mapping = {
         # TODO: make PREFIX field when loading data
         "PREFIX": {"type": "prefix"},
         "PREFERRED_NAME": {"RDF": RDFS.label, "type": "string"},
-        "DESCRIPTION": {
-            # "PID": "description",
-            "RDF": XSD.description,
-            "type": "str",
-        },
+        "DESCRIPTION": {"PID": "description", "RDF": XSD.description, "type": "str"},
         "OCCUPATION": {"RDF": XSD.additionalType, "type": "categorical"},
         "NATIONALITY": {"RDF": SDO.addressCountry, "type": "categorical"},
         "BIRTH_DATE": {"PID": WDT.P571, "RDF": SDO.foundingDate, "type": "numeric"},

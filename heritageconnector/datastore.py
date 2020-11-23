@@ -211,12 +211,12 @@ def es_text_to_json(json_path: str, limit: int = None):
     """
 
     limit = -1 if limit is None else limit
-    text_field = "@xsd:description.@value"
+    text_field = "data.http://www.w3.org/2001/XMLSchema#description"
 
     res = helpers.scan(
         client=es,
         index=index,
-        query={"_source": f"graph.{text_field}", "query": {"match_all": {}}},
+        query={"_source": f"{text_field}", "query": {"match_all": {}}},
         preserve_order=True,
     )
 
@@ -228,11 +228,13 @@ def es_text_to_json(json_path: str, limit: int = None):
     logger.info(f"Getting documents with field {text_field}")
     for item in tqdm(res, total=total):
         # if there is no 'graph' key then `text_field` does not appear in the document
-        if "graph" in item["_source"]:
+        if "data" in item["_source"]:
             items_out.append(
                 {
                     "uri": item["_id"],
-                    "text": item["_source"]["graph"]["@xsd:description"]["@value"],
+                    "text": item["_source"]["data"][
+                        "http://www.w3.org/2001/XMLSchema#description"
+                    ],
                 }
             )
             item_count += 1
