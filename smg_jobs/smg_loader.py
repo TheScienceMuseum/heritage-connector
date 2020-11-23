@@ -179,8 +179,8 @@ def load_people_data():
     people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
         lambda i: get_wiki_uri_from_placename(i, False)
     )
-    people_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]] = people_df[
-        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]
+    people_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = people_df[
+        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
     ].fillna("")
     people_df["adlib_id"] = people_df["adlib_id"].apply(
         lambda i: [
@@ -196,9 +196,11 @@ def load_people_data():
     ].applymap(process_text)
 
     # create combined text fields
+    newline = " \n "  # can't insert into fstring below
     people_df.loc[:, "BIOGRAPHY"] = people_df[
-        ["DESCRIPTION", "adlib_DESCRIPTION"]
-    ].apply(lambda x: f"{x[0]} \n {x[1]}" if (x[0] or x[1]) else "", axis=1)
+        ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
+    ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
+
     people_df.loc[:, "NOTES"] = (
         str(people_df.loc[:, "DESCRIPTION"]) + " " + str(people_df.loc[:, "NOTE"])
     )
@@ -225,8 +227,8 @@ def load_orgs_data():
     org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
     org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
 
-    org_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]] = org_df[
-        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]
+    org_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = org_df[
+        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
     ].fillna("")
     org_df[["DESCRIPTION"]] = org_df[["DESCRIPTION"]].applymap(process_text)
     org_df[["OCCUPATION", "NATIONALITY"]] = org_df[
@@ -246,9 +248,10 @@ def load_orgs_data():
         else ""
     )
 
-    org_df.loc[:, "DESCRIPTION"] = org_df[["DESCRIPTION", "adlib_DESCRIPTION"]].apply(
-        lambda x: f"{x[0]} \n {x[1]}" if (x[0] or x[1]) else "", axis=1
-    )
+    newline = " \n "  # can't insert into fstring below
+    org_df.loc[:, "BIOGRAPHY"] = org_df[
+        ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
+    ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
 
     logger.info("loading orgs data")
     add_records(table_name, org_df)
