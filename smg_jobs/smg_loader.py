@@ -35,7 +35,7 @@ max_records = None
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
 catalogue_data_path = config.MIMSY_CATALOGUE_PATH
-people_data_path = config.MIMSY_PEOPLE_PATH
+people_data_path = "../GITIGNORE_DATA/mimsy_adlib_joined_people.csv"
 maker_data_path = config.MIMSY_MAKER_PATH
 user_data_path = config.MIMSY_USER_PATH
 
@@ -179,14 +179,26 @@ def load_people_data():
     people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
         lambda i: get_wiki_uri_from_placename(i, False)
     )
-
-    # remove newlines and tab chars
-    people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
-        process_text
+    people_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]] = people_df[
+        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]
+    ].fillna("")
+    people_df["adlib_id"] = people_df["adlib_id"].apply(
+        lambda i: [
+            f"https://collection.sciencemuseumgroup.org.uk/people/{x}"
+            for x in str(i).split(",")
+        ]
+        if i
+        else ""
     )
-    people_df.loc[:, "NOTE"] = people_df.loc[:, "NOTE"].apply(process_text)
+    # remove newlines and tab chars
+    people_df.loc[:, ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]] = people_df.loc[
+        :, ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
+    ].applymap(process_text)
+
     # create combined text fields
-    people_df.loc[:, "BIOGRAPHY"] = people_df.loc[:, "DESCRIPTION"]
+    people_df.loc[:, "BIOGRAPHY"] = people_df[
+        ["DESCRIPTION", "adlib_DESCRIPTION"]
+    ].apply(lambda x: f"{x[0]} \n {x[1]}" if (x[0] or x[1]) else "", axis=1)
     people_df.loc[:, "NOTES"] = (
         str(people_df.loc[:, "DESCRIPTION"]) + " " + str(people_df.loc[:, "NOTE"])
     )
@@ -213,14 +225,30 @@ def load_orgs_data():
     org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
     org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
 
-    org_df["DESCRIPTION"] = org_df["DESCRIPTION"].apply(process_text)
-    org_df["BRIEF_BIO"] = org_df["BRIEF_BIO"].apply(process_text)
-    org_df["OCCUPATION"] = org_df["OCCUPATION"].apply(split_list_string)
-    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(split_list_string)
+    org_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]] = org_df[
+        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION"]
+    ].fillna("")
+    org_df[["DESCRIPTION"]] = org_df[["DESCRIPTION"]].applymap(process_text)
+    org_df[["OCCUPATION", "NATIONALITY"]] = org_df[
+        ["OCCUPATION", "NATIONALITY"]
+    ].applymap(split_list_string)
+
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
         lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
     )
-    # org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(lambda x: [get_wiki_uri_from_placename(i, True) for i in x])
+
+    org_df["adlib_id"] = org_df["adlib_id"].apply(
+        lambda i: [
+            f"https://collection.sciencemuseumgroup.org.uk/people/{x}"
+            for x in str(i).split(",")
+        ]
+        if i
+        else ""
+    )
+
+    org_df.loc[:, "DESCRIPTION"] = org_df[["DESCRIPTION", "adlib_DESCRIPTION"]].apply(
+        lambda x: f"{x[0]} \n {x[1]}" if (x[0] or x[1]) else "", axis=1
+    )
 
     logger.info("loading orgs data")
     add_records(table_name, org_df)
