@@ -20,7 +20,7 @@ Some blog highlights:
 
 - **Why are we doing this?** [*Sidestepping The Limitations Of Collection Catalogues With Machine Learning And Wikidata*](https://thesciencemuseum.github.io/heritageconnector/post/2020/09/23/sidestepping-the-limitations-of-collections-catalogues-with-machine-learning-and-wikidata/)
 - **How will it work?** [*Knowledge Graphs, Machine Learning And Heritage Collections*](https://thesciencemuseum.github.io/heritageconnector/post/2020/11/06/knowledge-graphs-machine-learning-and-heritage-collections/)
-- **Webinars:** [*Wikidata And Cultural Heritage Collections*](https://thesciencemuseum.github.io/heritageconnector/events/2020/06/22/wikidata-and-cultural-heritage-collections-webinar/), [*Connecting The Uk'S Cultural Heritage*](https://thesciencemuseum.github.io/heritageconnector/events/2020/11/06/connecting-the-uks-cultural-heritage/)
+- **Webinars:** [*Wikidata And Cultural Heritage Collections*](https://thesciencemuseum.github.io/heritageconnector/events/2020/06/22/wikidata-and-cultural-heritage-collections-webinar/), [*Connecting The UK's Cultural Heritage*](https://thesciencemuseum.github.io/heritageconnector/events/2020/11/06/connecting-the-uks-cultural-heritage/)
 
 ## For Developers (TODO: put in docs)
 
