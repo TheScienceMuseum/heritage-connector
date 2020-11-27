@@ -2,15 +2,14 @@
 
 Transforming text into data to extract meaning and make connections. **IN DEVELOPMENT**
 
+![diagram: Relational DB vs Knowledge Graph](https://thesciencemuseum.github.io/heritageconnector/post_files/charts-knowledge-graphs-ml-post/1-relational-db-vs-knowledge-graph.png)
+
 A set of tools to:
 
 - load tabular collection data to a knowledge graph
 - find links between collection entities and Wikidata
 - perform NLP to create more links in the graph (also see [hc-nlp](https://github.com/TheScienceMuseum/heritage-connector-nlp))
 - explore and analyse a collection graph ways that aren't possible in existing collections systems
-
-
-![diagram: Relational DB vs Knowledge Graph](https://thesciencemuseum.github.io/heritageconnector/post_files/charts-knowledge-graphs-ml-post/1-relational-db-vs-knowledge-graph.png)
 
 
 ## Further Reading
