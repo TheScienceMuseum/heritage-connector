@@ -70,6 +70,7 @@ def labels_ids_to_jsonl(
     include_ids: bool = True,
     limit: int = None,
     drop_duplicates_across_types: bool = True,
+    topconcepts_to_ignore: list = None,
 ):
     """
     Export labels and IDs to a JSONL file
@@ -104,6 +105,9 @@ def labels_ids_to_jsonl(
 
         try:
             item_topconcept = graph["@skos:hasTopConcept"]["@value"]
+
+            if item_topconcept.upper() in topconcepts_to_ignore:
+                continue
 
             if item_topconcept == "PERSON":
                 item_label = (
