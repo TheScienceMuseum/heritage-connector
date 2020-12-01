@@ -2,6 +2,7 @@ from elasticsearch import Elasticsearch, helpers
 from tqdm.auto import tqdm
 import json
 from itertools import islice
+import pandas as pd
 from heritageconnector.config import config
 from heritageconnector.datastore import es, index
 from heritageconnector import logging
@@ -11,7 +12,7 @@ logger = logging.get_logger(__name__)
 topconcept_to_spacy_ner_mapping = {
     "PERSON": "PERSON",
     "ORGANISATION": "ORG",
-    "OBJECT": "WORK_OF_ART",
+    "OBJECT": "PRODUCT",
 }
 
 
@@ -19,9 +20,9 @@ def descriptions_to_json(json_path: str, limit: int = None):
     """
     Saves an Elasticsearch dump to a json file in the location specified by `json_path`.
     JSON file has keys 'uri', 'text'.
-    Output example: 
+    Output example:
     ``` json
-    [{"uri": "http://a.URI","text":"Two-minute phonograph cylinder"}, 
+    [{"uri": "http://a.URI","text":"Two-minute phonograph cylinder"},
      {"uri": "http://another.URI, "text": "'Rover' Safety Bicycle"}]
     ```
     """
@@ -68,6 +69,7 @@ def labels_ids_to_jsonl(
     include_aliases: bool = True,
     include_ids: bool = True,
     limit: int = None,
+    drop_duplicates_across_types: bool = True,
 ):
     """
     Export labels and IDs to a JSONL file
@@ -77,6 +79,8 @@ def labels_ids_to_jsonl(
         include_aliases (bool, optional): Whether to include aliases as well as labels. Defaults to True.
         include_ids (bool, optional): Whether to include IDs, which could be used to link the labels back to their associated records.
         limit (int, optional): Only extract the first `limit` names.
+        drop_duplicates_across_types (bool, optional): Whether to drop duplicates if they appear across more than one type. E.g. "Salvador Dali"
+            is both a person and an object (PRODUCT) in the SMG collection.
     """
 
     res = helpers.scan(
@@ -122,6 +126,30 @@ def labels_ids_to_jsonl(
         except:  # noqa: E722
             # logger.debug(f"{item_id} skipped")
             pass
+
+    if drop_duplicates_across_types:
+        df = pd.DataFrame(items_out)
+        duplicated_labels = (
+            df["pattern"]
+            .value_counts()[df["pattern"].value_counts() > 1]
+            .index.tolist()
+        )
+        no_unique_types_per_duplicated_label = (
+            df.loc[df["pattern"].isin(duplicated_labels)]
+            .groupby("pattern")["label"]
+            .nunique()
+        )
+        labels_with_multiple_types = (
+            no_unique_types_per_duplicated_label[
+                no_unique_types_per_duplicated_label > 1
+            ]
+            .index.str.lower()
+            .tolist()
+        )
+
+        items_out = df[
+            ~df["pattern"].str.lower().isin(labels_with_multiple_types)
+        ].to_dict("records")
 
     with open(jsonl_path, "w") as f:
         for item in items_out:
