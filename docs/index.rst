@@ -6,7 +6,7 @@
 Heritage Connector documentation
 ================================
 
-The Heritage Connector is a framework for automatically connecting items within and across `GLAM`_ collections and  publications through linking with `Wikidata`_. It achieves this by applying the following techniques *(links to follow)*:
+The Heritage Connector is a framework for automatically connecting items within and across `GLAM`_ collections and  publications through linking with `Wikidata`_. It achieves this by applying the following techniques *(links in sidebar)*:
 
 - data ingestion: tabular data to knowledge graphs (RDF); mining existing data for Wikidata connections;
 - entity matching: training a machine learning model to predict :code:`owl:sameAs` links between collection items and Wikidata items;
