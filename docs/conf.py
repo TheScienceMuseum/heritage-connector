@@ -54,7 +54,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "alabaster"
+html_theme = "sphinx_rtd_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -63,13 +63,13 @@ html_static_path = ["_static"]
 
 html_theme_options = {
     "logo": "header.jpg",
-    "logo_name": True,
-    "page_width": "50%",
-    "github_user": "theScienceMuseum",
-    "github_repo": "heritage-connector",
-    "github_type": "star",
+    # "logo_name": True,
+    # "page_width": "50%",
+    # "github_user": "theScienceMuseum",
+    # "github_repo": "heritage-connector",
+    # "github_type": "star",
     # "github_count": False,
-    "sidebar_collapse": True,
-    "extra_nav_links": links,
-    "sidebar_includehidden": True,
+    # "sidebar_collapse": True,
+    # "extra_nav_links": links,
+    # "sidebar_includehidden": True,
 }
