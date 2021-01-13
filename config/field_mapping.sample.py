@@ -15,6 +15,15 @@ from heritageconnector.namespace import (
     SKOS,
 )
 
+# PIDs to store in ES in _source.data rather than _source.graph. You may want to do this to keep the graph small for analytics purposes,
+# whilst keeping some useful information in the Elasticsearch index.
+non_graph_pids = [
+    "description",
+    # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
+    # WDT.P735, # first name
+    # WDT.P734, # last name
+]
+
 
 mapping = {
     "PERSON_ADLIB": {

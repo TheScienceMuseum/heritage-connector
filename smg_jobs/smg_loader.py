@@ -54,16 +54,10 @@ collection = "SMG"
 
 context = get_jsonld_context()
 
+# these are left in rather than using SMGP/SMGO in heritageconnector.namespace as they serve a slightly
+# different purpose: they are meant for converting IDs in internal documents into SMG URLs.
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
-
-# PIDs from field_mapping to store in ES separate to the graph object
-non_graph_pids = [
-    "description",
-    # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
-    # WDT.P735, # first name
-    # WDT.P734, # last name
-]
 
 denonym_converter = DenonymConverter()
 
@@ -461,13 +455,19 @@ def add_record(table_name, row, add_type=False):
 
     table_mapping = field_mapping.mapping[table_name]
     data_fields = [
-        k for k, v in table_mapping.items() if v.get("PID") in non_graph_pids
+        k
+        for k, v in table_mapping.items()
+        if v.get("PID") in field_mapping.non_graph_pids
     ]
 
     data = serialize_to_json(table_name, row, data_fields)
     data["uri"] = uri
     jsonld = serialize_to_jsonld(
-        table_name, uri, row, ignore_types=non_graph_pids, add_type=add_type
+        table_name,
+        uri,
+        row,
+        ignore_types=field_mapping.non_graph_pids,
+        add_type=add_type,
     )
 
     datastore.create(collection, table_name, data, jsonld)
@@ -485,7 +485,9 @@ def record_create_generator(table_name, df, add_type):
     table_mapping = field_mapping.mapping[table_name]
 
     data_fields = [
-        k for k, v in table_mapping.items() if v.get("PID") in non_graph_pids
+        k
+        for k, v in table_mapping.items()
+        if v.get("PID") in field_mapping.non_graph_pids
     ]
 
     for _, row in df.iterrows():
@@ -494,7 +496,11 @@ def record_create_generator(table_name, df, add_type):
 
         data = serialize_to_json(table_name, row, data_fields)
         jsonld = serialize_to_jsonld(
-            table_name, uri, row, ignore_types=non_graph_pids, add_type=add_type
+            table_name,
+            uri,
+            row,
+            ignore_types=field_mapping.non_graph_pids,
+            add_type=add_type,
         )
 
         doc = {
