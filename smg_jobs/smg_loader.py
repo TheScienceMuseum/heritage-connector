@@ -13,7 +13,18 @@ import os
 from tqdm.auto import tqdm
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore
-from heritageconnector.namespace import XSD, FOAF, OWL, RDF, PROV, SDO, SKOS, WD, WDT
+from heritageconnector.namespace import (
+    XSD,
+    FOAF,
+    OWL,
+    RDF,
+    PROV,
+    SDO,
+    SKOS,
+    WD,
+    WDT,
+    get_jsonld_context,
+)
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
@@ -30,7 +41,7 @@ logger = logging.get_logger(__name__)
 pd.options.mode.chained_assignment = None
 
 # set to None for no limit
-max_records = None
+max_records = 500
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -41,17 +52,7 @@ user_data_path = config.MIMSY_USER_PATH
 
 collection = "SMG"
 
-context = [
-    {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
-    {"@sdo": "https://schema.org/", "@language": "en"},
-    {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
-    {"@xsd": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
-    {"@wd": "http://www.wikidata.org/entity/", "@language": "en"},
-    {"@wdt": "http://www.wikidata.org/prop/direct/", "@language": "en"},
-    {"@prov": "http://www.w3.org/ns/prov#", "@language": "en"},
-    {"@rdfs": "http://www.w3.org/2000/01/rdf-schema#", "@language": "en"},
-    {"@skos": "http://www.w3.org/2004/02/skos/core#", "@language": "en"},
-]
+context = get_jsonld_context()
 
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
@@ -648,11 +649,11 @@ if __name__ == "__main__":
     load_object_data()
     load_maker_data()
     load_user_data()
-    load_related_from_wikidata()
-    load_sameas_from_wikidata_smg_people_id()
+    # load_related_from_wikidata()
+    # load_sameas_from_wikidata_smg_people_id()
     load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
     load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
     load_crowdsourced_links(
         "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
     )
