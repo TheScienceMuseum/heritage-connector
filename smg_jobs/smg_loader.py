@@ -12,7 +12,7 @@ import re
 import os
 from tqdm.auto import tqdm
 from heritageconnector.config import config, field_mapping
-from heritageconnector import datastore
+from heritageconnector import datastore, datastore_helpers
 from heritageconnector.namespace import (
     XSD,
     FOAF,
@@ -43,6 +43,9 @@ pd.options.mode.chained_assignment = None
 # set to None for no limit
 max_records = 500
 
+# context inserted into each JSON-LD record
+context = get_jsonld_context()
+
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
 catalogue_data_path = config.MIMSY_CATALOGUE_PATH
@@ -52,23 +55,25 @@ user_data_path = config.MIMSY_USER_PATH
 
 collection = "SMG"
 
-context = get_jsonld_context()
 
 # these are left in rather than using SMGP/SMGO in heritageconnector.namespace as they serve a slightly
 # different purpose: they are meant for converting IDs in internal documents into SMG URLs.
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 
-denonym_converter = DenonymConverter()
-
-# columns of interest are 'place name', 'qid', 'country qid'
-placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qids.pkl")
-
 
 def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.URIRef:
     """
     Get URI of QID from place name. `get_country` flag returns the QID of the country instead of the place.
+
+    The data used to create `placename_qid_mapping` is SMG-specific, but the notebook to create it on your own data 
+    can be found in 'experiments/disambiguating place names (geocoding).ipynb'.
     """
+
+    # columns of interest are 'place name', 'qid', 'country qid'
+    placename_qid_mapping = pd.read_pickle(
+        "s3://heritageconnector/placenames_to_qids.pkl"
+    )
 
     if str(place_name).lower() not in placename_qid_mapping["place name"].tolist():
         return None
@@ -89,38 +94,6 @@ def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.UR
         return URIRef(return_uri)
 
 
-def get_country_from_nationality(nationality):
-    country = denonym_converter.get_country_from_nationality(nationality)
-
-    if country is not None:
-        return country
-    else:
-        return nationality
-
-
-def process_text(text: str):
-    """
-    Remove newlines/other problematic characters
-    """
-    newstr = str(text)
-    newstr = newstr.replace("\n", " ")
-    newstr = newstr.replace("\t", " ")
-
-    return newstr
-
-
-def split_list_string(l: list):
-    """
-    Splits string separated by either commas or semicolons into a lowercase list.
-    """
-
-    return [
-        x.strip().lower()
-        for x in str(l).replace(";", ",").split(",")
-        if x.strip() != ""
-    ]
-
-
 def load_object_data():
     """Load data from CSV files """
 
@@ -128,9 +101,15 @@ def load_object_data():
     catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=max_records)
     catalogue_df = catalogue_df.rename(columns={"MKEY": "ID"})
     catalogue_df["PREFIX"] = collection_prefix
-    catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(split_list_string)
-    catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(split_list_string)
-    catalogue_df["DESCRIPTION"] = catalogue_df["DESCRIPTION"].apply(process_text)
+    catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(
+        datastore_helpers.split_list_string
+    )
+    catalogue_df["ITEM_NAME"] = catalogue_df["ITEM_NAME"].apply(
+        datastore_helpers.split_list_string
+    )
+    catalogue_df["DESCRIPTION"] = catalogue_df["DESCRIPTION"].apply(
+        datastore_helpers.process_text
+    )
     catalogue_df["DATE_MADE"] = catalogue_df["DATE_MADE"].apply(
         get_year_from_date_value
     )
@@ -162,10 +141,16 @@ def load_people_data():
     )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
-    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(split_list_string)
-    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(split_list_string)
+    people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
+        datastore_helpers.split_list_string
+    )
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
-        lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+        datastore_helpers.split_list_string
+    )
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists(
+            [datastore_helpers.get_country_from_nationality(i) for i in x]
+        )
     )
 
     people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
@@ -188,7 +173,7 @@ def load_people_data():
     # remove newlines and tab chars
     people_df.loc[:, ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]] = people_df.loc[
         :, ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
-    ].applymap(process_text)
+    ].applymap(datastore_helpers.process_text)
 
     # create combined text fields
     newline = " \n "  # can't insert into fstring below
@@ -225,13 +210,17 @@ def load_orgs_data():
     org_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = org_df[
         ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
     ].fillna("")
-    org_df[["DESCRIPTION"]] = org_df[["DESCRIPTION"]].applymap(process_text)
+    org_df[["DESCRIPTION"]] = org_df[["DESCRIPTION"]].applymap(
+        datastore_helpers.process_text
+    )
     org_df[["OCCUPATION", "NATIONALITY"]] = org_df[
         ["OCCUPATION", "NATIONALITY"]
-    ].applymap(split_list_string)
+    ].applymap(datastore_helpers.split_list_string)
 
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
-        lambda x: flatten_list_of_lists([get_country_from_nationality(i) for i in x])
+        lambda x: flatten_list_of_lists(
+            [datastore_helpers.get_country_from_nationality(i) for i in x]
+        )
     )
 
     org_df["adlib_id"] = org_df["adlib_id"].apply(
