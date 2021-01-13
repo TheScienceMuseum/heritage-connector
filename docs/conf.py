@@ -62,7 +62,7 @@ html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "logo": "header.jpg",
+    # "logo": "header.jpg",
     # "logo_name": True,
     # "page_width": "50%",
     # "github_user": "theScienceMuseum",
