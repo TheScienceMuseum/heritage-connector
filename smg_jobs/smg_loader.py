@@ -4,14 +4,9 @@ sys.path.append("..")
 
 import pandas as pd
 import rdflib
-from rdflib import Graph, Literal, URIRef
-from rdflib.serializer import Serializer
-import json
 import string
 import re
 import os
-from tqdm.auto import tqdm
-from typing import Generator, Union
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore, datastore_helpers
 from heritageconnector.namespace import (
@@ -24,7 +19,6 @@ from heritageconnector.namespace import (
     SKOS,
     WD,
     WDT,
-    get_jsonld_context,
 )
 from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
@@ -38,14 +32,16 @@ from heritageconnector import logging
 
 logger = logging.get_logger(__name__)
 
-# disable SettingWithCopyWarning
+# disable pandas SettingWithCopyWarning
 pd.options.mode.chained_assignment = None
 
 # set to None for no limit
-max_records = 500
+max_records = None
 
-# context inserted into each JSON-LD record
-context = get_jsonld_context()
+# create instance of RecordLoader from datastore
+record_loader = datastore.RecordLoader(
+    collection_name="SMG", field_mapping=field_mapping
+)
 
 #  =============== LOADING SMG DATA ===============
 # Location of CSV data to import
@@ -54,13 +50,13 @@ people_data_path = "../GITIGNORE_DATA/mimsy_adlib_joined_people.csv"
 maker_data_path = config.MIMSY_MAKER_PATH
 user_data_path = config.MIMSY_USER_PATH
 
-collection = "SMG"
-
-
 # these are left in rather than using SMGP/SMGO in heritageconnector.namespace as they serve a slightly
 # different purpose: they are meant for converting IDs in internal documents into SMG URLs.
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
+
+# columns of interest are 'place name', 'qid', 'country qid'
+placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qids.pkl")
 
 
 def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.URIRef:
@@ -70,11 +66,6 @@ def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.UR
     The data used to create `placename_qid_mapping` is SMG-specific, but the notebook to create it on your own data 
     can be found in 'experiments/disambiguating place names (geocoding).ipynb'.
     """
-
-    # columns of interest are 'place name', 'qid', 'country qid'
-    placename_qid_mapping = pd.read_pickle(
-        "s3://heritageconnector/placenames_to_qids.pkl"
-    )
 
     if str(place_name).lower() not in placename_qid_mapping["place name"].tolist():
         return None
@@ -92,7 +83,7 @@ def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.UR
     if str(return_uri) == "nan":
         return None
     else:
-        return URIRef(return_uri)
+        return rdflib.URIRef(return_uri)
 
 
 def load_object_data():
@@ -116,7 +107,7 @@ def load_object_data():
     )
 
     logger.info("loading object data")
-    add_records(table_name, catalogue_df)
+    record_loader.add_records(table_name, catalogue_df)
 
     return
 
@@ -190,7 +181,7 @@ def load_people_data():
     )
 
     logger.info("loading people data")
-    add_records(table_name, people_df, add_type=WD.Q5)
+    record_loader.add_records(table_name, people_df, add_type=WD.Q5)
 
 
 def load_orgs_data():
@@ -239,12 +230,14 @@ def load_orgs_data():
     ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
 
     logger.info("loading orgs data")
-    add_records(table_name, org_df)
+    record_loader.add_records(table_name, org_df)
 
     # also add type organization (Q43229)
     org_df["URI"] = org_df["ID"].apply(lambda i: people_prefix + str(i))
     org_df["type_org"] = qid_to_url("Q43229")
-    add_triples(org_df, RDF.type, subject_col="URI", object_col="type_org")
+    record_loader.add_triples(
+        org_df, RDF.type, subject_col="URI", object_col="type_org"
+    )
 
     return
 
@@ -265,13 +258,13 @@ def load_maker_data():
 
     logger.info("loading maker data for people and orgs")
     people_makers = maker_df[maker_df["GENDER"].isin(["M", "F"])]
-    add_triples(
+    record_loader.add_triples(
         people_makers, FOAF.maker, subject_col="OBJECT_ID", object_col="PERSON_ORG_ID"
     )
 
     # where we don't have gender information use FOAF.maker as it's human-readable
     undefined_makers = maker_df[maker_df["GENDER"].isna()]
-    add_triples(
+    record_loader.add_triples(
         undefined_makers,
         FOAF.maker,
         subject_col="OBJECT_ID",
@@ -280,7 +273,7 @@ def load_maker_data():
 
     # use 'product or material produced' Wikidata property for organisations
     orgs_makers = maker_df[maker_df["GENDER"] == "N"]
-    add_triples(
+    record_loader.add_triples(
         orgs_makers, WDT.P1056, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
     )
 
@@ -297,9 +290,13 @@ def load_user_data():
 
     logger.info("loading user data (used by & used)")
     # uses
-    add_triples(user_df, WDT.P2283, subject_col="SUBJECT", object_col="OBJECT")
+    record_loader.add_triples(
+        user_df, WDT.P2283, subject_col="SUBJECT", object_col="OBJECT"
+    )
     # used by
-    add_triples(user_df, WDT.P1535, subject_col="OBJECT", object_col="SUBJECT")
+    record_loader.add_triples(
+        user_df, WDT.P1535, subject_col="OBJECT", object_col="SUBJECT"
+    )
 
     return
 
@@ -325,7 +322,9 @@ def load_sameas_people_orgs(pickle_path):
         df_links["QID"] = df_links["QID"].apply(qid_to_url)
 
         logger.info("adding sameAs relationships for people & orgs")
-        add_triples(df_links, OWL.sameAs, subject_col="LINK_ID", object_col="QID")
+        record_loader.add_triples(
+            df_links, OWL.sameAs, subject_col="LINK_ID", object_col="QID"
+        )
 
     else:
         logger.warn(
@@ -348,7 +347,7 @@ def load_related_from_wikidata():
     connection_df["internalURL"] = connection_df["internalURL"].str.replace(
         "sciencemuseum.org.uk", "sciencemuseumgroup.org.uk"
     )
-    add_triples(
+    record_loader.add_triples(
         connection_df, SKOS.relatedMatch, subject_col="internalURL", object_col="item"
     )
 
@@ -368,7 +367,7 @@ def load_organisation_types(org_type_df_path):
         qid_to_url
     )
 
-    add_triples(
+    record_loader.add_triples(
         org_type_df, RDF.type, subject_col="ID", object_col="OCCUPATION_resolved"
     )
 
@@ -388,7 +387,7 @@ def load_object_types(object_type_df_path):
         qid_to_url
     )
 
-    add_triples(
+    record_loader.add_triples(
         object_type_df, RDF.type, subject_col="ID", object_col="ITEM_NAME_resolved"
     )
 
@@ -411,7 +410,9 @@ def load_crowdsourced_links(links_path):
     df["wikidataurl"] = df["wikidataurl"].str.replace("https", "http")
     df["wikidataurl"] = df["wikidataurl"].str.replace("/wiki/", "/entity/")
 
-    add_triples(df, OWL.sameAs, subject_col="courl", object_col="wikidataurl")
+    record_loader.add_triples(
+        df, OWL.sameAs, subject_col="courl", object_col="wikidataurl"
+    )
 
 
 def load_sameas_from_wikidata_smg_people_id():
@@ -422,7 +423,9 @@ def load_sameas_from_wikidata_smg_people_id():
         "sciencemuseum.org.uk", "sciencemuseumgroup.org.uk"
     )
 
-    add_triples(df, OWL.sameAs, subject_col="external_url", object_col="wikidata_url")
+    record_loader.add_triples(
+        df, OWL.sameAs, subject_col="external_url", object_col="wikidata_url"
+    )
 
 
 def load_sameas_from_disambiguator(path: str, name: str):
@@ -431,248 +434,9 @@ def load_sameas_from_disambiguator(path: str, name: str):
     df = pd.read_csv(path)
     df["wikidata_url"] = df["wikidata_id"].apply(qid_to_url)
 
-    add_triples(df, OWL.sameAs, subject_col="internal_id", object_col="wikidata_url")
-
-
-#  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
-
-
-def add_record(table_name: str, record: pd.Series, add_type: rdflib.URIRef = None):
-    """
-    Create and store new record with a JSON-LD graph.
-
-    Args:
-        table_name (str): name of table in `field_mapping.mapping` (top-level key)
-        record (pd.Series): row from tabular data to import. Must contain column 'PREFIX', and column names
-        must match up to keys in `field_mapping.mapping[table_name]`.
-        add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
-    """
-
-    uri_prefix = record["PREFIX"]
-    uri = uri_prefix + str(record["ID"])
-
-    table_mapping = field_mapping.mapping[table_name]
-    data_fields = [
-        k
-        for k, v in table_mapping.items()
-        if v.get("PID") in field_mapping.non_graph_pids
-    ]
-
-    data = serialize_to_json(table_name, record, data_fields)
-    data["uri"] = uri
-    jsonld = serialize_to_jsonld(
-        table_name,
-        uri,
-        record,
-        ignore_types=field_mapping.non_graph_pids,
-        add_type=add_type,
+    record_loader.add_triples(
+        df, OWL.sameAs, subject_col="internal_id", object_col="wikidata_url"
     )
-
-    datastore.create(collection, table_name, data, jsonld)
-
-
-def add_records(table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef = None):
-    """
-    Create and store multiple new records with a JSON-LD graph. Uses Elasticsearch's bulk import method (https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html)
-    which is faster than calling `add_record` on each record.
-
-    Args:
-        table_name (str): name of table in `field_mapping.mapping` (top-level key)
-        records (pd.DataFrame): tabular data to import. Must contain column 'PREFIX', and column names
-        must match up to keys in `field_mapping.mapping[table_name]`.
-        add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
-    """
-
-    generator = _record_create_generator(table_name, records, add_type)
-    datastore.es_bulk(generator, len(records))
-
-
-def _record_create_generator(
-    table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef
-) -> Generator[dict, None, None]:
-    """Yields JSON-LD for the `add_records` method, to add new documents in bulk to the index.."""
-
-    table_mapping = field_mapping.mapping[table_name]
-
-    data_fields = [
-        k
-        for k, v in table_mapping.items()
-        if v.get("PID") in field_mapping.non_graph_pids
-    ]
-
-    for _, record in records.iterrows():
-        uri_prefix = record["PREFIX"]
-        uri = uri_prefix + str(record["ID"])
-
-        data = serialize_to_json(table_name, record, data_fields)
-        jsonld = serialize_to_jsonld(
-            table_name,
-            uri,
-            record,
-            ignore_types=field_mapping.non_graph_pids,
-            add_type=add_type,
-        )
-
-        doc = {
-            "_id": uri,
-            "uri": uri,
-            "collection": collection,
-            "type": table_name,
-            "data": data,
-            "graph": jsonld,
-        }
-
-        yield doc
-
-
-def add_triples(
-    records: pd.DataFrame,
-    predicate: rdflib.URIRef,
-    subject_col: str = "SUBJECT",
-    object_col: str = "OBJECT",
-):
-    """
-    Add triples with RDF predicate and dataframe containing subject and object columns.
-    Values in object_col can either be string or list. If list, a one subject to many 
-    objects relationship is assumed.
-
-    Args:
-        records (pd.DataFrame): dataframe containing subject and object columns with respective column names being the values of `subject_col` and `object_col`.
-        predicate (rdflib.URIRef): predicate to connect these triples.
-        subject_col (str, optional): name of column containing subject values. Defaults to "SUBJECT".
-        object_col (str, optional): name of column containing object values. Defaults to "OBJECT".
-    """
-
-    records[subject_col] = records[subject_col].astype(str)
-
-    generator = _record_update_generator(records, predicate, subject_col, object_col)
-    datastore.es_bulk(generator, len(records))
-
-
-def _record_update_generator(
-    df: pd.DataFrame,
-    predicate: rdflib.URIRef,
-    subject_col: str = "SUBJECT",
-    object_col: str = "OBJECT",
-) -> Generator[dict, None, None]:
-    """Yields JSON-LD docs for the `add_triples` method, to update existing records with new triples"""
-
-    for _, row in df.iterrows():
-        g = Graph()
-        if isinstance(row[object_col], str):
-            g.add((URIRef(row[subject_col]), predicate, URIRef(row[object_col])))
-        elif isinstance(row[object_col], list):
-            [
-                g.add((URIRef(row[subject_col]), predicate, URIRef(v)))
-                for v in row[object_col]
-            ]
-
-        jsonld_dict = json.loads(
-            g.serialize(format="json-ld", context=context, indent=4)
-        )
-        _ = jsonld_dict.pop("@id")
-        _ = jsonld_dict.pop("@context")
-
-        body = {"graph": jsonld_dict}
-
-        doc = {"_id": row[subject_col], "_op_type": "update", "doc": body}
-
-        yield doc
-
-
-def serialize_to_json(table_name: str, record: pd.Series, columns: list) -> dict:
-    """Return a JSON representation of data fields to exist outside of the graph."""
-
-    table_mapping = field_mapping.mapping[table_name]
-
-    data = {}
-
-    for col in columns:
-        if (
-            "RDF" in table_mapping[col]
-            and bool(record[col])
-            and (str(record[col]).lower() != "nan")
-        ):
-            # TODO: these lines load description in as https://collection.sciencemuseumgroup.org.uk/objects/co__#<field_name> but for some reason they cause an Elasticsearch timeout
-            # key = row['PREFIX'] + str(row['ID']) + "#" + col.lower()
-            # data[key] = row[col]
-            data.update({table_mapping[col]["RDF"]: record[col]})
-
-    return data
-
-
-def serialize_to_jsonld(
-    table_name: str,
-    uri: str,
-    row: pd.Series,
-    ignore_types: list,
-    add_type: rdflib.term.URIRef = None,
-) -> dict:
-    """
-    Returns a JSON-LD represention of a record
-
-    Args:
-        table_name (str): given name of the table being imported
-        uri (str): URI of subject
-        row (pd.Series): DataFrame row (record) to serialize
-        ignore_types (list): PIDs to ignore when importing
-        add_type (rdflib.term.URIRef, optional): whether to add @type field with the table_name. If a value rather than
-            a boolean is passed in, this will be added as the type for the table. Defaults to True.
-
-    Raises:
-        KeyError: if a column listed in `field_mapping.mapping[table_name]` is not in the provided data table
-
-    Returns:
-        dict: JSON_LD formatted document
-    """
-
-    g = Graph()
-    record = URIRef(uri)
-
-    g.add((record, SKOS.hasTopConcept, Literal(table_name)))
-
-    # Add RDF:type
-    # Need to check for isinstance otherwise this will fail silently during bulk load, causing the entire record to not load
-    if (add_type is not None) and isinstance(add_type, rdflib.term.URIRef):
-        g.add((record, RDF.type, add_type))
-
-    # This code is effectivly the mapping from source data to the data we care about
-    table_mapping = field_mapping.mapping[table_name]
-
-    keys = {
-        k
-        for k, v in table_mapping.items()
-        if k not in ["ID", "PREFIX"] and "RDF" in v and v.get("PID") not in ignore_types
-    }
-
-    for col in keys:
-        # this will trigger for the first row in the dataframe
-        if col not in row.index:
-            raise KeyError(f"column {col} not in data for table {table_name}")
-
-        if bool(row[col]) and (str(row[col]).lower() != "nan"):
-            if isinstance(row[col], list):
-                [
-                    g.add((record, table_mapping[col]["RDF"], Literal(val)))
-                    for val in row[col]
-                    if str(val) != "nan"
-                ]
-            elif isinstance(row[col], URIRef):
-                g.add((record, table_mapping[col]["RDF"], row[col]))
-
-            else:
-                g.add((record, table_mapping[col]["RDF"], Literal(row[col])))
-
-    json_ld_dict = json.loads(
-        g.serialize(format="json-ld", context=context, indent=4).decode("utf-8")
-    )
-
-    # "'@graph': []" appears when there are no linked objects to the document, which breaks the RDF conversion.
-    # There is also no @id field in the graph when this happens.
-    json_ld_dict.pop("@graph", None)
-    json_ld_dict["@id"] = uri
-
-    return json_ld_dict
 
 
 if __name__ == "__main__":
@@ -683,11 +447,11 @@ if __name__ == "__main__":
     load_object_data()
     load_maker_data()
     load_user_data()
-    # load_related_from_wikidata()
-    # load_sameas_from_wikidata_smg_people_id()
+    load_related_from_wikidata()
+    load_sameas_from_wikidata_smg_people_id()
     load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
     load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
     load_crowdsourced_links(
         "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
     )
