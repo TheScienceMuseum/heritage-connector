@@ -11,6 +11,7 @@ import string
 import re
 import os
 from tqdm.auto import tqdm
+from typing import Generator, Union
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore, datastore_helpers
 from heritageconnector.namespace import (
@@ -436,11 +437,19 @@ def load_sameas_from_disambiguator(path: str, name: str):
 #  =============== GENERIC FUNCTIONS FOR LOADING (move these?) ===============
 
 
-def add_record(table_name, row, add_type=False):
-    """Create and store new HC record with a JSON-LD graph"""
+def add_record(table_name: str, record: pd.Series, add_type: rdflib.URIRef = None):
+    """
+    Create and store new record with a JSON-LD graph.
 
-    uri_prefix = row["PREFIX"]
-    uri = uri_prefix + str(row["ID"])
+    Args:
+        table_name (str): name of table in `field_mapping.mapping` (top-level key)
+        record (pd.Series): row from tabular data to import. Must contain column 'PREFIX', and column names
+        must match up to keys in `field_mapping.mapping[table_name]`.
+        add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
+    """
+
+    uri_prefix = record["PREFIX"]
+    uri = uri_prefix + str(record["ID"])
 
     table_mapping = field_mapping.mapping[table_name]
     data_fields = [
@@ -449,12 +458,12 @@ def add_record(table_name, row, add_type=False):
         if v.get("PID") in field_mapping.non_graph_pids
     ]
 
-    data = serialize_to_json(table_name, row, data_fields)
+    data = serialize_to_json(table_name, record, data_fields)
     data["uri"] = uri
     jsonld = serialize_to_jsonld(
         table_name,
         uri,
-        row,
+        record,
         ignore_types=field_mapping.non_graph_pids,
         add_type=add_type,
     )
@@ -462,14 +471,26 @@ def add_record(table_name, row, add_type=False):
     datastore.create(collection, table_name, data, jsonld)
 
 
-def add_records(table_name, df, add_type=False):
-    """Use ES parallel_bulk mechanism to add records from a table"""
-    generator = record_create_generator(table_name, df, add_type)
-    datastore.es_bulk(generator, len(df))
+def add_records(table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef = None):
+    """
+    Create and store multiple new records with a JSON-LD graph. Uses Elasticsearch's bulk import method (https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html)
+    which is faster than calling `add_record` on each record.
+
+    Args:
+        table_name (str): name of table in `field_mapping.mapping` (top-level key)
+        records (pd.DataFrame): tabular data to import. Must contain column 'PREFIX', and column names
+        must match up to keys in `field_mapping.mapping[table_name]`.
+        add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
+    """
+
+    generator = _record_create_generator(table_name, records, add_type)
+    datastore.es_bulk(generator, len(records))
 
 
-def record_create_generator(table_name, df, add_type):
-    """Yields jsonld for a row for use with ES bulk helpers"""
+def _record_create_generator(
+    table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef
+) -> Generator[dict, None, None]:
+    """Yields JSON-LD for the `add_records` method, to add new documents in bulk to the index.."""
 
     table_mapping = field_mapping.mapping[table_name]
 
@@ -479,15 +500,15 @@ def record_create_generator(table_name, df, add_type):
         if v.get("PID") in field_mapping.non_graph_pids
     ]
 
-    for _, row in df.iterrows():
-        uri_prefix = row["PREFIX"]
-        uri = uri_prefix + str(row["ID"])
+    for _, record in records.iterrows():
+        uri_prefix = record["PREFIX"]
+        uri = uri_prefix + str(record["ID"])
 
-        data = serialize_to_json(table_name, row, data_fields)
+        data = serialize_to_json(table_name, record, data_fields)
         jsonld = serialize_to_jsonld(
             table_name,
             uri,
-            row,
+            record,
             ignore_types=field_mapping.non_graph_pids,
             add_type=add_type,
         )
@@ -504,19 +525,37 @@ def record_create_generator(table_name, df, add_type):
         yield doc
 
 
-def add_triples(df, predicate, subject_col="SUBJECT", object_col="OBJECT"):
+def add_triples(
+    records: pd.DataFrame,
+    predicate: rdflib.URIRef,
+    subject_col: str = "SUBJECT",
+    object_col: str = "OBJECT",
+):
     """
     Add triples with RDF predicate and dataframe containing subject and object columns.
     Values in object_col can either be string or list. If list, a one subject to many 
     objects relationship is assumed.
+
+    Args:
+        records (pd.DataFrame): dataframe containing subject and object columns with respective column names being the values of `subject_col` and `object_col`.
+        predicate (rdflib.URIRef): predicate to connect these triples.
+        subject_col (str, optional): name of column containing subject values. Defaults to "SUBJECT".
+        object_col (str, optional): name of column containing object values. Defaults to "OBJECT".
     """
 
-    generator = record_update_generator(df, predicate, subject_col, object_col)
-    datastore.es_bulk(generator, len(df))
+    records[subject_col] = records[subject_col].astype(str)
+
+    generator = _record_update_generator(records, predicate, subject_col, object_col)
+    datastore.es_bulk(generator, len(records))
 
 
-def record_update_generator(df, predicate, subject_col="SUBJECT", object_col="OBJECT"):
-    """Yields jsonld docs to update existing records with new triples"""
+def _record_update_generator(
+    df: pd.DataFrame,
+    predicate: rdflib.URIRef,
+    subject_col: str = "SUBJECT",
+    object_col: str = "OBJECT",
+) -> Generator[dict, None, None]:
+    """Yields JSON-LD docs for the `add_triples` method, to update existing records with new triples"""
 
     for _, row in df.iterrows():
         g = Graph()
@@ -541,7 +580,7 @@ def record_update_generator(df, predicate, subject_col="SUBJECT", object_col="OB
         yield doc
 
 
-def serialize_to_json(table_name: str, row: pd.Series, columns: list) -> dict:
+def serialize_to_json(table_name: str, record: pd.Series, columns: list) -> dict:
     """Return a JSON representation of data fields to exist outside of the graph."""
 
     table_mapping = field_mapping.mapping[table_name]
@@ -551,13 +590,13 @@ def serialize_to_json(table_name: str, row: pd.Series, columns: list) -> dict:
     for col in columns:
         if (
             "RDF" in table_mapping[col]
-            and bool(row[col])
-            and (str(row[col]).lower() != "nan")
+            and bool(record[col])
+            and (str(record[col]).lower() != "nan")
         ):
             # TODO: these lines load description in as https://collection.sciencemuseumgroup.org.uk/objects/co__#<field_name> but for some reason they cause an Elasticsearch timeout
             # key = row['PREFIX'] + str(row['ID']) + "#" + col.lower()
             # data[key] = row[col]
-            data.update({table_mapping[col]["RDF"]: row[col]})
+            data.update({table_mapping[col]["RDF"]: record[col]})
 
     return data
 
@@ -567,7 +606,7 @@ def serialize_to_jsonld(
     uri: str,
     row: pd.Series,
     ignore_types: list,
-    add_type: rdflib.term.URIRef = False,
+    add_type: rdflib.term.URIRef = None,
 ) -> dict:
     """
     Returns a JSON-LD represention of a record
@@ -581,10 +620,10 @@ def serialize_to_jsonld(
             a boolean is passed in, this will be added as the type for the table. Defaults to True.
 
     Raises:
-        KeyError: [description]
+        KeyError: if a column listed in `field_mapping.mapping[table_name]` is not in the provided data table
 
     Returns:
-        dict: [description]
+        dict: JSON_LD formatted document
     """
 
     g = Graph()
@@ -594,7 +633,7 @@ def serialize_to_jsonld(
 
     # Add RDF:type
     # Need to check for isinstance otherwise this will fail silently during bulk load, causing the entire record to not load
-    if add_type and isinstance(add_type, rdflib.term.URIRef):
+    if (add_type is not None) and isinstance(add_type, rdflib.term.URIRef):
         g.add((record, RDF.type, add_type))
 
     # This code is effectivly the mapping from source data to the data we care about

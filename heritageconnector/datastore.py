@@ -6,7 +6,7 @@ import json
 from tqdm.auto import tqdm
 from itertools import islice
 import os
-from heritageconnector.namespace import XSD, FOAF, OWL, PROV
+from heritageconnector.namespace import XSD, FOAF, OWL, PROV, get_jsonld_context
 from heritageconnector.config import config
 from heritageconnector import logging, errors
 
@@ -16,12 +16,14 @@ logger = logging.get_logger(__name__)
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
 
 if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
+    logger.debug(f"Using Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}")
     es = Elasticsearch(
         [config.ELASTIC_SEARCH_CLUSTER],
         http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
     )
 else:
     # use localhost
+    logger.debug("Using Elasticsearch cluster on localhost")
     es = Elasticsearch()
 
 index = config.ELASTIC_SEARCH_INDEX
@@ -30,11 +32,7 @@ es_config = {
     "queue_size": int(config.ES_BULK_QUEUE_SIZE),
 }
 
-context = [
-    {"@foaf": "http://xmlns.com/foaf/0.1/", "@language": "en"},
-    {"@schema": "http://www.w3.org/2001/XMLSchema#", "@language": "en"},
-    {"@owl": "http://www.w3.org/2002/07/owl#", "@language": "en"},
-]
+context = get_jsonld_context()
 
 
 def create_index():
@@ -75,7 +73,7 @@ def es_bulk(action_generator, total_iterations=None):
 
 
 def create(collection, record_type, data, jsonld):
-    """Load a new record in ElasticSearch and return its id"""
+    """Load a new record into ElasticSearch and return its id"""
 
     # create a ES doc
     doc = {
@@ -152,24 +150,6 @@ def get_graph_by_type(type):
         g.parse(data=jsonld, format="json-ld")
 
     return g
-
-
-def add_same_as(s_uri, o_uri):
-    """Adds a sameAs relationship to an existing record"""
-
-    update_graph(s_uri, OWL.sameAs, o_uri)
-
-
-def add_maker(uri, relationship, maker_uri):
-    """Adds a maker relationship to an existing record"""
-
-    update_graph(uri, FOAF.maker, maker_uri)
-
-
-def add_user(uri, relationship, user_uri):
-    """Adds a user relationship to an existing record"""
-
-    update_graph(user_uri, PROV.used, uri)
 
 
 def es_to_rdflib_graph(g=None, return_format=None):
