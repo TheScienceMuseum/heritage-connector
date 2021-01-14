@@ -25,6 +25,7 @@ from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
     get_sameas_links_from_external_id,
     DenonymConverter,
+    get_wikidata_uri_from_placename,
 )
 from heritageconnector.utils.generic import flatten_list_of_lists
 from heritageconnector.utils.wikidata import qid_to_url
@@ -35,49 +36,23 @@ logger = logging.get_logger(__name__)
 # disable pandas SettingWithCopyWarning
 pd.options.mode.chained_assignment = None
 
-# set to None for no limit
-max_records = 500
+# optional limit of number of records to import to test loader. no limit -> None
+max_records = None
 
 # create instance of RecordLoader from datastore
 record_loader = datastore.RecordLoader(
     collection_name="SMG", field_mapping=field_mapping
 )
 
-#  =============== LOADING SMG DATA ===============
+#  =============== SMG-specific variables ===============
 # these are left in rather than using SMGP/SMGO in heritageconnector.namespace as they serve a slightly
 # different purpose: they are meant for converting IDs in internal documents into SMG URLs.
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
 
-# columns of interest are 'place name', 'qid', 'country qid'
+# used for `get_wikidata_uri_from_placename`. Generate your own CSV using the notebook at `experiments/disambiguating place names (geocoding).ipynb`
 placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qids.pkl")
-
-
-def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.URIRef:
-    """
-    Get URI of QID from place name. `get_country` flag returns the QID of the country instead of the place.
-
-    The data used to create `placename_qid_mapping` is SMG-specific, but the notebook to create it on your own data 
-    can be found in 'experiments/disambiguating place names (geocoding).ipynb'.
-    """
-
-    if str(place_name).lower() not in placename_qid_mapping["place name"].tolist():
-        return None
-
-    if get_country:
-        return_uri = placename_qid_mapping.loc[
-            placename_qid_mapping["place name"] == str(place_name).lower(),
-            "country_qid",
-        ].values[0]
-    else:
-        return_uri = placename_qid_mapping.loc[
-            placename_qid_mapping["place name"] == str(place_name).lower(), "qid"
-        ].values[0]
-
-    if str(return_uri) == "nan":
-        return None
-    else:
-        return rdflib.URIRef(return_uri)
+#  ======================================================
 
 
 def load_object_data(catalogue_data_path):
@@ -140,10 +115,10 @@ def load_people_data(people_data_path):
     )
 
     people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
-        lambda i: get_wiki_uri_from_placename(i, False)
+        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping)
     )
     people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
-        lambda i: get_wiki_uri_from_placename(i, False)
+        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping)
     )
     people_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = people_df[
         ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]

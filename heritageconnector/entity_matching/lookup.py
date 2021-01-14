@@ -5,9 +5,10 @@ import json
 import re
 from typing import Union
 import pandas as pd
-from ..utils.sparql import get_sparql_results
-from ..utils.generic import extract_json_values, get_redirected_url
-from ..config import config
+import rdflib
+from heritageconnector.utils.sparql import get_sparql_results
+from heritageconnector.utils.generic import extract_json_values, get_redirected_url
+from heritageconnector.config import config
 
 # methods to exchange URLs for IDs (e.g. wikidata ID)
 
@@ -448,3 +449,32 @@ class DenonymConverter:
 
         else:
             return None
+
+
+def get_wikidata_uri_from_placename(
+    place_name: str, get_country: bool, placename_qid_mapping: pd.DataFrame
+) -> rdflib.URIRef:
+    """
+    Get URI of QID from place name. `get_country` flag returns the QID of the country instead of the place.
+
+    The data used to create `placename_qid_mapping` is SMG-specific, but the notebook to create it on your own data 
+    can be found in 'experiments/disambiguating place names (geocoding).ipynb'.
+    """
+
+    if str(place_name).lower() not in placename_qid_mapping["place name"].tolist():
+        return None
+
+    if get_country:
+        return_uri = placename_qid_mapping.loc[
+            placename_qid_mapping["place name"] == str(place_name).lower(),
+            "country_qid",
+        ].values[0]
+    else:
+        return_uri = placename_qid_mapping.loc[
+            placename_qid_mapping["place name"] == str(place_name).lower(), "qid"
+        ].values[0]
+
+    if str(return_uri) == "nan":
+        return None
+    else:
+        return rdflib.URIRef(return_uri)
