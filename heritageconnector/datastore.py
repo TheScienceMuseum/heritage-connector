@@ -53,7 +53,16 @@ context = get_jsonld_context()
 
 
 class RecordLoader:
-    def __init__(self, collection_name: str, field_mapping):
+    """
+    Contains functions for loading JSON-LD formatted data into an Elasticsearch index.
+    """
+
+    def __init__(self, collection_name: str, field_mapping: dict):
+        """
+        Args:
+            collection_name (str): name of collection to populate `doc['_source']['collection']` for all records.
+            field_mapping (dict): field mapping config
+        """
         self.collection_name = collection_name
         self.field_mapping = field_mapping
         self.mapping = field_mapping.mapping
