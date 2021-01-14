@@ -36,7 +36,7 @@ logger = logging.get_logger(__name__)
 pd.options.mode.chained_assignment = None
 
 # set to None for no limit
-max_records = None
+max_records = 500
 
 # create instance of RecordLoader from datastore
 record_loader = datastore.RecordLoader(
@@ -44,12 +44,6 @@ record_loader = datastore.RecordLoader(
 )
 
 #  =============== LOADING SMG DATA ===============
-# Location of CSV data to import
-catalogue_data_path = config.MIMSY_CATALOGUE_PATH
-people_data_path = "../GITIGNORE_DATA/mimsy_adlib_joined_people.csv"
-maker_data_path = config.MIMSY_MAKER_PATH
-user_data_path = config.MIMSY_USER_PATH
-
 # these are left in rather than using SMGP/SMGO in heritageconnector.namespace as they serve a slightly
 # different purpose: they are meant for converting IDs in internal documents into SMG URLs.
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
@@ -86,7 +80,7 @@ def get_wiki_uri_from_placename(place_name: str, get_country: bool) -> rdflib.UR
         return rdflib.URIRef(return_uri)
 
 
-def load_object_data():
+def load_object_data(catalogue_data_path):
     """Load data from CSV files """
 
     table_name = "OBJECT"
@@ -112,7 +106,7 @@ def load_object_data():
     return
 
 
-def load_people_data():
+def load_people_data(people_data_path):
     """Load data from CSV files """
 
     # identifier in field_mapping
@@ -184,7 +178,7 @@ def load_people_data():
     record_loader.add_records(table_name, people_df, add_type=WD.Q5)
 
 
-def load_orgs_data():
+def load_orgs_data(people_data_path):
     # identifier in field_mapping
     table_name = "ORGANISATION"
 
@@ -242,7 +236,7 @@ def load_orgs_data():
     return
 
 
-def load_maker_data():
+def load_maker_data(maker_data_path, people_data_path):
     """Load object -> maker -> people relationships from CSV files and add to existing records """
     # import people_orgs so we can split maker_df into people and organisations using the gender column
     #
@@ -280,7 +274,7 @@ def load_maker_data():
     return
 
 
-def load_user_data():
+def load_user_data(user_data_path):
     """Load object -> user -> people relationships from CSV files and add to existing records"""
     user_df = pd.read_csv(user_data_path, low_memory=False, nrows=max_records)
 
@@ -440,13 +434,19 @@ def load_sameas_from_disambiguator(path: str, name: str):
 
 
 if __name__ == "__main__":
+    people_data_path = "../GITIGNORE_DATA/mimsy_adlib_joined_people.csv"
+    object_data_path = (
+        "../GITIGNORE_DATA/smg-datasets-private/mimsy-catalogue-export.csv"
+    )
+    maker_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_makers.csv"
+    user_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_users.csv"
 
     datastore.create_index()
-    load_people_data()
-    load_orgs_data()
-    load_object_data()
-    load_maker_data()
-    load_user_data()
+    load_people_data(people_data_path)
+    load_orgs_data(people_data_path)
+    load_object_data(object_data_path)
+    load_maker_data(maker_data_path, people_data_path)
+    load_user_data(user_data_path)
     load_related_from_wikidata()
     load_sameas_from_wikidata_smg_people_id()
     load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
