@@ -20,7 +20,7 @@ master_doc = "index"
 # -- Project information -----------------------------------------------------
 
 project = "Heritage Connector"
-copyright = "2020, Science Museum Group"
+copyright = "2021, Science Museum Group"
 author = "Science Museum Group"
 
 links = {

@@ -34,7 +34,8 @@ Useful links
    :maxdepth: 2
    :hidden:
 
-   why
+   architecture
+   getting_started
    data_ingestion
    entity_matching
    information_retrieval
