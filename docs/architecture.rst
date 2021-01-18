@@ -24,6 +24,8 @@ Dependencies
 
 There are two database dependencies for Heritage Connector: Elasticsearch and an RDF triplestore. We use Apache Fuseki for our triplestore, however any with a SPARQL endpoint should be compatible. Details to access these databases are set in :code:`config.ini` (see `Config`_ for details).
 
+The JSON-LD version of the graph sits in an Elasticsearch index called `heritageconnector` by default. To enable entity matching with Wikidata another index must also be created from Wikidata as in ⓵ above. This can be created using elastic-wikidata. **TODO: Instructions/e-w config.**
+
 Config
 ------
 
