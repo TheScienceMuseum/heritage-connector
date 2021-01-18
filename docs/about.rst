@@ -23,7 +23,7 @@ On its way!
 Contributors
 ------------
 
-Development of this code has been done by:
+This code has been developed by:
 
 * `Kalyan Dutia`_
 * `Jamie Unwin`_
