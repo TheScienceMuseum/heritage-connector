@@ -3,13 +3,38 @@ Getting Started
 
 To set up an instance of Heritage Connector you need to complete the following steps.
 
+* :ref:`installation`
 * :ref:`set-up-dependencies`
 * :ref:`prepare-collection-data`
 * :ref:`import-collection-data`
 
+.. _installation:
+
+1. Installation
+-----------------
+
+Prerequisites
+*************
+
+Python 3.6+
+Only tested on Mac OSX but should work on Windows and Linux
+
+Installation from GitHub repo
+********************************
+
+We use pipenv [#pipenv]_ for package management. 
+
+At the moment there is no installable version. Instead, set up the package and run commands from the root directory as follows.
+
+.. code-block:: bash
+    
+    git clone https://github.com/TheScienceMuseum/heritage-connector.git
+    cd heritage-connector
+    pipenv install
+
 .. _set-up-dependencies:
 
-1. Set up databases and config.ini
+2. Set up databases and config.ini
 --------------------------------------
 
 Two databases are required for all functions of Heritage Connector to work (see *Architecture* page). The file :code:`config.ini` should be completed with details of these databases as per the example below.
@@ -75,7 +100,7 @@ The Elasticsearch index containing the Wikidata dump is denoted in :code:`config
 
 .. _prepare-collection-data:
 
-2. Prepare collection data and field_mapping.py
+3. Prepare collection data and field_mapping.py
 ------------------------------------------------
 
 There are 3 requirements for collection data for it to be imported into the Heritage Connector graph:
@@ -170,7 +195,7 @@ The purpose of :code:`field_mapping.py` is to map column names in a tabular data
 
 .. _import-collection-data:
 
-3. Import collection data into the Heritage Connector graph
+4. Import collection data into the Heritage Connector graph
 ------------------------------------------------------------
 
 All methods for loading data into the graph are in :py:meth:`heritageconnector.datastore.RecordLoader`, an instance of which can be created in a script to load data as follows.
@@ -250,4 +275,4 @@ In the example below we also split the DataFrame to load several sets of triples
 
 .. [#elastic_wikidata] https://github.com/TheScienceMuseum/elastic-wikidata
 .. [#pandas_io] a full list of pandas functions to read in data from different formats is available here https://pandas.pydata.org/pandas-docs/stable/user_guide/io.html?highlight=read
-
+.. [#pipenv] homepage: https://github.com/pypa/pipenv
