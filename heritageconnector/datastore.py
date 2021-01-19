@@ -89,7 +89,7 @@ class RecordLoader:
         Args:
             table_name (str): name of table in `field_mapping.mapping` (top-level key)
             record (pd.Series): row from tabular data to import. Must contain column 'URI' specifying the URI which uniquely 
-            identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
+                identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
         """
 
@@ -102,9 +102,9 @@ class RecordLoader:
             if v.get("RDF") in self.non_graph_predicates
         ]
 
-        data = self.serialize_to_json(table_name, record, data_fields)
+        data = self._serialize_to_json(table_name, record, data_fields)
         data["uri"] = uri
-        jsonld = self.serialize_to_jsonld(
+        jsonld = self._serialize_to_jsonld(
             table_name,
             uri,
             record,
@@ -124,7 +124,7 @@ class RecordLoader:
         Args:
             table_name (str): name of table in `field_mapping.mapping` (top-level key)
             records (pd.DataFrame): tabular data to import. Must contain column 'URI' specifying the URI which uniquely 
-            identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
+                identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
         """
 
@@ -147,8 +147,8 @@ class RecordLoader:
         for _, record in records.iterrows():
             uri = str(record["URI"])
 
-            data = self.serialize_to_json(table_name, record, data_fields)
-            jsonld = self.serialize_to_jsonld(
+            data = self._serialize_to_json(table_name, record, data_fields)
+            jsonld = self._serialize_to_jsonld(
                 table_name,
                 uri,
                 record,
@@ -224,7 +224,7 @@ class RecordLoader:
 
             yield doc
 
-    def serialize_to_json(
+    def _serialize_to_json(
         self, table_name: str, record: pd.Series, columns: list
     ) -> dict:
         """Return a JSON representation of data fields to exist outside of the graph."""
@@ -246,7 +246,7 @@ class RecordLoader:
 
         return data
 
-    def serialize_to_jsonld(
+    def _serialize_to_jsonld(
         self,
         table_name: str,
         uri: str,
