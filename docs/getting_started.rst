@@ -55,11 +55,9 @@ Config.ini example
 Elasticsearch - Heritage Connector index
 *****************************************
 
-This index holds the JSON-LD formatted Heritage Connector graph. It is also the source data from which the RDF triplestore is created.
-
 Either a local or hosted instance of Elasticsearch can be used. If using hosted instance the **ELASTIC_SEARCH_CLUSTER**, **ELASTIC_SEARCH_USER** and **ELASTIC_SEARCH_PASSWORD** parameters in :code:`config.ini` must be set. If these are not set Heritage Connector will try to use an Elasticsearch instance on localhost.
 
-**ELASTIC_SEARCH_INDEX** can also be set to a value other than *heritageconnnector*. In practice we've found it useful to keep a *heritageconnector_test* index aside for testing by changing this parameter and running the import twice.
+**ELASTIC_SEARCH_INDEX** can also be set to a value other than 'heritageconnector'. In practice we've found it useful to keep a 'heritageconnector_test' index aside for testing by changing this parameter and running the import twice.
 
 RDF Triplestore
 ****************
@@ -80,12 +78,34 @@ The Elasticsearch index containing the Wikidata dump is denoted in :code:`config
 2. Prepare collection data and field_mapping.py
 ------------------------------------------------
 
-There are just three requirements for collection data for it to be imported into the Heritage Connector graph:
+There are 3 requirements for collection data for it to be imported into the Heritage Connector graph:
 
-1. it can be imported into a pandas DataFrame [#pandas_io]_;
-2. DataFrames are separated into *content tables* which contain record information, and *join tables* which contain information about connections between records;
+1. it exists as a series of pandas DataFrames [#pandas_io]_;
+2. the DataFrames are separated into *content tables* which contain record information, and *join tables* which contain information about connections between records;
 3. a :code:`field_mapping.py` file is provided which maps column names in content tables to RDF predicates.
 
+Examples of data tables
+************************
+
+**Content tables** must contain a column *URI* with unique URI identifiers of each record. All other columns to be loaded must be in :code:`field_mapping.py`.
+
++----------------------------------------------------------------+---------------------------------+-------------+
+| URI                                                            | object_name                     | date_made   |
++================================================================+=================================+=============+
+| https://collection.sciencemuseumgroup.org.uk/objects/co38127   | Gestetner diaphragm duplicator  | 1900        |
++----------------------------------------------------------------+---------------------------------+-------------+
+| https://collection.sciencemuseumgroup.org.uk/objects/co38127   | Polaroid Land camera Model 95   | 1948        |
++----------------------------------------------------------------+---------------------------------+-------------+
+
+**Join tables** must contain two columns containing URI identifiers of different records, which are already in the graph. You may have a third column which specifies the type of the relationship between the two records.
+
++-----------------------------------------------------------------+--------------------------------------------------------------+-----------------+
+| URI_1                                                           | URI_2                                                        | relationship    |
++=================================================================+==============================================================+=================+
+| https://collection.sciencemuseumgroup.org.uk/objects/co146411   | https://collection.sciencemuseumgroup.org.uk/people/cp37182  | made_by         |
++-----------------------------------------------------------------+--------------------------------------------------------------+-----------------+
+| https://collection.sciencemuseumgroup.org.uk/objects/co8085283  | https://collection.sciencemuseumgroup.org.uk/people/cp61136  | manufactured_by |
++-----------------------------------------------------------------+--------------------------------------------------------------+-----------------+
 
 Writing a field_mapping.py for content tables
 **********************************************
@@ -152,6 +172,78 @@ The purpose of :code:`field_mapping.py` is to map column names in a tabular data
 
 3. Import collection data into the Heritage Connector graph
 ------------------------------------------------------------
+
+All methods for loading data into the graph are in :py:meth:`heritageconnector.datastore.RecordLoader`, an instance of which can be created in a script to load data as follows.
+
+.. code-block:: python
+
+    from heritageconnector import datastore
+    from heritageconnector.config import field_mapping
+
+    record_loader = datastore.RecordLoader(
+        collection_name="SMG", field_mapping=field_mapping
+    )
+
+:code:`RecordLoader` takes 2 arguments: a collection name, which is added to each Elasticsearch doc in :code:`doc['_source']['collection']` (but not the graph), and a :code:`field_mapping` dictionary which should come from HC config.
+
+Adding data from content tables 
+********************************
+
+The :py:meth:`heritageconnector.datastore.RecordLoader.add_records` method is used to add records in bulk from a content table DataFrame, as per the example below.
+
+.. autofunction:: heritageconnector.datastore.RecordLoader.add_records
+    :noindex:
+
+The required the argument :code:`table_name` sets the values of :code:`doc['_source']['type']` for each Elasticsearch record and :code:`skos:hasTopConcept` for each entity in the triplestore, meaning that an entity's source table can always be idenfified from both databases.
+
+The optional argument :code:`add_type` sets the value of :code:`RDF.type` for all records in the table. A Wikidata entity is recommended here for entity matching purposes.
+
+**Example of importing a content table using RecordLoader.add_records**
+
+.. code-block:: python
+
+    """
+    Assumes an instance of RecordLoader has already been created.
+    """
+
+    from heritageconnector.namespace import WD
+
+    # people_df is imported from a CSV, and already contains a column named 'URI'
+    people_df = pd.read_csv(people_df, low_memory=False)
+ 
+    table_name = "PERSON"
+    record_loader.add_records(table_name, people_df, add_type=WD.Q5)
+
+Adding data from join tables
+*****************************
+
+With the :py:meth:`heritageconnector.datastore.RecordLoader.add_triples` method you can add triple relationships between pairs of entities from a join table. 
+
+.. autofunction:: heritageconnector.datastore.RecordLoader.add_triples
+    :noindex:
+
+**Example of importing a join table using RecordLoader.add_triples**
+
+In the example below we also split the DataFrame to load several sets of triples in at the same time.
+
+.. code-block:: python
+
+    """
+    Assumes an instance of RecordLoader has already been created.
+    """
+
+    from heritageconnector.namespace import FOAF, WDT
+
+    person_object_relationships = pd.read_csv(maker_data_path, low_memory=False)
+
+    # first load all triples with value of 'relation' column equal to 'maker'
+    maker_df = person_object_relationships[person_object_relationships['relation'] == 'maker']
+    record_loader.add_triples(maker_df, predicate=FOAF.maker, subject_col='object_uri', object_col='person_uri')
+
+    # then add all triples with value of 'relation' column equal to 'user'.
+    # WDT.P1535 is the Wikidata property for 'used by'
+    user_df = person_object_relationships[person_object_relationships['relation'] == 'user']
+    record_loader.add_triples(user_df, predicate=WDT.P1535, subject_col='object_uri', object_col='person_uri')
 
 
 ---
