@@ -39,6 +39,7 @@ Useful links
    data_ingestion
    entity_matching
    information_retrieval
+   api
    tutorials
    bibliography
    about
