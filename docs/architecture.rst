@@ -43,6 +43,6 @@ There are two necessary config files:
 
 * :code:`config.ini` specifies the details to connect to the databases, some extra Elasticsearch parameters, the Wikidata endpoint and user-agent, and some parameters for the disambiguator. 
 
-* :code:`field_mapping.py` specifies the RDF predicate for each column in the tabular data. **TODO: needs example**
+* :code:`field_mapping.py` specifies the RDF predicate for each column in the tabular data.
 
-Examples of both are kept up to date on the *master* branch at :code:`config.sample.ini` and :code:`field_mapping.sample.py`.
+See `Getting Started <getting_started.html>`_ for how to set these up.
