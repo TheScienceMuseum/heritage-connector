@@ -39,7 +39,7 @@ pd.options.mode.chained_assignment = None
 # optional limit of number of records to import to test loader. no limit -> None
 # passed as an argument into `pd.read_csv`. You might want to use your own implementation
 # depending on your source data format
-max_records = 1000
+max_records = None
 
 # create instance of RecordLoader from datastore
 record_loader = datastore.RecordLoader(
@@ -62,8 +62,7 @@ def load_object_data(catalogue_data_path):
 
     table_name = "OBJECT"
     catalogue_df = pd.read_csv(catalogue_data_path, low_memory=False, nrows=max_records)
-    catalogue_df = catalogue_df.rename(columns={"MKEY": "ID"})
-    catalogue_df["PREFIX"] = collection_prefix
+    catalogue_df["URI"] = collection_prefix + catalogue_df["MKEY"].astype(str)
     catalogue_df["MATERIALS"] = catalogue_df["MATERIALS"].apply(
         datastore_helpers.split_list_string
     )
@@ -94,8 +93,7 @@ def load_people_data(people_data_path):
     people_df = people_df[people_df["GENDER"].isin(["M", "F"])]
 
     # PREPROCESS
-    people_df = people_df.rename(columns={"LINK_ID": "ID"})
-    people_df["PREFIX"] = people_prefix
+    people_df["URI"] = people_prefix + people_df["LINK_ID"].astype(str)
     # remove punctuation and capitalise first letter
     people_df["TITLE_NAME"] = people_df["TITLE_NAME"].apply(
         lambda i: str(i)
@@ -164,8 +162,7 @@ def load_orgs_data(people_data_path):
     org_df = org_df[org_df["GENDER"] == "N"]
 
     # PREPROCESS
-    org_df = org_df.rename(columns={"LINK_ID": "ID"})
-    org_df["PREFIX"] = people_prefix
+    org_df["URI"] = people_prefix + org_df["LINK_ID"].astype(str)
 
     org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
     org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
@@ -204,7 +201,6 @@ def load_orgs_data(people_data_path):
     record_loader.add_records(table_name, org_df)
 
     # also add type organization (Q43229)
-    org_df["URI"] = org_df["ID"].apply(lambda i: people_prefix + str(i))
     org_df["type_org"] = qid_to_url("Q43229")
     record_loader.add_triples(
         org_df, RDF.type, subject_col="URI", object_col="type_org"

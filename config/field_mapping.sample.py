@@ -27,13 +27,10 @@ non_graph_predicates = [
 
 mapping = {
     "PERSON": {
-        "ID": {"type": "index"},
-        # TODO: make PREFIX field when loading data
-        "PREFIX": {"type": "prefix"},
         "TITLE_NAME": {"RDF": FOAF.title},
         "PREFERRED_NAME": {"RDF": RDFS.label},
-        "FIRSTMID_NAME": {"RDF": FOAF.givenName, "type": "string"},
-        "LASTSUFF_NAME": {"RDF": FOAF.familyName, "type": "string"},
+        "FIRSTMID_NAME": {"RDF": FOAF.givenName},
+        "LASTSUFF_NAME": {"RDF": FOAF.familyName},
         "GENDER": {"RDF": SDO.gender},
         # TODO: add date -> year guidance in docs
         "BIRTH_DATE": {"RDF": SDO.birthDate},
@@ -47,9 +44,6 @@ mapping = {
         "adlib_ALIAS": {"RDF": SKOS.altLabel},
     },
     "ORGANISATION": {
-        "ID": {"type": "index"},
-        # TODO: make PREFIX field when loading data
-        "PREFIX": {"type": "prefix"},
         "PREFERRED_NAME": {"RDF": RDFS.label},
         "DESCRIPTION": {"RDF": XSD.description},
         "OCCUPATION": {"RDF": XSD.additionalType},
@@ -60,9 +54,6 @@ mapping = {
         "adlib_ALIAS": {"RDF": SKOS.altLabel},
     },
     "OBJECT": {
-        "ID": {"type": "index"},
-        # TODO: make PREFIX field when loading data
-        "PREFIX": {"type": "prefix"},
         "TITLE": {"RDF": RDFS.label},
         "DESCRIPTION": {"RDF": XSD.description},
         "ITEM_NAME": {"RDF": XSD.additionalType},

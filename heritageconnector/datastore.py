@@ -88,13 +88,12 @@ class RecordLoader:
 
         Args:
             table_name (str): name of table in `field_mapping.mapping` (top-level key)
-            record (pd.Series): row from tabular data to import. Must contain column 'PREFIX', and column names
-            must match up to keys in `field_mapping.mapping[table_name]`.
+            record (pd.Series): row from tabular data to import. Must contain column 'URI' specifying the URI which uniquely 
+            identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
         """
 
-        uri_prefix = record["PREFIX"]
-        uri = uri_prefix + str(record["ID"])
+        uri = str(record["URI"])
 
         table_mapping = self._get_table_mapping(table_name)
         data_fields = [
@@ -124,8 +123,8 @@ class RecordLoader:
 
         Args:
             table_name (str): name of table in `field_mapping.mapping` (top-level key)
-            records (pd.DataFrame): tabular data to import. Must contain column 'PREFIX', and column names
-            must match up to keys in `field_mapping.mapping[table_name]`.
+            records (pd.DataFrame): tabular data to import. Must contain column 'URI' specifying the URI which uniquely 
+            identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
         """
 
@@ -146,8 +145,7 @@ class RecordLoader:
         ]
 
         for _, record in records.iterrows():
-            uri_prefix = record["PREFIX"]
-            uri = uri_prefix + str(record["ID"])
+            uri = str(record["URI"])
 
             data = self.serialize_to_json(table_name, record, data_fields)
             jsonld = self.serialize_to_jsonld(
@@ -242,7 +240,7 @@ class RecordLoader:
                 and (str(record[col]).lower() != "nan")
             ):
                 # TODO: these lines load description in as https://collection.sciencemuseumgroup.org.uk/objects/co__#<field_name> but for some reason they cause an Elasticsearch timeout
-                # key = row['PREFIX'] + str(row['ID']) + "#" + col.lower()
+                # key = str(row['URI']) + "#" + col.lower()
                 # data[key] = row[col]
                 data.update({table_mapping[col]["RDF"]: record[col]})
 
@@ -289,9 +287,7 @@ class RecordLoader:
         keys = {
             k
             for k, v in table_mapping.items()
-            if k not in ["ID", "PREFIX"]
-            and "RDF" in v
-            and v.get("RDF") not in ignore_types
+            if "RDF" in v and v.get("RDF") not in ignore_types
         }
 
         for col in keys:
