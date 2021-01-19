@@ -23,13 +23,13 @@ On its way!
 Contributors
 ------------
 
-Development of this code has been done by:
+This code has been developed by:
 
 * `Kalyan Dutia`_
 * `Jamie Unwin`_
 
-.. _kalyan dutia: github.com/kdutia
-.. _jamie unwin: github.com/jamieu
+.. _kalyan dutia: https://kalyan.link/
+.. _jamie unwin: https://github.com/jamieu
 
 License
 -------

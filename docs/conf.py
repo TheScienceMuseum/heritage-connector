@@ -10,9 +10,10 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(".."))
 
 master_doc = "index"
 
@@ -20,7 +21,7 @@ master_doc = "index"
 # -- Project information -----------------------------------------------------
 
 project = "Heritage Connector"
-copyright = "2020, Science Museum Group"
+copyright = "2021, Science Museum Group"
 author = "Science Museum Group"
 
 links = {
@@ -38,7 +39,12 @@ links = {
 extensions = [
     "sphinx.ext.autodoc",
     # "sphinxcontrib.bibtex",
+    "sphinx.ext.todo",
+    "sphinx.ext.napoleon",
 ]
+
+[extensions]
+todo_include_todos = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -62,7 +68,7 @@ html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "logo": "header.jpg",
+    # "logo": "header.jpg",
     # "logo_name": True,
     # "page_width": "50%",
     # "github_user": "theScienceMuseum",
