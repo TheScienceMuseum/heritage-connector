@@ -80,6 +80,74 @@ The Elasticsearch index containing the Wikidata dump is denoted in :code:`config
 2. Prepare collection data and field_mapping.py
 ------------------------------------------------
 
+There are just three requirements for collection data for it to be imported into the Heritage Connector graph:
+
+1. it can be imported into a pandas DataFrame [#pandas_io]_;
+2. DataFrames are separated into *content tables* which contain record information, and *join tables* which contain information about connections between records;
+3. a :code:`field_mapping.py` file is provided which maps column names in content tables to RDF predicates.
+
+
+Writing a field_mapping.py for content tables
+**********************************************
+
+The purpose of :code:`field_mapping.py` is to map column names in a tabular dataset to RDF predicates in the knowledge graph. It must contain two variables as per the example below:
+
+* :code:`non_graph_predicates`: a list of RDF predicates that should be loaded into the *data* instead of *graph* field in Elasticsearch, meaning their values won't appear in the triplestore;
+* :code:`mapping`: a dictionary with keys referring to each source table, which contains the mapping from source table column names to RDF predicates.
+
+**Example field_mapping.py**
+
+.. code-block:: python
+    
+    # These lines are necessary to import namespaces from heritageconnector.namespace
+    import sys
+    sys.path.append("..")
+
+    # Here you can import all namespaces needed. Each namespace is an instance of rdflib.namespace.Namespace
+    # or a class that inherits from rdflib.namespace.Namespace.
+    from heritageconnector.namespace import XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, WD, WDT, SKOS
+
+    # PIDs to store in in _source.data rather than _source.graph in Elasticsearch, meaning they do not end up in the triplestore. You may want to do this for fields such as descriptions that won't add any more connections between entities in the graph.
+    non_graph_predicates = [
+        XSD.description,
+    ]
+
+    # The `mapping` variable stores the mappings between column names and RDF predicates for each content table.
+    mapping = {
+        "TABLENAME_1": 
+            {   
+                # Each column name takes the form 
+                # {"dataframe-column-name": {
+                #   "RDF": NAMESPACE.predicate_name
+                # },
+                # ... }
+                # Some examples:
+                "TITLE_NAME": {
+                    "RDF": FOAF.title
+                },
+                "PREFERRED_NAME": {
+                    "RDF": RDFS.label,
+                },
+                "FIRSTMID_NAME": {
+                    "RDF": FOAF.givenName,
+                },
+                "LASTSUFF_NAME": {
+                    "RDF": FOAF.familyName,
+                },
+                # TODO: add date -> year guidance in docs
+                "BIRTH_DATE": {
+                    "RDF": SDO.birthDate,
+                },
+                "DEATH_DATE": {
+                    "RDF": SDO.deathDate,
+                },
+            },
+        "TABLENAME_2": 
+            {   
+                # repeat for all other tables
+            }
+    }
+
 .. _import-collection-data:
 
 3. Import collection data into the Heritage Connector graph
@@ -89,4 +157,5 @@ The Elasticsearch index containing the Wikidata dump is denoted in :code:`config
 ---
 
 .. [#elastic_wikidata] https://github.com/TheScienceMuseum/elastic-wikidata
+.. [#pandas_io] a full list of pandas functions to read in data from different formats is available here https://pandas.pydata.org/pandas-docs/stable/user_guide/io.html?highlight=read
 
