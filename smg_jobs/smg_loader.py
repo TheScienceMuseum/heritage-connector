@@ -39,7 +39,7 @@ pd.options.mode.chained_assignment = None
 # optional limit of number of records to import to test loader. no limit -> None
 # passed as an argument into `pd.read_csv`. You might want to use your own implementation
 # depending on your source data format
-max_records = None
+max_records = 1000
 
 # create instance of RecordLoader from datastore
 record_loader = datastore.RecordLoader(

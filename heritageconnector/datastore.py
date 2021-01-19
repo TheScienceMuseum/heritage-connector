@@ -66,7 +66,7 @@ class RecordLoader:
         self.collection_name = collection_name
         self.field_mapping = field_mapping
         self.mapping = field_mapping.mapping
-        self.non_graph_pids = field_mapping.non_graph_pids
+        self.non_graph_predicates = field_mapping.non_graph_predicates
 
     def _get_table_mapping(self, table_name: str) -> dict:
         """
@@ -98,7 +98,9 @@ class RecordLoader:
 
         table_mapping = self._get_table_mapping(table_name)
         data_fields = [
-            k for k, v in table_mapping.items() if v.get("PID") in self.non_graph_pids
+            k
+            for k, v in table_mapping.items()
+            if v.get("RDF") in self.non_graph_predicates
         ]
 
         data = self.serialize_to_json(table_name, record, data_fields)
@@ -107,7 +109,7 @@ class RecordLoader:
             table_name,
             uri,
             record,
-            ignore_types=self.non_graph_pids,
+            ignore_types=self.non_graph_predicates,
             add_type=add_type,
         )
 
@@ -138,7 +140,9 @@ class RecordLoader:
         table_mapping = self._get_table_mapping(table_name)
 
         data_fields = [
-            k for k, v in table_mapping.items() if v.get("PID") in self.non_graph_pids
+            k
+            for k, v in table_mapping.items()
+            if v.get("RDF") in self.non_graph_predicates
         ]
 
         for _, record in records.iterrows():
@@ -150,7 +154,7 @@ class RecordLoader:
                 table_name,
                 uri,
                 record,
-                ignore_types=self.non_graph_pids,
+                ignore_types=self.non_graph_predicates,
                 add_type=add_type,
             )
 
@@ -259,7 +263,7 @@ class RecordLoader:
             table_name (str): given name of the table being imported
             uri (str): URI of subject
             row (pd.Series): DataFrame row (record) to serialize
-            ignore_types (list): PIDs to ignore when importing
+            ignore_types (list): predicates to ignore when importing
             add_type (rdflib.term.URIRef, optional): whether to add @type field with the table_name. If a value rather than
                 a boolean is passed in, this will be added as the type for the table. Defaults to True.
 
@@ -287,7 +291,7 @@ class RecordLoader:
             for k, v in table_mapping.items()
             if k not in ["ID", "PREFIX"]
             and "RDF" in v
-            and v.get("PID") not in ignore_types
+            and v.get("RDF") not in ignore_types
         }
 
         for col in keys:
