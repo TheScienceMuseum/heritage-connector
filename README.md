@@ -27,6 +27,14 @@ Some blog highlights:
 - Python 3
 - Create a new branch / Pull Request for each new feature / unit of functionality
 
+### Installation
+
+We use pipenv for dependency management. You can also install dependencies from `requirements.txt` and dev dependencies from `requirements_dev.txt`.
+
+**Optional dependencies (for experimental features):**
+
+- `torch`, `dgl`, `dgl-ke`: KG embeddings
+- `spacy-nightly`: export to spaCy KnowledgeBase for Named Entity Linking 
 ### Running tests
 
 Run `python -m pytest` with optional `--cov=heritageconnector` for a coverage report.

@@ -1,0 +1,11 @@
+pre-commit
+jupyterlab
+matplotlib
+black
+pytest
+pylint
+sphinx
+recommonmark
+coverage
+pytest-cov
+flake8
