@@ -16,3 +16,4 @@ click
 elastic-wikidata>=0.3.6
 tenacity
 s3fs
+hc-nlp>=0.3.4
