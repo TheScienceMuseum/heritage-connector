@@ -45,7 +45,7 @@ mapping = {
     },
     "ORGANISATION": {
         "PREFERRED_NAME": {"RDF": RDFS.label},
-        "DESCRIPTION": {"RDF": XSD.description},
+        "BIOGRAPHY": {"RDF": XSD.description},
         "OCCUPATION": {"RDF": XSD.additionalType},
         "NATIONALITY": {"RDF": SDO.addressCountry},
         "BIRTH_DATE": {"RDF": SDO.foundingDate},

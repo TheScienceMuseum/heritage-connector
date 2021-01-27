@@ -142,9 +142,6 @@ def load_people_data(people_data_path):
         ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
     ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
 
-    people_df.loc[:, "NOTES"] = (
-        str(people_df.loc[:, "DESCRIPTION"]) + " " + str(people_df.loc[:, "NOTE"])
-    )
     people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
         {"F": WD.Q6581072, "M": WD.Q6581097}
     )
@@ -170,9 +167,9 @@ def load_orgs_data(people_data_path):
     org_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = org_df[
         ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
     ].fillna("")
-    org_df[["DESCRIPTION"]] = org_df[["DESCRIPTION"]].applymap(
-        datastore_helpers.process_text
-    )
+    org_df[["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]] = org_df[
+        ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
+    ].applymap(datastore_helpers.process_text)
     org_df[["OCCUPATION", "NATIONALITY"]] = org_df[
         ["OCCUPATION", "NATIONALITY"]
     ].applymap(datastore_helpers.split_list_string)
