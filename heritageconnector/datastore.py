@@ -5,7 +5,7 @@ from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
 import json
 import os
-from typing import Generator
+from typing import Generator, List, Tuple, Optional
 from tqdm.auto import tqdm
 from itertools import islice
 from heritageconnector.namespace import (
@@ -19,11 +19,14 @@ from heritageconnector.namespace import (
     SKOS,
     WD,
     WDT,
+    HC,
     get_jsonld_context,
 )
+from heritageconnector.utils.generic import paginate_generator
 from heritageconnector.config import config
-from heritageconnector import logging, errors
+from heritageconnector import logging, errors, best_spacy_pipeline
 import pandas as pd
+import spacy
 
 logger = logging.get_logger(__name__)
 
@@ -88,7 +91,7 @@ class RecordLoader:
 
         Args:
             table_name (str): name of table in `field_mapping.mapping` (top-level key)
-            record (pd.Series): row from tabular data to import. Must contain column 'URI' specifying the URI which uniquely 
+            record (pd.Series): row from tabular data to import. Must contain column 'URI' specifying the URI which uniquely
                 identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
         """
@@ -123,7 +126,7 @@ class RecordLoader:
 
         Args:
             table_name (str): name of table in `field_mapping.mapping` (top-level key)
-            records (pd.DataFrame): tabular data to import. Must contain column 'URI' specifying the URI which uniquely 
+            records (pd.DataFrame): tabular data to import. Must contain column 'URI' specifying the URI which uniquely
                 identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
         """
@@ -173,23 +176,28 @@ class RecordLoader:
         predicate: rdflib.URIRef,
         subject_col: str = "SUBJECT",
         object_col: str = "OBJECT",
+        object_is_uri: bool = True,
     ):
         """
         Add triples with RDF predicate and dataframe containing subject and object columns.
-        Values in object_col can either be string or list. If list, a one subject to many 
+        Values in object_col can either be string or list. If list, a one subject to many
         objects relationship is assumed.
+
+        All items in `subject_col` must be a URI. The `object_is_uri` parameter defines whether an attempt will be made to load
+        objects in as URIs (True) or Literals (False).
 
         Args:
             records (pd.DataFrame): dataframe containing subject and object columns with respective column names being the values of `subject_col` and `object_col`.
             predicate (rdflib.URIRef): predicate to connect these triples.
             subject_col (str, optional): name of column containing subject values. Defaults to "SUBJECT".
             object_col (str, optional): name of column containing object values. Defaults to "OBJECT".
+            object_is_uri (bool, optional): whether the object column contains URIs. If False, will be loaded in as literals.
         """
 
         records[subject_col] = records[subject_col].astype(str)
 
         generator = self._record_update_generator(
-            records, predicate, subject_col, object_col
+            records, predicate, subject_col, object_col, object_is_uri
         )
         es_bulk(generator, len(records))
 
@@ -199,16 +207,27 @@ class RecordLoader:
         predicate: rdflib.URIRef,
         subject_col: str = "SUBJECT",
         object_col: str = "OBJECT",
+        object_is_uri: bool = True,
     ) -> Generator[dict, None, None]:
         """Yields JSON-LD docs for the `add_triples` method, to update existing records with new triples"""
 
         for _, row in df.iterrows():
             g = Graph()
+            object_str_to_rdflib = URIRef if object_is_uri else Literal
+
             if isinstance(row[object_col], str):
-                g.add((URIRef(row[subject_col]), predicate, URIRef(row[object_col])))
+                g.add(
+                    (
+                        URIRef(row[subject_col]),
+                        predicate,
+                        object_str_to_rdflib(row[object_col]),
+                    )
+                )
             elif isinstance(row[object_col], list):
                 [
-                    g.add((URIRef(row[subject_col]), predicate, URIRef(v)))
+                    g.add(
+                        (URIRef(row[subject_col]), predicate, object_str_to_rdflib(v))
+                    )
                     for v in row[object_col]
                 ]
 
@@ -468,3 +487,203 @@ def es_to_rdflib_graph(g=None, return_format=None):
         return g
     else:
         return g.serialize(format=return_format)
+
+
+class NERLoader:
+    def __init__(
+        self,
+        record_loader: RecordLoader,
+        batch_size: Optional[int] = 1024,
+        entity_types: List[str] = [
+            "PERSON",
+            "ORG",
+            "NORP",
+            "FAC",
+            "LOC",
+            "OBJECT",
+            "LANGUAGE",
+            "DATE",
+        ],
+    ):
+        """
+        Initialise instance of NERLoader.
+
+        Args:
+            record_loader (RecordLoader): instance of RecordLoader, with parameters suitable for the current Heritage Connector index.
+            batch_size (Optional[int], optional): size of batches to process documents in. Defaults to 1024.
+            entity_types (List[str], optional): entity types extracted from the spaCy model.
+        """
+
+        self.record_loader = record_loader
+        self.es_index = index
+        self.batch_size = batch_size
+        self.entity_types = entity_types
+
+    def _get_ner_model(self, model_type):
+        """Get best spacy NER model"""
+        return best_spacy_pipeline.load_model(model_type)
+
+    def fetch_es_docs_and_run_ner(
+        self,
+        model_type: str,
+        limit: int = None,
+        random_sample: bool = True,
+        random_seed: int = 42,
+        spacy_batch_size: int = 128,
+        spacy_no_processes: int = 1,
+    ) -> List[dict]:
+
+        logger.info(
+            f"fetching docs and running NER on them in batches of {self.batch_size}"
+        )
+
+        doc_generator = self._get_doc_generator(limit, random_sample, random_seed)
+        self.nlp = self._get_ner_model(model_type)
+
+        # create list of {"item_uri": _, "ent_label": _, "ent_text": _} triples for loading into ES
+        triples_list = []
+
+        for batch in tqdm(doc_generator, unit="batch", total=limit):
+            descriptions = [item[1] for item in batch]
+            spacy_doc_batch = list(
+                self.nlp.pipe(
+                    descriptions,
+                    batch_size=spacy_batch_size,
+                    n_process=spacy_no_processes,
+                )
+            )
+
+            for idx, doc in enumerate(spacy_doc_batch):
+                triples_list += self._spacy_doc_to_dataframe(batch[idx][0], doc)
+
+        return triples_list
+
+    def load_ner_results_into_es(self, triples_list: List[dict]):
+        logger.info(
+            f"loading {len(triples_list)} entities into the {index} index by label"
+        )
+        # create a DataFrame from this list of triples, and load it into the ES index one entity label at a time
+        entity_triples_df = pd.DataFrame(triples_list)
+
+        for entity_label in entity_triples_df["ent_label"].unique():
+            logger.debug(f"label {entity_label}..")
+            # this is the same as HC.entityLABEL e.g. HC.entityPERSON
+            rdf_predicate = HC["entity" + entity_label]
+            ent_label_df = entity_triples_df[
+                entity_triples_df["ent_label"] == entity_label
+            ]
+            self.record_loader.add_triples(
+                ent_label_df,
+                predicate=rdf_predicate,
+                subject_col="item_uri",
+                object_col="ent_text",
+                object_is_uri=False,
+            )
+
+    def _spacy_doc_to_dataframe(
+        self, item_uri: str, doc: spacy.tokens.Doc
+    ) -> pd.DataFrame:
+        """
+        Convert batch of spaCy docs with generated entities into a DataFrame on which `record_loader.add_triples()` can
+        be called.
+        """
+
+        ent_data_list = []
+
+        for ent in doc.ents:
+            if ent.label_ in self.entity_types:
+                ent_data_list.append(
+                    {
+                        "item_uri": item_uri,
+                        "ent_label": ent.label_,
+                        "ent_text": ent.text,
+                    }
+                )
+
+        # return pd.DataFrame(ent_data_list)
+        return ent_data_list
+
+    def _get_doc_generator(
+        self,
+        limit: Optional[int] = None,
+        random_sample: bool = True,
+        random_seed: int = 42,
+    ) -> Generator[List[Tuple[str, str]], None, None]:
+        """
+        Returns a generator of document IDs and descriptions from the Elasticsearch index, batched according to
+            `self.batch_size` and limited according to `limit`. Only documents with an XSD.description value are
+            returned.
+
+        Args:
+            limit (Optional[int], optional): limit the number of documents to get and therefore load. Defaults to None.
+            random_sample (bool, optional): whether to take documents at random. Defaults to True.
+            random_seed (int, optional): random seed to use if random sampling is enabled using the `random_sample` parameter. Defaults to 42.
+
+        Returns:
+            Generator[List[Tuple[str, str]]]: generator of lists with length `self.batch_size`, where each list contains `(uri, description)` tuples.
+        """
+
+        if random_sample:
+            es_query = {
+                "query": {
+                    "function_score": {
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {
+                                        "exists": {
+                                            "field": "data.http://www.w3.org/2001/XMLSchema#description"
+                                        }
+                                    },
+                                ]
+                            }
+                        },
+                        "random_score": {"seed": random_seed, "field": "_seq_no"},
+                    }
+                }
+            }
+        else:
+            es_query = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "exists": {
+                                    "field": "data.http://www.w3.org/2001/XMLSchema#description"
+                                }
+                            },
+                        ]
+                    }
+                }
+            }
+
+        doc_generator = helpers.scan(
+            client=es,
+            index=self.es_index,
+            query=es_query,
+            preserve_order=True,
+        )
+
+        if limit:
+            doc_generator = islice(doc_generator, limit)
+
+        doc_generator = (
+            (
+                doc["_id"],
+                doc["_source"]["data"]["http://www.w3.org/2001/XMLSchema#description"],
+            )
+            for doc in doc_generator
+        )
+        doc_generator = paginate_generator(doc_generator, self.batch_size)
+
+        return doc_generator
+
+    def add_ner_entities_to_es(self, model_type: str, entity_types: List[str]):
+        """
+        Add entities from an NER model to the Heritage Connector Elasticsearch index.
+
+        Args:
+            model_type (str): [description]
+            entity_types (List[str]): [description]
+        """
+        pass
