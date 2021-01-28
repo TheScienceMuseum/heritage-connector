@@ -1,5 +1,5 @@
 from rdflib import Namespace, URIRef, Literal
-from rdflib.namespace import XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, SKOS
+from rdflib.namespace import ClosedNamespace, XSD, FOAF, OWL, RDF, RDFS, PROV, SDO, SKOS
 from typing import Union, List
 
 # --- STORE FOR ALL NAMESPACES USED IN THE HERITAGE CONNECTOR ---
@@ -12,6 +12,20 @@ WDT = Namespace("http://www.wikidata.org/prop/direct/")
 SMGP = Namespace("https://collection.sciencemuseumgroup.org.uk/people/")
 SMGO = Namespace("https://collection.sciencemuseumgroup.org.uk/objects/")
 SMGD = Namespace("https://collection.sciencemuseumgroup.org.uk/documents/")
+HC = ClosedNamespace(
+    uri=URIRef("http://www.heritageconnector.org/RDF/"),
+    terms=[
+        "entityPERSON",
+        "entityORG",
+        "entityNORP",
+        "entityFAC",
+        "entityLOC",
+        "entityOBJECT",
+        "entityLANGUAGE",
+        "entityDATE",
+    ],
+)
+
 
 # --- Tuple of internal namespaces
 _internal = SMGP, SMGO, SMGD
