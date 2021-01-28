@@ -194,8 +194,6 @@ class RecordLoader:
             object_is_uri (bool, optional): whether the object column contains URIs. If False, will be loaded in as literals.
         """
 
-        records[subject_col] = records[subject_col].astype(str)
-
         generator = self._record_update_generator(
             records, predicate, subject_col, object_col, object_is_uri
         )
