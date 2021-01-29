@@ -177,6 +177,7 @@ class RecordLoader:
         subject_col: str = "SUBJECT",
         object_col: str = "OBJECT",
         object_is_uri: bool = True,
+        progress_bar: bool = True,
     ):
         """
         Add triples with RDF predicate and dataframe containing subject and object columns.
@@ -192,12 +193,15 @@ class RecordLoader:
             subject_col (str, optional): name of column containing subject values. Defaults to "SUBJECT".
             object_col (str, optional): name of column containing object values. Defaults to "OBJECT".
             object_is_uri (bool, optional): whether the object column contains URIs. If False, will be loaded in as literals.
+            progress_bar (bool, optional): whether to show a progress bar for loading into Elasticsearch. Defaults to True.
         """
 
         generator = self._record_update_generator(
             records, predicate, subject_col, object_col, object_is_uri
         )
-        es_bulk(generator, len(records[subject_col].unique()))
+        es_bulk(
+            generator, len(records[subject_col].unique()), progress_bar=progress_bar
+        )
 
     def _record_update_generator(
         self,
@@ -360,23 +364,25 @@ def create_index():
     logger.info("..done ")
 
 
-def es_bulk(action_generator, total_iterations=None):
+def es_bulk(action_generator, total_iterations=None, progress_bar=True):
     """Batch load a set of new records into ElasticSearch"""
 
     successes = 0
     errs = []
 
-    for ok, action in tqdm(
-        helpers.parallel_bulk(
-            client=es,
-            index=index,
-            actions=action_generator,
-            chunk_size=es_config["chunk_size"],
-            queue_size=es_config["queue_size"],
-            raise_on_error=False,
-        ),
-        total=total_iterations,
-    ):
+    bulk_iterator = helpers.parallel_bulk(
+        client=es,
+        index=index,
+        actions=action_generator,
+        chunk_size=es_config["chunk_size"],
+        queue_size=es_config["queue_size"],
+        raise_on_error=False,
+    )
+
+    if progress_bar:
+        bulk_iterator = tqdm(bulk_iterator, total=total_iterations)
+
+    for ok, action in bulk_iterator:
         if not ok:
             errs.append(action)
         successes += ok
@@ -530,7 +536,7 @@ class NERLoader:
         """Get best spacy NER model"""
         return best_spacy_pipeline.load_model(model_type)
 
-    def fetch_es_docs_and_run_ner(
+    def add_ner_entities_to_es(
         self,
         model_type: str,
         limit: int = None,
@@ -541,16 +547,17 @@ class NERLoader:
     ) -> List[dict]:
 
         logger.info(
-            f"fetching docs and running NER on them in batches of {self.batch_size}"
+            f"fetching docs, running NER and loading entities into index {index} in batches of {self.batch_size} documents"
         )
 
         doc_generator = self._get_doc_generator(limit, random_sample, random_seed)
         self.nlp = self._get_ner_model(model_type)
 
-        # create list of {"item_uri": _, "ent_label": _, "ent_text": _} triples for loading into ES
-        triples_list = []
-
         for batch in tqdm(doc_generator, unit="batch", total=limit):
+            # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples for loading into ES
+            # we load in every batch to prevent excessive memory usage from storing data + spaCy models
+            batch_list = []
+
             descriptions = [item[1] for item in batch]
             spacy_doc_batch = list(
                 self.nlp.pipe(
@@ -561,19 +568,19 @@ class NERLoader:
             )
 
             for idx, doc in enumerate(spacy_doc_batch):
-                triples_list += self._spacy_doc_to_dataframe(batch[idx][0], doc)
+                batch_list += self._spacy_doc_to_dataframe(batch[idx][0], doc)
 
-        return triples_list
+            self._load_triples_list_into_es(batch_list)
 
-    def load_ner_results_into_es(self, triples_list: List[dict]):
-        logger.info(
-            f"loading {len(triples_list)} entities into the {index} index by label"
-        )
+    def _load_triples_list_into_es(self, triples_list: List[dict]):
+        # logger.info(
+        #     f"loading {len(triples_list)} entities into the {index} index by label"
+        # )
         # create a DataFrame from this list of triples, and load it into the ES index one entity label at a time
         entity_triples_df = pd.DataFrame(triples_list)
 
         for entity_label in entity_triples_df["ent_label"].unique():
-            logger.debug(f"label {entity_label}..")
+            # logger.debug(f"label {entity_label}..")
             # this is the same as HC.entityLABEL e.g. HC.entityPERSON
             rdf_predicate = HC["entity" + entity_label]
             ent_label_df = entity_triples_df[
@@ -585,6 +592,7 @@ class NERLoader:
                 subject_col="item_uri",
                 object_col="ent_text",
                 object_is_uri=False,
+                progress_bar=False,
             )
 
     def _spacy_doc_to_dataframe(
@@ -684,13 +692,3 @@ class NERLoader:
         doc_generator = paginate_generator(doc_generator, self.batch_size)
 
         return doc_generator
-
-    def add_ner_entities_to_es(self, model_type: str, entity_types: List[str]):
-        """
-        Add entities from an NER model to the Heritage Connector Elasticsearch index.
-
-        Args:
-            model_type (str): [description]
-            entity_types (List[str]): [description]
-        """
-        pass
