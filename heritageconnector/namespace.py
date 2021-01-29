@@ -74,6 +74,7 @@ def get_jsonld_context() -> List[dict]:
         {"@skos": SKOS.__str__(), "@language": "en"},
         {"@wd": WD.__str__(), "@language": "en"},
         {"@wdt": WDT.__str__(), "@language": "en"},
+        {"@hc": HC.__str__(), "@language": "en"},
     ]
 
     return context
