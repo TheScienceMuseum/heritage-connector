@@ -404,7 +404,7 @@ def load_sameas_from_disambiguator(path: str, name: str):
 
 
 def load_ner_annotations(model_type: str):
-    ner_loader = datastore.NERLoader(record_loader)
+    ner_loader = datastore.NERLoader(record_loader, batch_size=4096)
     ner_loader.add_ner_entities_to_es(model_type)
 
 
