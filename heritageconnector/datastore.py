@@ -544,7 +544,20 @@ class NERLoader:
         random_seed: int = 42,
         spacy_batch_size: int = 128,
         spacy_no_processes: int = 1,
-    ) -> List[dict]:
+    ):
+        """
+        Run NER on entities in the Heritage Connector index and add the results back to the index using the
+        HC namespace.
+
+        Args:
+            model_type (str): spaCy model type
+            limit (int, optional): limit number of documents to process. Ideal for testing. Defaults to None.
+            random_sample (bool, optional): Whether to randomly sample documents from the Elasticsearch index.
+                Only has an effect if limit is not None. Defaults to True.
+            random_seed (int, optional): random seed for `random_sample`. Defaults to 42.
+            spacy_batch_size (int, optional): batch size for spaCy's `nlp.pipe`. Defaults to 128.
+            spacy_no_processes (int, optional): n_process for spaCy's `nlp.pipe`. Defaults to 1.
+        """
 
         logger.info(
             f"fetching docs, running NER and loading entities into index {index} in batches of {self.batch_size} documents"
@@ -573,10 +586,7 @@ class NERLoader:
             self._load_triples_list_into_es(batch_list)
 
     def _load_triples_list_into_es(self, triples_list: List[dict]):
-        # logger.info(
-        #     f"loading {len(triples_list)} entities into the {index} index by label"
-        # )
-        # create a DataFrame from this list of triples, and load it into the ES index one entity label at a time
+        """create a DataFrame from a list of triples, and load it into the ES index one entity label at a time"""
         entity_triples_df = pd.DataFrame(triples_list)
 
         for entity_label in entity_triples_df["ent_label"].unique():
