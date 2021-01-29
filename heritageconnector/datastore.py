@@ -22,7 +22,7 @@ from heritageconnector.namespace import (
     HC,
     get_jsonld_context,
 )
-from heritageconnector.utils.generic import paginate_generator
+from heritageconnector.utils.generic import paginate_generator, flatten_list_of_lists
 from heritageconnector.config import config
 from heritageconnector import logging, errors, best_spacy_pipeline
 import pandas as pd
@@ -197,7 +197,7 @@ class RecordLoader:
         generator = self._record_update_generator(
             records, predicate, subject_col, object_col, object_is_uri
         )
-        es_bulk(generator, len(records))
+        es_bulk(generator, len(records[subject_col].unique()))
 
     def _record_update_generator(
         self,
@@ -208,6 +208,15 @@ class RecordLoader:
         object_is_uri: bool = True,
     ) -> Generator[dict, None, None]:
         """Yields JSON-LD docs for the `add_triples` method, to update existing records with new triples"""
+
+        # ensure that subject_col is unique by converting object_col to aggregated lists, otherwise object
+        # values will be overwritten when adding to graph
+        df = df.copy().groupby(subject_col).agg(list).reset_index()
+        df[object_col] = df[object_col].apply(flatten_list_of_lists)
+
+        # if this assertion is not true than entities are likely to be overwritten as there are repeats of values
+        # in `subject_col`
+        assert len(df[subject_col].unique()) == len(df)
 
         for _, row in df.iterrows():
             g = Graph()
