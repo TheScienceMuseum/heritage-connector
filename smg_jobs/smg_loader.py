@@ -403,6 +403,11 @@ def load_sameas_from_disambiguator(path: str, name: str):
     )
 
 
+def load_ner_annotations(model_type: str):
+    ner_loader = datastore.NERLoader(record_loader)
+    ner_loader.add_ner_entities_to_es(model_type)
+
+
 if __name__ == "__main__":
     people_data_path = "../GITIGNORE_DATA/mimsy_adlib_joined_people.csv"
     object_data_path = (
@@ -445,3 +450,4 @@ if __name__ == "__main__":
         "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
         "objects (locomotives & rolling stock)",
     )
+    load_ner_annotations("en_core_web_lg")
