@@ -20,6 +20,13 @@ def load_model(model_type: str, thesaurus_path=None):
             "../GITIGNORE_DATA/labels_all_unambiguous_types_people_orgs.jsonl",
         )
 
+    if model_type == "en_core_web_trf":
+        activated = spacy.prefer_gpu()
+        if activated:
+            print("spacy using GPU")
+        else:
+            print("spacy tried to use GPU but failed")
+
     nlp = spacy.load(model_type)
 
     nlp.add_pipe("date_matcher", before="ner")
