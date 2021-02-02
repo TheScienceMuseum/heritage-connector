@@ -5,6 +5,9 @@ field_mapping.py
 
 node_modules/
 
+# data formats in experiments folder
+experiments/**/*.jsonl
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
