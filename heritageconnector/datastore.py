@@ -544,6 +544,7 @@ class NERLoader:
         random_seed: int = 42,
         spacy_batch_size: int = 128,
         spacy_no_processes: int = 1,
+        ignore_duplicated_ents: bool = True,
     ):
         """
         Run NER on entities in the Heritage Connector index and add the results back to the index using the
@@ -566,6 +567,16 @@ class NERLoader:
         doc_generator = self._get_doc_generator(limit, random_sample, random_seed)
         self.nlp = self._get_ner_model(model_type)
 
+        if ignore_duplicated_ents and (
+            not spacy.tokens.Span.has_extension("entity_duplicate")
+        ):
+            logger.warn(
+                "Parameter `ignore_duplicate_ents` has been set to True for `NERLoader.add_ner_entities_to_es()` but spaCy spans have no `entity_duplicate` attribute. "
+                "You can resolve this by adding the `duplicate_entity_detector` component from hc_nlp.pipeline to the end of your spaCy pipeline. "
+                "For now, the detection of duplicate entity mentions in a document will be disabled."
+            )
+            ignore_duplicated_ents = False
+
         for batch in tqdm(doc_generator, unit="batch", total=limit):
             # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples for loading into ES
             # we load in every batch to prevent excessive memory usage from storing data + spaCy models
@@ -581,7 +592,9 @@ class NERLoader:
             )
 
             for idx, doc in enumerate(spacy_doc_batch):
-                batch_list += self._spacy_doc_to_dataframe(batch[idx][0], doc)
+                batch_list += self._spacy_doc_to_ent_list(
+                    batch[idx][0], doc, ignore_duplicated_ents
+                )
 
             self._load_triples_list_into_es(batch_list)
 
@@ -605,18 +618,25 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def _spacy_doc_to_dataframe(
-        self, item_uri: str, doc: spacy.tokens.Doc
-    ) -> pd.DataFrame:
+    def _spacy_doc_to_ent_list(
+        self, item_uri: str, doc: spacy.tokens.Doc, ignore_duplicated_ents: bool
+    ) -> List[dict]:
         """
-        Convert batch of spaCy docs with generated entities into a DataFrame on which `record_loader.add_triples()` can
+        Convert batch of spaCy docs with generated entities into a list of dictionaries on which `record_loader.add_triples()` can
         be called.
         """
 
         ent_data_list = []
 
+        if ignore_duplicated_ents:
+            ent_is_suitable = lambda ent: (ent.label_ in self.entity_types) and (
+                ent._.entity_duplicate is False
+            )
+        else:
+            ent_is_suitable = lambda ent: ent.label_ in self.entity_types
+
         for ent in doc.ents:
-            if ent.label_ in self.entity_types:
+            if ent_is_suitable(ent):
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
@@ -625,7 +645,6 @@ class NERLoader:
                     }
                 )
 
-        # return pd.DataFrame(ent_data_list)
         return ent_data_list
 
     def _get_doc_generator(

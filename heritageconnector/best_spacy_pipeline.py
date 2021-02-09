@@ -46,5 +46,7 @@ def load_model(model_type: str, thesaurus_path=None):
     )
     nlp.add_pipe("entity_filter", config={"ent_labels_ignore": ["DATE"]}, last=True)
     nlp.add_pipe("map_entity_types", last=True)
+    nlp.add_pipe("entity_joiner", last=True)
+    nlp.add_pipe("duplicate_entity_detector", last=True)
 
     return nlp
