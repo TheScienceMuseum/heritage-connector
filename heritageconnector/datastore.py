@@ -1,11 +1,11 @@
-from elasticsearch import helpers
-from elasticsearch import Elasticsearch
+from elasticsearch import helpers, Elasticsearch
+from elasticsearch import exceptions as es_exceptions
 import rdflib
 from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
 import json
 import os
-from typing import Generator, List, Tuple, Optional
+from typing import Generator, List, Tuple, Optional, Union
 from tqdm.auto import tqdm
 from itertools import islice
 from heritageconnector.namespace import (
@@ -426,18 +426,14 @@ def update_graph(s_uri, p, o_uri):
     es.update(index=index, id=s_uri, body=body, ignore=404)
 
 
-def delete(id):
-    """Delete an existing ElasticSearch record"""
+def get_by_uri(uri: str) -> dict:
+    """Return an existing ElasticSearch record. Raise ValueError if record with specified URI doesn't exist."""
 
-    es.delete(id)
-
-
-def get_by_uri(uri):
-    """Return an existing ElasticSearch record"""
-
-    res = es.search(index=index, body={"query": {"term": {"uri.keyword": uri}}})
-    if len(res["hits"]["hits"]):
-        return res["hits"]["hits"][0]
+    try:
+        res = es.get(index=index, id=uri)
+        return res
+    except es_exceptions.TransportError:
+        raise ValueError(f"No record with uri {uri} exists.")
 
 
 def get_by_type(type, size=1000):
