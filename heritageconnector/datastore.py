@@ -5,7 +5,7 @@ from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
 import json
 import os
-from typing import Generator, List, Tuple, Optional, Union
+from typing import Generator, List, Tuple, Optional, Union, Iterable
 from tqdm.auto import tqdm
 from itertools import islice
 from heritageconnector.namespace import (
@@ -502,8 +502,14 @@ class NERLoader:
     def __init__(
         self,
         record_loader: RecordLoader,
-        batch_size: Optional[int] = 1024,
-        entity_types: List[str] = [
+        source_es_index: str,
+        source_description_field: str,
+        target_es_index: str,
+        target_title_field: str,
+        target_description_field: str,
+        target_alias_field: str = None,
+        # batch_size: Optional[int] = 1024,
+        entity_types: Iterable[str] = [
             "PERSON",
             "ORG",
             "NORP",
@@ -512,6 +518,18 @@ class NERLoader:
             "OBJECT",
             "LANGUAGE",
             "DATE",
+            "EVENT",
+        ],
+        entity_types_to_link: Iterable[str] = [
+            "PERSON",
+            "ORG",
+            "NORP",
+            "FAC",
+            "LOC",
+            "OBJECT",
+            "LANGUAGE",
+            "DATE",
+            "EVENT",
         ],
     ):
         """
@@ -519,20 +537,105 @@ class NERLoader:
 
         Args:
             record_loader (RecordLoader): instance of RecordLoader, with parameters suitable for the current Heritage Connector index.
-            batch_size (Optional[int], optional): size of batches to process documents in. Defaults to 1024.
-            entity_types (List[str], optional): entity types extracted from the spaCy model.
+            entity_types (List[str], optional): entity types to extract from the spaCy model.
+            entity_types_to_link (List[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`.
         """
 
         self.record_loader = record_loader
         self.es_index = index
-        self.batch_size = batch_size
-        self.entity_types = entity_types
+        # no longer using batch size as entire list of entities is stored in memory
+        # self.batch_size = batch_size
+        self.entity_types = set(entity_types)
+        self.entity_types_to_link = set(entity_types_to_link).intersection(
+            self.entity_types
+        )
+
+        self.source_index = source_es_index
+        self.target_index = target_es_index
+
+        self.source_fields = {"description": source_description_field}
+
+        self.target_fields = {
+            "title": target_title_field,
+            "description": target_description_field,
+        }
+
+        if target_alias_field is not None:
+            self.target_fields.update(
+                {
+                    "alias": target_alias_field,
+                }
+            )
+
+        self._entity_list = []
+
+    @property
+    def entity_list(self) -> List[dict]:
+        """
+        List of `{"item_uri": _, "ent_label": _, "ent_text": _,}` dictionaries, with one dictionary per entity.
+        Each dictionary has an optional `{"link_candidates": {}}` member if link candidates have been retrieved
+        for that entity.
+        """
+        return self._entity_list
+
+    @property
+    def entity_list_as_dataframe(self) -> pd.DataFrame:
+        return pd.DataFrame(self._entity_list)
+
+    def get_links_data_for_review(self) -> pd.DataFrame:
+        """
+        Returns a DataFrame of only entity mentions with a set of link candidates,
+        with an entity-candidate pair on each line. Also creates a blank column for
+        review results.
+        """
+
+        ent_df = pd.DataFrame(self._entity_list)
+        if "link_candidates" not in ent_df.columns:
+            raise ValueError(
+                "Entity linking candidates are not yet in entity data. Run `get_link_candidates` first."
+            )
+
+        ent_df = (
+            ent_df.dropna(subset=["link_candidates"])
+            .set_index(["item_uri", "item_description", "ent_label", "ent_text"])[
+                "link_candidates"
+            ]
+            .apply(pd.Series)
+            .stack()
+            .reset_index()
+            .rename(columns={"level_4": "candidate_rank"})
+        )
+
+        candidate_cols = ent_df[0].apply(pd.Series)
+        candidate_cols = candidate_cols.rename(
+            columns={col: f"candidate_{col}" for col in candidate_cols}
+        )
+
+        review_df = (
+            pd.concat([ent_df, candidate_cols], axis=1).drop(columns=[0]).fillna("")
+        )
+        review_df["link_correct"] = ""
+
+        cols_order = [
+            "item_uri",
+            "candidate_rank",
+            "item_description",
+            "ent_label",
+            "ent_text",
+            "candidate_title",
+            "link_correct",
+            "candidate_alias",
+            "candidate_description",
+            "candidate_uri",
+        ]
+
+        return review_df[cols_order]
 
     def _get_ner_model(self, model_type):
         """Get best spacy NER model"""
         return best_spacy_pipeline.load_model(model_type)
 
-    def add_ner_entities_to_es(
+    def get_list_of_entities_from_es(
         self,
         model_type: str,
         limit: int = None,
@@ -541,9 +644,9 @@ class NERLoader:
         spacy_batch_size: int = 128,
         spacy_no_processes: int = 1,
         ignore_duplicated_ents: bool = True,
-    ):
+    ) -> List[dict]:
         """
-        Run NER on entities in the Heritage Connector index and add the results back to the index using the
+        Run NER on entities in the source (Heritage Connector) index and add the results back to the index using the
         HC namespace.
 
         Args:
@@ -554,13 +657,18 @@ class NERLoader:
             random_seed (int, optional): random seed for `random_sample`. Defaults to 42.
             spacy_batch_size (int, optional): batch size for spaCy's `nlp.pipe`. Defaults to 128.
             spacy_no_processes (int, optional): n_process for spaCy's `nlp.pipe`. Defaults to 1.
+
+        Returns:
+            List[dict]: The current state of `entity_list`.
         """
 
-        logger.info(
-            f"fetching docs, running NER and loading entities into index {index} in batches of {self.batch_size} documents"
-        )
+        logger.info(f"Fetching docs and running NER.")
 
-        doc_generator = self._get_doc_generator(limit, random_sample, random_seed)
+        doc_list = list(
+            self._get_doc_generator(
+                self.source_index, limit, random_sample, random_seed
+            )
+        )
         self.nlp = self._get_ner_model(model_type)
 
         if ignore_duplicated_ents and (
@@ -573,30 +681,37 @@ class NERLoader:
             )
             ignore_duplicated_ents = False
 
-        for batch in tqdm(doc_generator, unit="batch", total=limit):
-            # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples for loading into ES
-            # we load in every batch to prevent excessive memory usage from storing data + spaCy models
-            batch_list = []
+        # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples
+        entity_list = []
+        uris = [item[0] for item in doc_list]
+        descriptions = [item[1] for item in doc_list]
 
-            descriptions = [item[1] for item in batch]
-            spacy_doc_batch = list(
+        spacy_docs = list(
+            tqdm(
                 self.nlp.pipe(
                     descriptions,
                     batch_size=spacy_batch_size,
                     n_process=spacy_no_processes,
                 )
             )
+        )
 
-            for idx, doc in enumerate(spacy_doc_batch):
-                batch_list += self._spacy_doc_to_ent_list(
-                    batch[idx][0], doc, ignore_duplicated_ents
-                )
+        for idx, doc in enumerate(spacy_docs):
+            entity_list += self._spacy_doc_to_ent_list(
+                uris[idx], descriptions[idx], doc, ignore_duplicated_ents
+            )
 
-            self._load_triples_list_into_es(batch_list)
+        self._entity_list = entity_list
 
-    def _load_triples_list_into_es(self, triples_list: List[dict]):
-        """create a DataFrame from a list of triples, and load it into the ES index one entity label at a time"""
-        entity_triples_df = pd.DataFrame(triples_list)
+        return self.entity_list
+
+    def load_entities_into_es(self):
+        logger.info(
+            f"Loading {len(self._entity_list)} entities into {self.source_index}"
+        )
+
+        """create a DataFrame from a list of (uri, entity label, entity text) triples, and load it into the ES index one entity label at a time"""
+        entity_triples_df = pd.DataFrame(self._entity_list)
 
         for entity_label in entity_triples_df["ent_label"].unique():
             # logger.debug(f"label {entity_label}..")
@@ -614,12 +729,133 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def _spacy_doc_to_ent_list(
-        self, item_uri: str, doc: spacy.tokens.Doc, ignore_duplicated_ents: bool
+    def get_link_candidates(self, candidates_per_entity_mention: int) -> List[dict]:
+        """Get link candidates for each of the items in `entity_list` by searching the entity mention in
+        the target Elasticsearch index. Only searches for link candidates for entities with types specified in `entity_types_to_link`.
+
+        Args:
+            entity_list (List[dict]): each item has the form `{"item_uri": _, "ent_label": _, "ent_text": _,}`
+
+        Returns:
+            List[dict]: The current state of `entity_list`. Each item has the form `{"item_uri": _, "ent_label": _, "ent_text": _,}`
+                (not in types to link) or `{"item_uri": _, "ent_label": _, "ent_text": _, "link_candidates": [{"uri": _, "label": _,
+                "description": _}, ...]}` (in types to link).
+        """
+
+        if not self._entity_list:
+            raise ValueError(
+                "Entities have not yet been retrieved from the Elasticsearch index. Run `get_list_of_entities_from_es` first."
+            )
+
+        entity_list_with_link_candidates = []
+        logger.info(
+            f"Getting link candidates for each of {len(self._entity_list)} entities"
+        )
+        for item in tqdm(self._entity_list):
+            if item["ent_label"] in self.entity_types_to_link:
+                link_candidates = self._search_es_for_entity_mention(
+                    item["ent_text"],
+                    n=candidates_per_entity_mention,
+                    reduce_to_key_fields=True,
+                )
+                entity_list_with_link_candidates.append(
+                    dict(item, **{"link_candidates": link_candidates})
+                )
+            else:
+                entity_list_with_link_candidates.append(item)
+
+        self._entity_list = entity_list_with_link_candidates
+
+        return self._entity_list
+
+    def _search_es_for_entity_mention(
+        self, mention: str, n: int, reduce_to_key_fields: bool = True
     ) -> List[dict]:
         """
-        Convert batch of spaCy docs with generated entities into a list of dictionaries on which `record_loader.add_triples()` can
-        be called.
+        Given an entity mention, search the target Elasticsearch fields and return up to `n` documents.
+        """
+
+        # empty string for a field in multi_match query doesn't register as a field
+        search_fields = [
+            self.target_fields["title"],
+            self.target_fields.get("alias", ""),
+        ]
+
+        query = {
+            "query": {
+                "multi_match": {
+                    "query": mention,
+                    "fuzziness": "AUTO",
+                    "fields": search_fields,
+                }
+            }
+        }
+
+        search_results = (
+            es.search(
+                index=self.target_index,
+                body=query,
+                size=n,
+            )
+            .get("hits", {})
+            .get("hits", [])
+        )
+
+        if reduce_to_key_fields:
+            return [self._reduce_doc_to_key_fields(i) for i in search_results]
+
+        return search_results
+
+    def _get_dict_field_from_dot_notation(
+        self, doc: dict, field_dot_notation: str
+    ) -> dict:
+        """Get a field from a dictonary from Elasticsearch dot notation."""
+
+        nested_field = doc["_source"]
+        fields_split = field_dot_notation.split(".")
+        if fields_split[0] != "graph" and fields_split[-1] == "@value":
+            fields_split = fields_split[0:-1]
+
+        if field_dot_notation.startswith("data") and "." in field_dot_notation[5:]:
+            fields_split = ["data", field_dot_notation[5:]]
+
+        for idx, field in enumerate(fields_split):
+            if idx + 1 < len(fields_split):
+                nested_field = nested_field.get(field, {})
+            else:
+                nested_field = nested_field.get(field, "")
+
+        return nested_field
+
+    def _reduce_doc_to_key_fields(self, doc: dict) -> dict:
+        """Reduce doc to target_uri, target_title_field, target_description_field, target_alias_field"""
+
+        # key_fields = set(["uri"] + list(self.target_fields.values()))
+
+        reduced_doc = {"uri": self._get_dict_field_from_dot_notation(doc, "uri")}
+
+        for target_field_name, target_field in self.target_fields.items():
+            reduced_doc.update(
+                {
+                    target_field_name: self._get_dict_field_from_dot_notation(
+                        doc, target_field
+                    )
+                }
+            )
+
+        # reduced_doc = {field: self._get_dict_field_from_dot_notation(doc, field) for field in key_fields}
+
+        return {k: v for k, v in reduced_doc.items() if v != ""}
+
+    def _spacy_doc_to_ent_list(
+        self,
+        item_uri: str,
+        item_description: str,
+        doc: spacy.tokens.Doc,
+        ignore_duplicated_ents: bool,
+    ) -> List[dict]:
+        """
+        Convert a spaCy doc with entities found into a list of dictionaries.
         """
 
         ent_data_list = []
@@ -636,6 +872,7 @@ class NERLoader:
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
+                        "item_description": item_description,
                         "ent_label": ent.label_,
                         "ent_text": ent.text,
                     }
@@ -645,6 +882,7 @@ class NERLoader:
 
     def _get_doc_generator(
         self,
+        index: str,
         limit: Optional[int] = None,
         random_sample: bool = True,
         random_seed: int = 42,
@@ -662,6 +900,8 @@ class NERLoader:
         Returns:
             Generator[List[Tuple[str, str]]]: generator of lists with length `self.batch_size`, where each list contains `(uri, description)` tuples.
         """
+
+        # TODO: make description field follow source description from class instance and rename function.
 
         if random_sample:
             es_query = {
@@ -699,7 +939,7 @@ class NERLoader:
 
         doc_generator = helpers.scan(
             client=es,
-            index=self.es_index,
+            index=index,
             query=es_query,
             preserve_order=True,
         )
@@ -714,6 +954,5 @@ class NERLoader:
             )
             for doc in doc_generator
         )
-        doc_generator = paginate_generator(doc_generator, self.batch_size)
 
         return doc_generator
