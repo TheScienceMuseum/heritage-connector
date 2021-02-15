@@ -507,6 +507,7 @@ class NERLoader:
         target_es_index: str,
         target_title_field: str,
         target_description_field: str,
+        target_type_field: str,
         target_alias_field: str = None,
         # batch_size: Optional[int] = 1024,
         entity_types: Iterable[str] = [
@@ -558,6 +559,7 @@ class NERLoader:
         self.target_fields = {
             "title": target_title_field,
             "description": target_description_field,
+            "type": target_type_field,
         }
 
         if target_alias_field is not None:
@@ -623,13 +625,16 @@ class NERLoader:
             "ent_label",
             "ent_text",
             "candidate_title",
+            "candidate_type",
+            "candidate_uri",
             "link_correct",
             "candidate_alias",
             "candidate_description",
-            "candidate_uri",
         ]
 
-        return review_df[cols_order]
+        other_cols = [col for col in review_df.columns if col not in cols_order]
+
+        return review_df[cols_order + other_cols]
 
     def _get_ner_model(self, model_type):
         """Get best spacy NER model"""
