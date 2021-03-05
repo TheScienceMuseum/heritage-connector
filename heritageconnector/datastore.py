@@ -736,7 +736,8 @@ class NERLoader:
 
     def get_link_candidates(self, candidates_per_entity_mention: int) -> List[dict]:
         """Get link candidates for each of the items in `entity_list` by searching the entity mention in
-        the target Elasticsearch index. Only searches for link candidates for entities with types specified in `entity_types_to_link`.
+        the target Elasticsearch index. Only searches for link candidates for entities with types specified in `entity_types_to_link`,
+        and excludes any candidates with a URI which is the same as the URI of the source entity.
 
         Args:
             entity_list (List[dict]): each item has the form `{"item_uri": _, "ent_label": _, "ent_text": _,}`
@@ -760,9 +761,12 @@ class NERLoader:
             if item["ent_label"] in self.entity_types_to_link:
                 link_candidates = self._search_es_for_entity_mention(
                     item["ent_text"],
-                    n=candidates_per_entity_mention,
+                    n=candidates_per_entity_mention * 2,
                     reduce_to_key_fields=True,
                 )
+                link_candidates = [
+                    i for i in link_candidates if i["uri"] != item["item_uri"]
+                ][:candidates_per_entity_mention]
                 entity_list_with_link_candidates.append(
                     dict(item, **{"link_candidates": link_candidates})
                 )
