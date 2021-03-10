@@ -404,8 +404,18 @@ def load_sameas_from_disambiguator(path: str, name: str):
 
 
 def load_ner_annotations(model_type: str):
-    ner_loader = datastore.NERLoader(record_loader, batch_size=4096)
-    ner_loader.add_ner_entities_to_es(model_type)
+    ner_loader = datastore.NERLoader(
+        record_loader,
+        source_es_index=config.ELASTIC_SEARCH_INDEX,
+        # TODO: update all these when using entity linking
+        source_description_field="",
+        target_es_index="",
+        target_title_field="",
+        target_description_field="",
+        target_type_field="",
+    )
+    _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=128)
+    ner_loader.load_entities_into_es()
 
 
 if __name__ == "__main__":

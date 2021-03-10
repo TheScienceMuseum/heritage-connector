@@ -543,9 +543,7 @@ class NERLoader:
         """
 
         self.record_loader = record_loader
-        self.es_index = index
-        # no longer using batch size as entire list of entities is stored in memory
-        # self.batch_size = batch_size
+
         self.entity_types = set(entity_types)
         self.entity_types_to_link = set(entity_types_to_link).intersection(
             self.entity_types
