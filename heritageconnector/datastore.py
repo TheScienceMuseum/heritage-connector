@@ -812,12 +812,29 @@ class NERLoader:
             self.target_fields.get("alias", ""),
         ]
 
+        # this query boosts exact matches (type: phrase) over fuzzy matches, which don't return exact matches first
+        # because of Elasticsearch field analysis.
         query = {
             "query": {
-                "multi_match": {
-                    "query": mention,
-                    "fuzziness": "AUTO",
-                    "fields": search_fields,
+                "bool": {
+                    "should": [
+                        {
+                            "multi_match": {
+                                "query": mention,
+                                "type": "phrase",
+                                "fields": search_fields,
+                                "boost": 10,
+                            }
+                        },
+                        {
+                            "multi_match": {
+                                "query": mention,
+                                "type": "best_fields",
+                                "fields": search_fields,
+                                "fuzziness": "AUTO",
+                            }
+                        },
+                    ]
                 }
             }
         }
