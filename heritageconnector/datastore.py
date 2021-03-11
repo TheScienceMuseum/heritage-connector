@@ -614,6 +614,7 @@ class NERLoader:
             .set_index(
                 [
                     "item_uri",
+                    "item_description",
                     "item_description_with_ent",
                     "ent_label",
                     "ent_text",
@@ -623,7 +624,8 @@ class NERLoader:
             .apply(pd.Series)
             .stack()
             .reset_index()
-            .rename(columns={"level_5": "candidate_rank"})
+            # the level of level_n below is the length of the list used in `set_index above`
+            .rename(columns={"level_6": "candidate_rank"})
         )
 
         candidate_cols = ent_df[0].apply(pd.Series)
@@ -649,6 +651,7 @@ class NERLoader:
             "link_correct",
             "candidate_alias",
             "candidate_description",
+            "item_description",
         ]
 
         other_cols = [col for col in review_df.columns if col not in cols_order]
