@@ -5,7 +5,7 @@ from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
 import json
 import os
-from typing import Generator, List, Tuple, Optional, Union, Iterable
+from typing import Generator, List, Tuple, Optional, Union, Iterable, Callable
 from tqdm.auto import tqdm
 from itertools import islice
 from heritageconnector.namespace import (
@@ -532,6 +532,7 @@ class NERLoader:
             "DATE",
             "EVENT",
         ],
+        text_preprocess_func: Optional[Callable[[str], str]] = None,
     ):
         """
         Initialise instance of NERLoader.
@@ -566,6 +567,10 @@ class NERLoader:
                     "alias": target_alias_field,
                 }
             )
+
+        self.text_preprocess_func = (
+            text_preprocess_func if text_preprocess_func is not None else lambda x: x
+        )
 
         self._entity_list = []
 
@@ -957,7 +962,11 @@ class NERLoader:
         doc_generator = (
             (
                 doc["_id"],
-                doc["_source"]["data"]["http://www.w3.org/2001/XMLSchema#description"],
+                self.text_preprocess_func(
+                    doc["_source"]["data"][
+                        "http://www.w3.org/2001/XMLSchema#description"
+                    ]
+                ),
             )
             for doc in doc_generator
         )

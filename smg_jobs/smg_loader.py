@@ -403,6 +403,43 @@ def load_sameas_from_disambiguator(path: str, name: str):
     )
 
 
+def preprocess_text_for_ner(text: str) -> str:
+    # remove URLs
+    text = re.sub(
+        r"((?:https?://|www\.|https?://|www\.)[a-z0-9\.:].*?(?=[\s;,!:\[\]]|$))",
+        "",
+        text,
+    )
+
+    # remove dois, e.g. doi:10.1093/ref:odnb/9153
+    text = re.sub(r"doi:[\w.:/\\;]*\b", "", text)
+
+    # remove any text in normal brackets
+    #     text = re.sub(r"\([^()]*\)", "", text)
+
+    #     # remove any text in square brackets
+    #     text = re.sub(r"\[[^\[\]]*\]", "", text)
+
+    # replace newline characters with spaces
+    text = text.replace("\n", " ")
+
+    # remove strings in `strings_to_remove`
+    strings_to_remove = [
+        "WIKI:",
+        "WIKI",
+        "REF:",
+        "VIAF:",
+        "Oxford Dictionary of National Biography",
+        "Oxford University Press",
+        "Oxford Dictionary of National Biography, Oxford University Press",
+    ]
+    strings_to_remove.sort(key=len, reverse=True)
+    for s in strings_to_remove:
+        text = text.replace(s, "")
+
+    return text
+
+
 def load_ner_annotations(model_type: str):
     ner_loader = datastore.NERLoader(
         record_loader,
@@ -413,6 +450,7 @@ def load_ner_annotations(model_type: str):
         target_title_field="",
         target_description_field="",
         target_type_field="",
+        text_preprocess_func=preprocess_text_for_ner,
     )
     _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=128)
     ner_loader.load_entities_into_es()
