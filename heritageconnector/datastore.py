@@ -863,15 +863,16 @@ class NERLoader:
         reduced_doc = {"uri": self._get_dict_field_from_dot_notation(doc, "uri")}
 
         for target_field_name, target_field in self.target_fields.items():
-            reduced_doc.update(
-                {
-                    target_field_name: self._get_dict_field_from_dot_notation(
-                        doc, target_field
-                    )
-                }
-            )
+            if target_field_name == "description":
+                target_field_value = self.text_preprocess_func(
+                    self._get_dict_field_from_dot_notation(doc, target_field)
+                )
+            else:
+                target_field_value = self._get_dict_field_from_dot_notation(
+                    doc, target_field
+                )
 
-        # reduced_doc = {field: self._get_dict_field_from_dot_notation(doc, field) for field in key_fields}
+            reduced_doc.update({target_field_name: target_field_value})
 
         return {k: v for k, v in reduced_doc.items() if v != ""}
 
