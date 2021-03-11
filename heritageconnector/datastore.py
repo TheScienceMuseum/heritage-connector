@@ -533,6 +533,7 @@ class NERLoader:
             "EVENT",
         ],
         text_preprocess_func: Optional[Callable[[str], str]] = None,
+        entity_markers: Iterable[str] = ("[[", "]]"),
     ):
         """
         Initialise instance of NERLoader.
@@ -572,6 +573,14 @@ class NERLoader:
             text_preprocess_func if text_preprocess_func is not None else lambda x: x
         )
 
+        if not all([isinstance(i, str) for i in entity_markers]) or not (
+            len(entity_markers) == 2
+        ):
+            raise ValueError(
+                "Parameter `entity_markers` must be an iterable (e.g. list or tuple) containing exactly two items, both of which are strings."
+            )
+        self.entity_markers = entity_markers
+
         self._entity_list = []
 
     @property
@@ -602,13 +611,19 @@ class NERLoader:
 
         ent_df = (
             ent_df.dropna(subset=["link_candidates"])
-            .set_index(["item_uri", "item_description", "ent_label", "ent_text"])[
-                "link_candidates"
-            ]
+            .set_index(
+                [
+                    "item_uri",
+                    "item_description_with_ent",
+                    "ent_label",
+                    "ent_text",
+                    "ent_sentence",
+                ]
+            )["link_candidates"]
             .apply(pd.Series)
             .stack()
             .reset_index()
-            .rename(columns={"level_4": "candidate_rank"})
+            .rename(columns={"level_5": "candidate_rank"})
         )
 
         candidate_cols = ent_df[0].apply(pd.Series)
@@ -624,9 +639,10 @@ class NERLoader:
         cols_order = [
             "item_uri",
             "candidate_rank",
-            "item_description",
+            "item_description_with_ent",
             "ent_label",
             "ent_text",
+            "ent_sentence",
             "candidate_title",
             "candidate_type",
             "candidate_uri",
@@ -885,8 +901,18 @@ class NERLoader:
                     {
                         "item_uri": item_uri,
                         "item_description": item_description,
+                        "item_description_with_ent": item_description[
+                            : doc[ent.start].idx
+                        ]
+                        + self.entity_markers[0]
+                        + ent.text
+                        + self.entity_markers[1]
+                        + item_description[doc[ent.start].idx + len(ent.text) :],
                         "ent_label": ent.label_,
                         "ent_text": ent.text,
+                        "ent_sentence": ent.sent.text,
+                        "ent_start_idx": doc[ent.start].idx,
+                        "ent_end_idx": doc[ent.start].idx + len(ent.text),
                     }
                 )
 
