@@ -75,6 +75,10 @@ def load_object_data(catalogue_data_path):
     catalogue_df["DATE_MADE"] = catalogue_df["DATE_MADE"].apply(
         get_year_from_date_value
     )
+    catalogue_df = catalogue_df[~catalogue_df["CATEGORY1"].str.contains("Disposal")]
+    catalogue_df["CATEGORY1"] = catalogue_df["CATEGORY1"].apply(
+        lambda x: x.split(" - ")[1].strip()
+    )
 
     logger.info("loading object data")
     record_loader.add_records(table_name, catalogue_df)
@@ -432,10 +436,14 @@ def preprocess_text_for_ner(text: str) -> str:
         "Oxford Dictionary of National Biography",
         "Oxford University Press",
         "Oxford Dictionary of National Biography, Oxford University Press",
+        "Library of Congress Authorities:",
     ]
     strings_to_remove.sort(key=len, reverse=True)
     for s in strings_to_remove:
         text = text.replace(s, "")
+
+    # finally, remove any leading or trailing whitespace
+    text = text.strip()
 
     return text
 
