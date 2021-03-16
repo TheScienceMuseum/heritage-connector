@@ -89,6 +89,12 @@ def load_object_data(catalogue_data_path):
 def load_people_data(people_data_path):
     """Load data from CSV files """
 
+    def reverse_preferred_name(name: str) -> str:
+        if not pd.isnull(name) and len(name.split(",")) == 2:
+            return f"{name.split(',')[1].strip()} {name.split(',')[0].strip()}"
+        else:
+            return name
+
     # identifier in field_mapping
     table_name = "PERSON"
 
@@ -103,6 +109,9 @@ def load_people_data(people_data_path):
         lambda i: str(i)
         .capitalize()
         .translate(str.maketrans("", "", string.punctuation))
+    )
+    people_df["PREFERRED_NAME"] = people_df["PREFERRED_NAME"].apply(
+        reverse_preferred_name
     )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
@@ -506,4 +515,4 @@ if __name__ == "__main__":
         "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
         "objects (locomotives & rolling stock)",
     )
-    load_ner_annotations("en_core_web_lg")
+    # load_ner_annotations("en_core_web_lg")
