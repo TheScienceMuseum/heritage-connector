@@ -1,5 +1,6 @@
 from typing import List
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.base import BaseEstimator, TransformerMixin
 from sentence_transformers import SentenceTransformer, util
 import pandas as pd
 import numpy as np
@@ -12,7 +13,7 @@ from heritageconnector import logging
 logger = logging.get_logger(__name__)
 
 
-class NELFeatureGenerator:
+class NELFeatureGenerator(BaseEstimator, TransformerMixin):
     """
     Generate a feature matrix `X` and optional target vector `y` from a DataFrame (`data`) containing the following columns:
     - the entity mention (`ent_mention_col`)
@@ -34,6 +35,14 @@ class NELFeatureGenerator:
 
     def __init__(
         self,
+        sbert_model: str = "stsb-distilbert-base",
+        suffix_list: List[str] = ORG_LEGAL_SUFFIXES,
+    ):
+        self.suffix_list = suffix_list
+        self.bert_model = SentenceTransformer(sbert_model)
+
+    def fit(
+        self,
         data: pd.DataFrame,
         ent_mention_col: str,
         ent_type_col: str,
@@ -41,32 +50,163 @@ class NELFeatureGenerator:
         candidate_title_col: str,
         candidate_type_col: str,
         candidate_context_col: str,
-        sbert_model: str = "stsb-distilbert-base",
-        suffix_list: List[str] = ORG_LEGAL_SUFFIXES,
     ):
-        self.data = data
-
-        # TODO: do lowercase transformation here to make all methods case-insensitive
-
-        self.ent_mention_col = self.data[ent_mention_col]
-        self.ent_type_col = self.data[ent_type_col]
-        self.ent_context_col = self.data[ent_context_col]
-        self.candidate_title_col = self.data[candidate_title_col]
-        self.candidate_type_col = self.data[candidate_type_col]
-        self.candidate_context_col = self.data[candidate_context_col]
-
-        self.suffix_list = suffix_list
-
-        self.n_records = self.data.shape[0]
-
+        # fit one-hot-encoders: these are used for generating the entity type and candidate type features
         self.ent_type_encoder = OneHotEncoder().fit(
-            np.sort(self.ent_type_col.unique()).reshape(-1, 1)
+            np.sort(data[ent_type_col].unique()).reshape(-1, 1)
         )
         self.candidate_type_encoder = OneHotEncoder().fit(
-            np.sort(self.candidate_type_col.unique()).reshape(-1, 1)
+            np.sort(data[candidate_type_col].unique()).reshape(-1, 1)
         )
 
-        self.bert_model = SentenceTransformer(sbert_model)
+        return self
+
+    def transform(
+        self,
+        data: pd.DataFrame,
+        ent_mention_col: str,
+        ent_type_col: str,
+        ent_context_col: str,
+        candidate_title_col: str,
+        candidate_type_col: str,
+        candidate_context_col: str,
+    ):
+
+        # TODO: create lowercase copy of data here
+        X = self._calculate_features(
+            data,
+            ent_mention_col,
+            ent_type_col,
+            ent_context_col,
+            candidate_title_col,
+            candidate_type_col,
+            candidate_context_col,
+        )
+
+        return X
+
+    def fit_transform(
+        self,
+        data: pd.DataFrame,
+        ent_mention_col: str,
+        ent_type_col: str,
+        ent_context_col: str,
+        candidate_title_col: str,
+        candidate_type_col: str,
+        candidate_context_col: str,
+    ):
+        return self.fit(
+            data,
+            ent_mention_col,
+            ent_type_col,
+            ent_context_col,
+            candidate_title_col,
+            candidate_type_col,
+            candidate_context_col,
+        ).transform(
+            data,
+            ent_mention_col,
+            ent_type_col,
+            ent_context_col,
+            candidate_title_col,
+            candidate_type_col,
+            candidate_context_col,
+        )
+
+    def get_feature_names(self) -> List[str]:
+        """
+        Get the name of each feature in X. Each element of the list corresponds to a column of X. This means that the list returned
+        will contain duplicate values if a feature spans more than one column of X.
+
+        Returns:
+            List[str]: features in X
+        """
+
+        # TODO: rewrite for scikit-learn ecosystem
+
+        return (
+            [
+                "fuzz_sort similarity (mention-title)",
+                "levenshtein similarity (mention-title)",
+                "jaro-winkler similarity (mention-title)",
+                "fuzz_sort similarity, ignoring suffixes (mention-title)",
+                "jaro-winkler similarity (context-context)",
+                "jaccard similarity (context-context)",
+                "sorensen-dice similarity (context-context)",
+                "label is in mention",
+                "mention is in label",
+            ]
+            + [f"entity type ({t})" for t in list(self.ent_type_encoder.categories_)[0]]
+            + [
+                f"candidate type ({t})"
+                for t in list(self.candidate_type_encoder.categories_)[0]
+            ]
+            + ["sBERT embedding cosine similarity (mention-title)"]
+            + ["sBERT embedding cosine similarity (context-context)"]
+        )
+
+    def _calculate_features(
+        self,
+        data: pd.DataFrame,
+        ent_mention_col: str,
+        ent_type_col: str,
+        ent_context_col: str,
+        candidate_title_col: str,
+        candidate_type_col: str,
+        candidate_context_col: str,
+    ) -> np.ndarray:
+        """
+        Calculate and retrieve a feature matrix (`X`) based on the columns provided in the DataFrame.
+
+        Returns:
+            np.ndarray: X
+        """
+
+        feats = (
+            self._generate_similarity_fuzz_sort(
+                data[ent_mention_col], data[candidate_title_col]
+            ),
+            self._generate_similarity_levenshtein(
+                data[ent_mention_col], data[candidate_title_col]
+            ),
+            self._generate_similarity_jarowinkler(
+                data[ent_mention_col], data[candidate_title_col]
+            ),
+            self._generate_similarity_fuzz_sort_ignore_suffixes(
+                data[ent_mention_col], data[candidate_title_col]
+            ),
+            self._generate_similarity_jarowinkler(
+                data[ent_context_col], data[candidate_context_col]
+            ),
+            self._generate_similarity_jaccard(
+                data[ent_context_col], data[candidate_context_col]
+            ),
+            self._generate_similarity_sorensen_dice(
+                data[ent_context_col], data[candidate_context_col]
+            ),
+            self._generate_col_a_in_col_b(
+                data[ent_mention_col], data[candidate_title_col]
+            ),
+            self._generate_col_a_in_col_b(
+                data[candidate_title_col], data[ent_mention_col]
+            ),
+            self._generate_type_features(data[ent_type_col], data[candidate_type_col]),
+            # TODO: make missing_sim_value a parameter of __init__
+            self._generate_sentence_bert_cosdist(
+                data[ent_mention_col],
+                data[candidate_title_col],
+                missing_sim_value=0.5,
+            ),
+            self._generate_sentence_bert_cosdist(
+                data[ent_context_col],
+                data[candidate_context_col],
+                missing_sim_value=0.5,
+            ),
+        )
+
+        feature_matrix = np.concatenate(feats, axis=1)
+
+        return feature_matrix
 
     @staticmethod
     def _remove_suffixes(text: str, suffix_list: List[str]) -> str:
@@ -95,6 +235,9 @@ class NELFeatureGenerator:
         Params:
         - token_wise (bool): if True, split each string by spaces (`method` is passed two sequences rather than two strings)
         """
+
+        n_records = len(col_a)
+
         if token_wise:
             return np.array(
                 [
@@ -104,7 +247,7 @@ class NELFeatureGenerator:
                     ]
                     if all([pd.notnull(col_a.iloc[idx]), pd.notnull(col_b.iloc[idx])])
                     else [0]
-                    for idx in range(self.n_records)
+                    for idx in range(n_records)
                 ]
             )
         else:
@@ -113,7 +256,7 @@ class NELFeatureGenerator:
                     [method(col_a.iloc[idx], col_b.iloc[idx]) / denominator]
                     if all([pd.notnull(col_a.iloc[idx]), pd.notnull(col_b.iloc[idx])])
                     else [0]
-                    for idx in range(self.n_records)
+                    for idx in range(n_records)
                 ]
             )
 
@@ -161,19 +304,22 @@ class NELFeatureGenerator:
             token_wise=True,
         )
 
-    def _generate_ml_similarity_fuzz_sort_ignore_suffixes(self, **kwargs) -> np.ndarray:
+    def _generate_similarity_fuzz_sort_ignore_suffixes(
+        self, col_a: pd.Series, col_b: pd.Series, **kwargs
+    ) -> np.ndarray:
+        n_records = len(col_a)
 
         if "string_sim_metric" in kwargs:
             return np.array(
                 [
                     [
                         kwargs["string_sim_metric"](
-                            self.ent_mention_col.iloc[idx],
-                            self.candidate_title_col.iloc[idx],
+                            col_a.iloc[idx],
+                            col_b.iloc[idx],
                         )
                         / 100
                     ]
-                    for idx in range(self.n_records)
+                    for idx in range(n_records)
                 ]
             )
 
@@ -182,185 +328,71 @@ class NELFeatureGenerator:
                 [
                     [
                         fuzz.token_sort_ratio(
-                            self._remove_suffixes(
-                                self.ent_mention_col.iloc[idx], self.suffix_list
-                            ),
-                            self._remove_suffixes(
-                                self.candidate_title_col.iloc[idx], self.suffix_list
-                            ),
+                            self._remove_suffixes(col_a.iloc[idx], self.suffix_list),
+                            self._remove_suffixes(col_b.iloc[idx], self.suffix_list),
                         )
                         / 100
                     ]
-                    for idx in range(self.n_records)
+                    for idx in range(n_records)
                 ]
             )
 
-    def _generate_label_in_mention(self, **kwargs) -> np.ndarray:
+    def _generate_col_a_in_col_b(
+        self, col_a: pd.Series, col_b: pd.Series, **kwargs
+    ) -> np.ndarray:
+        n_records = len(col_a)
+
         return np.array(
             [
-                [
-                    float(
-                        self.candidate_title_col.iloc[idx].lower()
-                        in self.ent_mention_col.iloc[idx].lower()
-                    )
-                ]
-                for idx in range(self.n_records)
+                [float(col_a.iloc[idx].lower() in col_b.iloc[idx].lower())]
+                for idx in range(n_records)
             ]
         )
 
-    def _generate_mention_in_label(self, **kwargs) -> np.ndarray:
-        return np.array(
-            [
-                [
-                    float(
-                        self.ent_mention_col.iloc[idx].lower()
-                        in self.candidate_title_col.iloc[idx].lower()
-                    )
-                ]
-                for idx in range(self.n_records)
-            ]
-        )
-
-    def _generate_type_features(self, **kwargs) -> np.ndarray:
+    def _generate_type_features(
+        self, ent_type_col: pd.Series, candidate_type_col: pd.Series, **kwargs
+    ) -> np.ndarray:
         return np.concatenate(
             (
                 self.ent_type_encoder.transform(
-                    self.ent_type_col.values.reshape(-1, 1)
+                    ent_type_col.values.reshape(-1, 1)
                 ).toarray(),
                 self.candidate_type_encoder.transform(
-                    self.candidate_type_col.values.reshape(-1, 1)
+                    candidate_type_col.values.reshape(-1, 1)
                 ).toarray(),
             ),
             axis=1,
         )
 
-    def _generate_sentence_bert_cosdist_mention_label(self, **kwargs) -> np.ndarray:
+    def _generate_sentence_bert_cosdist(
+        self, col_a: pd.Series, col_b: pd.Series, **kwargs
+    ) -> np.ndarray:
         missing_similarity_value = kwargs.get("missing_sim_value", 0.5)
 
-        logger.info("Calculating entity context sBERT embeddings... (1/2)")
-        ent_descriptions = self.ent_context_col.astype(str).tolist()
-        ent_description_embs = self.bert_model.encode(
-            ent_descriptions, convert_to_tensor=True, show_progress_bar=True
+        logger.info("Calculating sBERT embeddings... (1/2)")
+        descriptions_a = col_a.astype(str).tolist()
+        description_embs_a = self.bert_model.encode(
+            descriptions_a, convert_to_tensor=True, show_progress_bar=True
         )
 
-        logger.info("Calculating candidate context sBERT embeddings... (2/2)")
-        candidate_descriptions = self.candidate_context_col.astype(str).tolist()
-        candidate_description_embs = self.bert_model.encode(
-            candidate_descriptions, convert_to_tensor=True, show_progress_bar=True
+        logger.info("Calculating sBERT embeddings... (2/2)")
+        descriptions_b = col_b.astype(str).tolist()
+        description_embs_b = self.bert_model.encode(
+            descriptions_b, convert_to_tensor=True, show_progress_bar=True
         )
 
-        cosine_scores = util.pytorch_cos_sim(
-            ent_description_embs, candidate_description_embs
-        )
+        cosine_scores = util.pytorch_cos_sim(description_embs_a, description_embs_b)
 
         sim_scores = np.array(
-            [float(cosine_scores[i][i]) for i in range(len(ent_description_embs))]
+            [float(cosine_scores[i][i]) for i in range(len(description_embs_a))]
         )
 
         # replace scores for missing values in either ent or candidate column with a fixed value
         nan_value_locs = [
             i
-            for i in range(len(ent_descriptions))
-            if (ent_descriptions[i] == "nan") or (candidate_descriptions[i] == "nan")
+            for i in range(len(descriptions_a))
+            if (descriptions_a[i] == "nan") or (descriptions_b[i] == "nan")
         ]
         np.put(sim_scores, nan_value_locs, [missing_similarity_value])
 
         return sim_scores.reshape(-1, 1)
-
-    def get_feature_matrix(self) -> np.ndarray:
-        """
-        Calculate and retrieve a feature matrix (`X`) based on the columns provided in the DataFrame.
-
-        Returns:
-            np.ndarray: X
-        """
-        feats = (
-            self._generate_similarity_fuzz_sort(
-                self.ent_mention_col, self.candidate_title_col
-            ),
-            self._generate_similarity_levenshtein(
-                self.ent_mention_col, self.candidate_title_col
-            ),
-            self._generate_similarity_jarowinkler(
-                self.ent_mention_col, self.candidate_title_col
-            ),
-            self._generate_ml_similarity_fuzz_sort_ignore_suffixes(),
-            self._generate_similarity_jarowinkler(
-                self.ent_context_col, self.candidate_context_col
-            ),
-            self._generate_similarity_jaccard(
-                self.ent_context_col, self.candidate_context_col
-            ),
-            self._generate_similarity_sorensen_dice(
-                self.ent_context_col, self.candidate_context_col
-            ),
-            self._generate_label_in_mention(),
-            self._generate_mention_in_label(),
-            self._generate_type_features(),
-            self._generate_sentence_bert_cosdist_mention_label(missing_sim_value=0.5),
-        )
-
-        feature_matrix = np.concatenate(feats, axis=1)
-
-        return feature_matrix
-
-    def get_target_vector(self, target_values_column: str) -> List[float]:
-        """
-        Get target vector (`y`) from data given a column containing the labels. If the `get_links_data_for_review` function of `heritageconnector.datastore.NERLoader` has been used
-        then this should be the `link_correct` column.
-
-        NOTE: to use this function, the DataFrame provided to the class instance should already be filtered so that there are no NaN values in `target_values_column`. Failure to do this
-        will result in this function raising a ValueError.
-
-        Args:
-            target_values_column (str): column name of DataFrame containing target values. Can either be [True, False] or [1, 0].
-
-        Returns:
-            List[float]: Values are either 1 (positive) or 0 (negative).
-        """
-
-        if target_values_column not in self.data.columns:
-            raise KeyError(
-                f"Column `{target_values_column}`` is not a column in the DataFrame that has been provided to this class instance (which you can access with `instance.data`)."
-            )
-
-        if self.data[target_values_column].isna().sum() > 0:
-            raise ValueError(
-                f"Column `{target_values_column}` contains some NaN values. Please fill or remove these and rerun."
-            )
-
-        if set(self.data[target_values_column]) not in ({1, 0}, {True, False}):
-            raise ValueError(
-                f"Column `{target_values_column}` contains values other than [1, 0] or [True, False]. Please fix these and rerun."
-            )
-
-        return list(1 * (self.data[target_values_column].values))
-
-    def get_feature_names(self) -> List[str]:
-        """
-        Get the name of each feature in X. Each element of the list corresponds to a column of X. This means that the list returned
-        will contain duplicate values if a feature spans more than one column of X.
-
-        Returns:
-            List[str]: features in X
-        """
-
-        return (
-            [
-                "fuzz_sort similarity (mention-title)",
-                "levenshtein similarity (mention-title)",
-                "jaro-winkler similarity (mention-title)",
-                "fuzz_sort similarity, ignoring suffixes (mention-title)",
-                "jaro-winkler similarity (context-context)",
-                "jaccard similarity (context-context)",
-                "sorensen-dice similarity (context-context)",
-                "label is in mention",
-                "mention is in label",
-            ]
-            + [f"entity type ({t})" for t in list(self.ent_type_encoder.categories_)[0]]
-            + [
-                f"candidate type ({t})"
-                for t in list(self.candidate_type_encoder.categories_)[0]
-            ]
-            + ["sBERT embedding cosine similarity (context-context)"]
-        )
