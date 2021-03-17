@@ -59,28 +59,30 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
             np.sort(data[candidate_type_col].unique()).reshape(-1, 1)
         )
 
+        self.ent_mention_col = ent_mention_col
+        self.ent_type_col = ent_type_col
+        self.ent_context_col = ent_context_col
+        self.candidate_title_col = candidate_title_col
+        self.candidate_type_col = candidate_type_col
+        self.candidate_context_col = candidate_context_col
+
         return self
 
+    # TODO: remove kwargs here. Column names should be set in `fit` above
     def transform(
         self,
         data: pd.DataFrame,
-        ent_mention_col: str,
-        ent_type_col: str,
-        ent_context_col: str,
-        candidate_title_col: str,
-        candidate_type_col: str,
-        candidate_context_col: str,
     ):
 
         # TODO: create lowercase copy of data here
         X = self._calculate_features(
             data,
-            ent_mention_col,
-            ent_type_col,
-            ent_context_col,
-            candidate_title_col,
-            candidate_type_col,
-            candidate_context_col,
+            self.ent_mention_col,
+            self.ent_type_col,
+            self.ent_context_col,
+            self.candidate_title_col,
+            self.candidate_type_col,
+            self.candidate_context_col,
         )
 
         return X
@@ -88,6 +90,7 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
     def fit_transform(
         self,
         data: pd.DataFrame,
+        y: List[float],
         ent_mention_col: str,
         ent_type_col: str,
         ent_context_col: str,
@@ -97,20 +100,14 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
     ):
         return self.fit(
             data,
-            ent_mention_col,
-            ent_type_col,
-            ent_context_col,
-            candidate_title_col,
-            candidate_type_col,
-            candidate_context_col,
+            ent_mention_col=ent_mention_col,
+            ent_type_col=ent_type_col,
+            ent_context_col=ent_context_col,
+            candidate_title_col=candidate_title_col,
+            candidate_type_col=candidate_type_col,
+            candidate_context_col=candidate_context_col,
         ).transform(
             data,
-            ent_mention_col,
-            ent_type_col,
-            ent_context_col,
-            candidate_title_col,
-            candidate_type_col,
-            candidate_context_col,
         )
 
     def get_feature_names(self) -> List[str]:
@@ -141,7 +138,7 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
                 f"candidate type ({t})"
                 for t in list(self.candidate_type_encoder.categories_)[0]
             ]
-            + ["sBERT embedding cosine similarity (mention-title)"]
+            # + ["sBERT embedding cosine similarity (mention-title)"]
             + ["sBERT embedding cosine similarity (context-context)"]
         )
 
@@ -192,11 +189,11 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
             ),
             self._generate_type_features(data[ent_type_col], data[candidate_type_col]),
             # TODO: make missing_sim_value a parameter of __init__
-            self._generate_sentence_bert_cosdist(
-                data[ent_mention_col],
-                data[candidate_title_col],
-                missing_sim_value=0.5,
-            ),
+            # self._generate_sentence_bert_cosdist(
+            #     data[ent_mention_col],
+            #     data[candidate_title_col],
+            #     missing_sim_value=0.5,
+            # ),
             self._generate_sentence_bert_cosdist(
                 data[ent_context_col],
                 data[candidate_context_col],
