@@ -24,7 +24,7 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
     - the candidate context, for example a description of the candidate (`candidate_context_col`)
 
     Other parameters are:
-    - `sbert_model` (str, Optional): the name of a pretrained model or the path to a custom model according to `sentence-transformers` docs [https://github.com/UKPLab/sentence-transformers].
+    - `sbert_model_name_or_path` (str, Optional): the name of a pretrained model or the path to a custom model according to `sentence-transformers` docs [https://github.com/UKPLab/sentence-transformers].
     - `suffix_list` (List[str], Optional): a feature is generated which is the fuzzywuzzy token_sort_ratio between the entity context and candidate context with suffixes removed. By default a list of
         Organisation suffixes from `hc_nlp.constants.ORG_LEGAL_SUFFIXES` is used.
 
@@ -35,11 +35,11 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
 
     def __init__(
         self,
-        sbert_model: str = "stsb-distilbert-base",
+        sbert_model_name_or_path: str = "stsb-distilbert-base",
         suffix_list: List[str] = ORG_LEGAL_SUFFIXES,
     ):
         self.suffix_list = suffix_list
-        self.bert_model = SentenceTransformer(sbert_model)
+        self.sbert_model_name_or_path = sbert_model_name_or_path
 
     def fit(
         self,
@@ -73,6 +73,7 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         self,
         data: pd.DataFrame,
     ):
+        self.sbert_model = SentenceTransformer(self.sbert_model_name_or_path)
 
         # TODO: create lowercase copy of data here
         X = self._calculate_features(
@@ -368,13 +369,13 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
 
         logger.info("Calculating sBERT embeddings... (1/2)")
         descriptions_a = col_a.astype(str).tolist()
-        description_embs_a = self.bert_model.encode(
+        description_embs_a = self.sbert_model.encode(
             descriptions_a, convert_to_tensor=True, show_progress_bar=True
         )
 
         logger.info("Calculating sBERT embeddings... (2/2)")
         descriptions_b = col_b.astype(str).tolist()
-        description_embs_b = self.bert_model.encode(
+        description_embs_b = self.sbert_model.encode(
             descriptions_b, convert_to_tensor=True, show_progress_bar=True
         )
 
