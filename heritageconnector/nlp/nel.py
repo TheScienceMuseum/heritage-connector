@@ -365,19 +365,33 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
     def _generate_sentence_bert_cosdist(
         self, col_a: pd.Series, col_b: pd.Series, **kwargs
     ) -> np.ndarray:
+        """
+        Embeddings are calculated on unique values of each column for efficiency.
+        For any comparisons whether either the value of `col_a` or `col_b` is NaN,
+        the value of optional kwarg `missing_sim_value` is used instead of the
+        cosine similarity between "nan" and a string.
+        """
         missing_similarity_value = kwargs.get("missing_sim_value", 0.5)
 
         logger.info("Calculating sBERT embeddings... (1/2)")
         descriptions_a = col_a.astype(str).tolist()
-        description_embs_a = self.sbert_model.encode(
-            descriptions_a, convert_to_tensor=True, show_progress_bar=True
+        descriptions_a_unique_vals, descriptions_a_unique_indices = np.unique(
+            descriptions_a, return_inverse=True
         )
+        description_embs_a_unique = self.sbert_model.encode(
+            descriptions_a_unique_vals, convert_to_tensor=True, show_progress_bar=True
+        )
+        description_embs_a = description_embs_a_unique[descriptions_a_unique_indices]
 
         logger.info("Calculating sBERT embeddings... (2/2)")
         descriptions_b = col_b.astype(str).tolist()
-        description_embs_b = self.sbert_model.encode(
-            descriptions_b, convert_to_tensor=True, show_progress_bar=True
+        descriptions_b_unique_vals, descriptions_b_unique_indices = np.unique(
+            descriptions_b, return_inverse=True
         )
+        description_embs_b_unique = self.sbert_model.encode(
+            descriptions_b_unique_vals, convert_to_tensor=True, show_progress_bar=True
+        )
+        description_embs_b = description_embs_b_unique[descriptions_b_unique_indices]
 
         cosine_scores = util.pytorch_cos_sim(description_embs_a, description_embs_b)
 

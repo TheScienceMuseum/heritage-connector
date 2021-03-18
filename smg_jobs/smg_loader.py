@@ -457,20 +457,42 @@ def preprocess_text_for_ner(text: str) -> str:
     return text
 
 
-def load_ner_annotations(model_type: str):
+def load_ner_annotations(
+    model_type: str,
+    nel_training_data_path: str,
+    linking_confidence_threshold: float = 0.5,
+):
+    # load NEL training data
+    df = pd.read_excel(nel_training_data_path, index_col=0)
+    df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
+        ~df["link_correct"].isnull(), "link_correct"
+    ].apply(int)
+    nel_train_data = df[(~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)]
+
+    source_description_field = (
+        target_description_field
+    ) = "data.http://www.w3.org/2001/XMLSchema#description"
+    target_title_field = "graph.@rdfs:label.@value"
+    target_alias_field = "graph.@skos:altLabel.@value"
+    target_type_field = "graph.@skos:hasTopConcept.@value"
+
     ner_loader = datastore.NERLoader(
         record_loader,
         source_es_index=config.ELASTIC_SEARCH_INDEX,
-        # TODO: update all these when using entity linking
-        source_description_field="",
-        target_es_index="",
-        target_title_field="",
-        target_description_field="",
-        target_type_field="",
+        source_description_field=source_description_field,
+        target_es_index=config.ELASTIC_SEARCH_INDEX,
+        target_title_field=target_title_field,
+        target_description_field=target_description_field,
+        target_type_field=target_type_field,
+        target_alias_field=target_alias_field,
         text_preprocess_func=preprocess_text_for_ner,
+        entity_types_to_link={"PERSON", "OBJECT", "ORG"},
     )
+
     _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=128)
-    ner_loader.load_entities_into_es()
+    ner_loader.get_link_candidates(candidates_per_entity_mention=10)
+    ner_loader.train_entity_linker(nel_train_data)
+    ner_loader.load_entities_into_es(linking_confidence_threshold)
 
 
 if __name__ == "__main__":
@@ -515,4 +537,7 @@ if __name__ == "__main__":
         "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
         "objects (locomotives & rolling stock)",
     )
-    # load_ner_annotations("en_core_web_lg")
+    load_ner_annotations(
+        "en_core_web_lg",
+        nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+    )

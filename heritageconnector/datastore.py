@@ -729,6 +729,8 @@ class NERLoader:
             BaseEstimator: trained classifier
         """
 
+        logger.info("Training entity linker...")
+
         extra_kwargs = {}
         if sbert_model is not None:
             extra_kwargs.update({"sbert_model": sbert_model})
@@ -836,7 +838,7 @@ class NERLoader:
 
         return self.entity_list
 
-    def load_entities_into_es_old(self):
+    def load_entities_into_es_no_links(self):
         logger.info(
             f"Loading {len(self._entity_list)} entities into {self.source_index}"
         )
@@ -860,10 +862,14 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def load_entities_into_es(self, link_confidence_threshold: float = 0.5):
+    def load_entities_into_es(self, linking_confidence_threshold: float = 0.5):
         logger.info(
             f"Loading {len(self._entity_list)} entities into {self.source_index}"
         )
+
+        if "link_candidates" not in pd.DataFrame(self._entity_list).columns:
+            self.load_entities_into_es_no_links()
+            return
 
         entity_df = self.entity_list_as_dataframe
         entities_with_link_candidates, entities_without_link_candidates = (
@@ -876,11 +882,12 @@ class NERLoader:
         # TODO: remove training data and add in ground truth values
 
         # predict True links for entities with link candidates
-        logger.info(f"Predicting True links for entity annotation with link candidates")
+        logger.info(f"Predicting links for entity annotations with link candidates")
         link_y_pred = self.clf.predict_proba(entities_with_link_candidates)[:, 1]
         entities_with_link_candidates["y_pred_proba"] = link_y_pred
         entities_with_link_candidates["y_pred"] = (
-            entities_with_link_candidates["y_pred_proba"] >= link_confidence_threshold
+            entities_with_link_candidates["y_pred_proba"]
+            >= linking_confidence_threshold
         )
 
         for _, group in entities_with_link_candidates.groupby(
