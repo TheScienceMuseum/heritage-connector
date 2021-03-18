@@ -24,9 +24,17 @@ from heritageconnector.namespace import (
 )
 from heritageconnector.utils.generic import paginate_generator, flatten_list_of_lists
 from heritageconnector.config import config
+from heritageconnector.nlp.nel import (
+    NELFeatureGenerator,
+    get_target_values_from_review_data,
+)
 from heritageconnector import logging, errors, best_spacy_pipeline
 import pandas as pd
 import spacy
+from sklearn.base import BaseEstimator
+from sklearn.pipeline import Pipeline
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import cross_validate
 
 logger = logging.get_logger(__name__)
 
@@ -524,13 +532,7 @@ class NERLoader:
         entity_types_to_link: Iterable[str] = [
             "PERSON",
             "ORG",
-            "NORP",
-            "FAC",
-            "LOC",
             "OBJECT",
-            "LANGUAGE",
-            "DATE",
-            "EVENT",
         ],
         text_preprocess_func: Optional[Callable[[str], str]] = None,
         entity_markers: Iterable[str] = ("[[", "]]"),
@@ -594,22 +596,23 @@ class NERLoader:
 
     @property
     def entity_list_as_dataframe(self) -> pd.DataFrame:
-        return pd.DataFrame(self._entity_list)
-
-    def get_links_data_for_review(self) -> pd.DataFrame:
-        """
-        Returns a DataFrame of only entity mentions with a set of link candidates,
-        with an entity-candidate pair on each line. Also creates a blank column for
-        review results.
-        """
-
         ent_df = pd.DataFrame(self._entity_list)
-        if "link_candidates" not in ent_df.columns:
-            raise ValueError(
-                "Entity linking candidates are not yet in entity data. Run `get_link_candidates` first."
-            )
 
-        ent_df = (
+        if "link_candidates" not in ent_df.columns:
+            return ent_df
+
+        # Get DataFrame of entity mentions without link candidates, either because they have types that haven't requested
+        # to be linked (link_candidates column isna()) or because no results were returned from the linking search
+        # (link candidates column is empty list).
+        ents_no_candidates_df = pd.concat(
+            [
+                ent_df[ent_df["link_candidates"].isna()],
+                ent_df[ent_df.astype(str)["link_candidates"] == "[]"],
+            ]
+        )
+
+        # Transform data with link candidates for easy review.
+        ents_with_candidates_df = (
             ent_df.dropna(subset=["link_candidates"])
             .set_index(
                 [
@@ -628,15 +631,17 @@ class NERLoader:
             .rename(columns={"level_6": "candidate_rank"})
         )
 
-        candidate_cols = ent_df[0].apply(pd.Series)
+        candidate_cols = ents_with_candidates_df[0].apply(pd.Series)
         candidate_cols = candidate_cols.rename(
             columns={col: f"candidate_{col}" for col in candidate_cols}
         )
 
-        review_df = (
-            pd.concat([ent_df, candidate_cols], axis=1).drop(columns=[0]).fillna("")
+        ents_with_candidates_transformed_df = (
+            pd.concat([ents_with_candidates_df, candidate_cols], axis=1)
+            .drop(columns=[0])
+            .fillna("")
         )
-        review_df["link_correct"] = ""
+        ents_with_candidates_transformed_df["link_correct"] = ""
 
         cols_order = [
             "item_uri",
@@ -653,10 +658,109 @@ class NERLoader:
             "candidate_description",
             "item_description",
         ]
+        other_cols = [
+            col
+            for col in ents_with_candidates_transformed_df.columns
+            if col not in cols_order
+        ]
 
-        other_cols = [col for col in review_df.columns if col not in cols_order]
+        # Return the concatenation of the DataFrame with links and the DataFrame without links.
+        df_linked_and_unlinked = pd.concat(
+            [ents_no_candidates_df, ents_with_candidates_transformed_df]
+        )
 
-        return review_df[cols_order + other_cols]
+        df_linked_and_unlinked = df_linked_and_unlinked[cols_order + other_cols]
+        # ents_with_candidates_transformed_df = ents_with_candidates_transformed_df[cols_order + other_cols]
+
+        # for debugging: check all records have ended up in final dataframe
+        assert set(df_linked_and_unlinked["item_uri"]) == set(
+            [item["item_uri"] for item in self._entity_list]
+        )
+
+        return df_linked_and_unlinked
+
+    def get_links_data_for_review(self) -> pd.DataFrame:
+        """
+        Returns a DataFrame of only entity mentions with a set of link candidates,
+        with an entity-candidate pair on each line. Also creates a blank column for
+        review results.
+        """
+
+        links_df = self.entity_list_as_dataframe.copy()
+        links_df = links_df[~links_df["candidate_rank"].isnull()]
+
+        return links_df
+
+    def train_entity_linker(
+        self,
+        train_data: pd.DataFrame,
+        ent_mention_col: str = "ent_text",
+        ent_type_col: str = "ent_label",
+        ent_context_col: str = "item_description",
+        candidate_title_col: str = "candidate_title",
+        candidate_type_col: str = "candidate_type",
+        candidate_context_col: str = "candidate_description",
+        target_col: str = "link_correct",
+        sbert_model: Optional[str] = None,
+        suffix_list: Optional[str] = None,
+        linking_classifier: BaseEstimator = MLPClassifier,
+        classifier_kwargs: dict = {"random_state": 42, "max_iter": 1000},
+        random_seed: int = 42,
+    ) -> BaseEstimator:
+        """
+        Train entity linking binary classifier using a DataFrame such as the one returned by `NERLoader.get_links_for_review`.
+        Classifier is also saved as `NERLoader.clf`.
+
+        Args:
+            train_data (pd.DataFrame): [description]
+            ent_mention_col (str, optional): [description]. Defaults to "ent_text".
+            ent_type_col (str, optional): [description]. Defaults to "ent_label".
+            ent_context_col (str, optional): [description]. Defaults to "item_description".
+            candidate_title_col (str, optional): [description]. Defaults to "candidate_title".
+            candidate_type_col (str, optional): [description]. Defaults to "candidate_type".
+            candidate_context_col (str, optional): [description]. Defaults to "candidate_description".
+            target_col (str, optional): [description]. Defaults to "link_correct".
+            linking_classifier (BaseEstimator, optional): scikit-learn classifier. Must have a `fit(X, y, **kwargs)` method. Defaults to MLPClassifier.
+            classifier_kwargs (dict, optional): kwargs to pass into `linking_classifier`. If a "random_state" value is not set, it's set as the value of the `random_seed` argument.
+                Defaults to {"random_state": 42, "max_iter": 1000}.
+            random_seed (int, optional): Used in all random generators. Defaults to 42.
+
+        Returns:
+            BaseEstimator: trained classifier
+        """
+
+        extra_kwargs = {}
+        if sbert_model is not None:
+            extra_kwargs.update({"sbert_model": sbert_model})
+        if suffix_list is not None:
+            extra_kwargs.update({"suffix_list": suffix_list})
+
+        if "random_state" not in classifier_kwargs.keys():
+            classifier_kwargs["random_state"] = random_seed
+
+        nel_pipeline = Pipeline(
+            [
+                ("featgen", NELFeatureGenerator()),
+                ("classifier", linking_classifier(**classifier_kwargs)),
+            ]
+        )
+
+        y_true = get_target_values_from_review_data(train_data, target_col)
+
+        nel_pipeline = nel_pipeline.fit(
+            train_data,
+            y=y_true,
+            featgen__ent_mention_col=ent_mention_col,
+            featgen__ent_type_col=ent_type_col,
+            featgen__ent_context_col=ent_context_col,
+            featgen__candidate_title_col=candidate_title_col,
+            featgen__candidate_type_col=candidate_type_col,
+            featgen__candidate_context_col=candidate_context_col,
+        )
+
+        self.clf = nel_pipeline
+
+        return self.clf
 
     def _get_ner_model(self, model_type):
         """Get best spacy NER model"""
@@ -732,7 +836,7 @@ class NERLoader:
 
         return self.entity_list
 
-    def load_entities_into_es(self):
+    def load_entities_into_es_old(self):
         logger.info(
             f"Loading {len(self._entity_list)} entities into {self.source_index}"
         )
@@ -752,6 +856,96 @@ class NERLoader:
                 predicate=rdf_predicate,
                 subject_col="item_uri",
                 object_col="ent_text",
+                object_is_uri=False,
+                progress_bar=False,
+            )
+
+    def load_entities_into_es(self, link_confidence_threshold: float = 0.5):
+        logger.info(
+            f"Loading {len(self._entity_list)} entities into {self.source_index}"
+        )
+
+        entity_df = self.entity_list_as_dataframe
+        entities_with_link_candidates, entities_without_link_candidates = (
+            entity_df[~entity_df["candidate_rank"].isna()],
+            entity_df[entity_df["candidate_rank"].isna()],
+        )
+        entity_triples_unlinked = []
+        entity_triples_linked = []
+
+        # TODO: remove training data and add in ground truth values
+
+        # predict True links for entities with link candidates
+        logger.info(f"Predicting True links for entity annotation with link candidates")
+        link_y_pred = self.clf.predict_proba(entities_with_link_candidates)[:, 1]
+        entities_with_link_candidates["y_pred_proba"] = link_y_pred
+        entities_with_link_candidates["y_pred"] = (
+            entities_with_link_candidates["y_pred_proba"] >= link_confidence_threshold
+        )
+
+        for _, group in entities_with_link_candidates.groupby(
+            ["item_uri", "item_description_with_ent"]
+        ):
+            group_uri = group["item_uri"].iloc[0]
+            group_ent_type = group["ent_label"].iloc[0]
+            group_ent_text = group["ent_text"].iloc[0]
+            group_rdf_predicate = HC["entity" + group_ent_type]
+
+            if sum(group["y_pred"]) > 0:
+                # there is a record that has been predicted to be a link for this entity mention
+                group_pos_candidates = group.loc[
+                    group["y_pred"] == True, "candidate_uri"  # noqa: E712
+                ]
+
+                entity_triples_linked += [
+                    {
+                        "item_uri": group_uri,
+                        "rdf_predicate": group_rdf_predicate,
+                        "linked_value": uri,
+                    }
+                    for uri in group_pos_candidates
+                ]
+
+            else:
+                # there is no predicted linked record, so just add the text
+                entity_triples_unlinked.append(
+                    {
+                        "item_uri": group_uri,
+                        "rdf_predicate": group_rdf_predicate,
+                        "entity_text": group_ent_text,
+                    }
+                )
+
+        # add text entities in for entities with no link candidates
+        for _, row in entities_without_link_candidates.iterrows():
+            entity_triples_unlinked.append(
+                {
+                    "item_uri": row["item_uri"],
+                    "rdf_predicate": HC["entity" + row["ent_label"]],
+                    "entity_text": row["ent_text"],
+                }
+            )
+
+        # load into JSON-LD index
+        logger.info(
+            f"Loading {len(entity_triples_linked)} linked and {len(entity_triples_unlinked)} unlinked entities into {self.source_index}"
+        )
+        for _, group in pd.DataFrame(entity_triples_linked).groupby("rdf_predicate"):
+            self.record_loader.add_triples(
+                group,
+                predicate=group["rdf_predicate"].iloc[0],
+                subject_col="item_uri",
+                object_col="linked_value",
+                object_is_uri=True,
+                progress_bar=False,
+            )
+
+        for _, group in pd.DataFrame(entity_triples_unlinked).groupby("rdf_predicate"):
+            self.record_loader.add_triples(
+                group,
+                predicate=group["rdf_predicate"].iloc[0],
+                subject_col="item_uri",
+                object_col="entity_text",
                 object_is_uri=False,
                 progress_bar=False,
             )

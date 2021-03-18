@@ -394,3 +394,22 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         np.put(sim_scores, nan_value_locs, [missing_similarity_value])
 
         return sim_scores.reshape(-1, 1)
+
+
+def get_target_values_from_review_data(data: pd.DataFrame, target_values_column: str):
+    if target_values_column not in data.columns:
+        raise KeyError(
+            f"Column `{target_values_column}`` is not a column in the DataFrame that has been provided to this class instance (which you can access with `instance.data`)."
+        )
+
+    if data[target_values_column].isna().sum() > 0:
+        raise ValueError(
+            f"Column `{target_values_column}` contains some NaN values. Please fill or remove these and rerun."
+        )
+
+    if set(data[target_values_column]) not in ({1, 0}, {True, False}):
+        raise ValueError(
+            f"Column `{target_values_column}` contains values other than [1, 0] or [True, False]. Please fix these and rerun."
+        )
+
+    return list(1 * (data[target_values_column].values))
