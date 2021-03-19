@@ -30,6 +30,7 @@ from heritageconnector.nlp.nel import (
 )
 from heritageconnector import logging, errors, best_spacy_pipeline
 import pandas as pd
+import numpy as np
 import spacy
 from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
@@ -872,6 +873,7 @@ class NERLoader:
             return
 
         entity_df = self.entity_list_as_dataframe
+        # TODO: batch this process to avoid outofmemoryerror
         entities_with_link_candidates, entities_without_link_candidates = (
             entity_df[~entity_df["candidate_rank"].isna()],
             entity_df[entity_df["candidate_rank"].isna()],
@@ -883,12 +885,19 @@ class NERLoader:
 
         # predict True links for entities with link candidates
         logger.info(f"Predicting links for entity annotations with link candidates")
-        link_y_pred = self.clf.predict_proba(entities_with_link_candidates)[:, 1]
-        entities_with_link_candidates["y_pred_proba"] = link_y_pred
-        entities_with_link_candidates["y_pred"] = (
-            entities_with_link_candidates["y_pred_proba"]
-            >= linking_confidence_threshold
+
+        # TODO: this is a hotfix so all prediction probabilities don't have to be stored in memory.
+        # Find a more robust and configurable solution.
+        entities_with_link_candidates_split = np.array_split(
+            entities_with_link_candidates, 10
         )
+        link_y_pred_all = []
+        for batch in entities_with_link_candidates_split:
+            link_y_pred_all += list(
+                self.clf.predict_proba(batch)[:, 1] >= linking_confidence_threshold
+            )
+
+        entities_with_link_candidates["y_pred"] = link_y_pred_all
 
         for _, group in entities_with_link_candidates.groupby(
             ["item_uri", "item_description_with_ent"]
