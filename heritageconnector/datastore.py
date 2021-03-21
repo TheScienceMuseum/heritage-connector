@@ -863,108 +863,127 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def load_entities_into_es(self, linking_confidence_threshold: float = 0.5):
+    def load_entities_into_es(
+        self, linking_confidence_threshold: float = 0.5, batch_size: float = 32768
+    ):
+        # TODO: separate candidates with links and without links here and load them in separately.
+
         logger.info(
-            f"Loading {len(self._entity_list)} entities into {self.source_index}"
+            f"Loading {len(self._entity_list)} entities into {self.source_index} in batches of {batch_size}"
         )
+
+        def split_dataframe(df: pd.DataFrame, chunk_size: int):
+            for start in range(0, df.shape[0], chunk_size):
+                yield df.iloc[start : start + chunk_size]
 
         if "link_candidates" not in pd.DataFrame(self._entity_list).columns:
             self.load_entities_into_es_no_links()
             return
 
+        # TODO: remove training data and add in ground truth values separately
+
         entity_df = self.entity_list_as_dataframe
-        # TODO: batch this process to avoid outofmemoryerror
+        num_batches = len(entity_df) // batch_size + 1
+
+        for entity_df_batch in tqdm(
+            split_dataframe(entity_df, batch_size), total=num_batches
+        ):
+            self._load_entities_into_es(
+                entity_df_batch,
+                linking_confidence_threshold=linking_confidence_threshold,
+            )
+
+    def _load_entities_into_es(
+        self, data: pd.DataFrame, linking_confidence_threshold: float = 0.5
+    ):
         entities_with_link_candidates, entities_without_link_candidates = (
-            entity_df[~entity_df["candidate_rank"].isna()],
-            entity_df[entity_df["candidate_rank"].isna()],
+            data[~data["candidate_rank"].isna()],
+            data[data["candidate_rank"].isna()],
         )
         entity_triples_unlinked = []
         entity_triples_linked = []
 
-        # TODO: remove training data and add in ground truth values
-
-        # predict True links for entities with link candidates
-        logger.info(f"Predicting links for entity annotations with link candidates")
-
-        # TODO: this is a hotfix so all prediction probabilities don't have to be stored in memory.
-        # Find a more robust and configurable solution.
-        entities_with_link_candidates_split = np.array_split(
-            entities_with_link_candidates, 10
-        )
-        link_y_pred_all = []
-        for batch in entities_with_link_candidates_split:
-            link_y_pred_all += list(
-                self.clf.predict_proba(batch)[:, 1] >= linking_confidence_threshold
+        if len(entities_with_link_candidates) > 0:
+            # predict True links for entities with link candidates
+            logger.info(f"Predicting links for entity annotations with link candidates")
+            entities_with_link_candidates["y_pred"] = list(
+                self.clf.predict_proba(entities_with_link_candidates)[:, 1]
+                >= linking_confidence_threshold
             )
 
-        entities_with_link_candidates["y_pred"] = link_y_pred_all
+            for _, group in entities_with_link_candidates.groupby(
+                ["item_uri", "item_description_with_ent"]
+            ):
+                group_uri = group["item_uri"].iloc[0]
+                group_ent_type = group["ent_label"].iloc[0]
+                group_ent_text = group["ent_text"].iloc[0]
+                group_rdf_predicate = HC["entity" + group_ent_type]
 
-        for _, group in entities_with_link_candidates.groupby(
-            ["item_uri", "item_description_with_ent"]
-        ):
-            group_uri = group["item_uri"].iloc[0]
-            group_ent_type = group["ent_label"].iloc[0]
-            group_ent_text = group["ent_text"].iloc[0]
-            group_rdf_predicate = HC["entity" + group_ent_type]
+                if sum(group["y_pred"]) > 0:
+                    # there is a record that has been predicted to be a link for this entity mention
+                    group_pos_candidates = group.loc[
+                        group["y_pred"] == True, "candidate_uri"  # noqa: E712
+                    ]
 
-            if sum(group["y_pred"]) > 0:
-                # there is a record that has been predicted to be a link for this entity mention
-                group_pos_candidates = group.loc[
-                    group["y_pred"] == True, "candidate_uri"  # noqa: E712
-                ]
+                    entity_triples_linked += [
+                        {
+                            "item_uri": group_uri,
+                            "rdf_predicate": group_rdf_predicate,
+                            "linked_value": uri,
+                        }
+                        for uri in group_pos_candidates
+                    ]
 
-                entity_triples_linked += [
-                    {
-                        "item_uri": group_uri,
-                        "rdf_predicate": group_rdf_predicate,
-                        "linked_value": uri,
-                    }
-                    for uri in group_pos_candidates
-                ]
+                else:
+                    # there is no predicted linked record, so just add the text
+                    entity_triples_unlinked.append(
+                        {
+                            "item_uri": group_uri,
+                            "rdf_predicate": group_rdf_predicate,
+                            "entity_text": group_ent_text,
+                        }
+                    )
 
-            else:
-                # there is no predicted linked record, so just add the text
+        if len(entities_without_link_candidates) > 0:
+            # add text entities in for entities with no link candidates
+            for _, row in entities_without_link_candidates.iterrows():
                 entity_triples_unlinked.append(
                     {
-                        "item_uri": group_uri,
-                        "rdf_predicate": group_rdf_predicate,
-                        "entity_text": group_ent_text,
+                        "item_uri": row["item_uri"],
+                        "rdf_predicate": HC["entity" + row["ent_label"]],
+                        "entity_text": row["ent_text"],
                     }
                 )
-
-        # add text entities in for entities with no link candidates
-        for _, row in entities_without_link_candidates.iterrows():
-            entity_triples_unlinked.append(
-                {
-                    "item_uri": row["item_uri"],
-                    "rdf_predicate": HC["entity" + row["ent_label"]],
-                    "entity_text": row["ent_text"],
-                }
-            )
 
         # load into JSON-LD index
         logger.info(
             f"Loading {len(entity_triples_linked)} linked and {len(entity_triples_unlinked)} unlinked entities into {self.source_index}"
         )
-        for _, group in pd.DataFrame(entity_triples_linked).groupby("rdf_predicate"):
-            self.record_loader.add_triples(
-                group,
-                predicate=group["rdf_predicate"].iloc[0],
-                subject_col="item_uri",
-                object_col="linked_value",
-                object_is_uri=True,
-                progress_bar=False,
-            )
+        if len(entity_triples_linked) > 0:
+            for _, group in pd.DataFrame(entity_triples_linked).groupby(
+                "rdf_predicate"
+            ):
+                self.record_loader.add_triples(
+                    group,
+                    predicate=group["rdf_predicate"].iloc[0],
+                    subject_col="item_uri",
+                    object_col="linked_value",
+                    object_is_uri=True,
+                    progress_bar=False,
+                )
 
-        for _, group in pd.DataFrame(entity_triples_unlinked).groupby("rdf_predicate"):
-            self.record_loader.add_triples(
-                group,
-                predicate=group["rdf_predicate"].iloc[0],
-                subject_col="item_uri",
-                object_col="entity_text",
-                object_is_uri=False,
-                progress_bar=False,
-            )
+        if len(entity_triples_unlinked) > 0:
+            for _, group in pd.DataFrame(entity_triples_unlinked).groupby(
+                "rdf_predicate"
+            ):
+                self.record_loader.add_triples(
+                    group,
+                    predicate=group["rdf_predicate"].iloc[0],
+                    subject_col="item_uri",
+                    object_col="entity_text",
+                    object_is_uri=False,
+                    progress_bar=False,
+                )
 
     def get_link_candidates(self, candidates_per_entity_mention: int) -> List[dict]:
         """Get link candidates for each of the items in `entity_list` by searching the entity mention in

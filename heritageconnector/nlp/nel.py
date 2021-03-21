@@ -373,23 +373,23 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         """
         missing_similarity_value = kwargs.get("missing_sim_value", 0.5)
 
-        logger.info("Calculating sBERT embeddings... (1/2)")
+        logger.debug("Calculating sBERT embeddings... (1/2)")
         descriptions_a = col_a.astype(str).tolist()
         descriptions_a_unique_vals, descriptions_a_unique_indices = np.unique(
             descriptions_a, return_inverse=True
         )
         description_embs_a_unique = self.sbert_model.encode(
-            descriptions_a_unique_vals, convert_to_tensor=True, show_progress_bar=True
+            descriptions_a_unique_vals, convert_to_tensor=True, show_progress_bar=False
         )
         description_embs_a = description_embs_a_unique[descriptions_a_unique_indices]
 
-        logger.info("Calculating sBERT embeddings... (2/2)")
+        logger.debug("Calculating sBERT embeddings... (2/2)")
         descriptions_b = col_b.astype(str).tolist()
         descriptions_b_unique_vals, descriptions_b_unique_indices = np.unique(
             descriptions_b, return_inverse=True
         )
         description_embs_b_unique = self.sbert_model.encode(
-            descriptions_b_unique_vals, convert_to_tensor=True, show_progress_bar=True
+            descriptions_b_unique_vals, convert_to_tensor=True, show_progress_bar=False
         )
         description_embs_b = description_embs_b_unique[descriptions_b_unique_indices]
 

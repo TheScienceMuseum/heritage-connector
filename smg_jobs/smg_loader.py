@@ -492,7 +492,7 @@ def load_ner_annotations(
     _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=128)
     ner_loader.get_link_candidates(candidates_per_entity_mention=10)
     ner_loader.train_entity_linker(nel_train_data)
-    ner_loader.load_entities_into_es(linking_confidence_threshold)
+    ner_loader.load_entities_into_es(linking_confidence_threshold, batch_size=32768)
 
 
 if __name__ == "__main__":
