@@ -19,3 +19,4 @@ s3fs
 hc-nlp>=0.3.4
 sentence-transformers>=0.3.0
 textdistance>=4.2.1
+openpyxl
