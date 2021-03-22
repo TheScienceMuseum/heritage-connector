@@ -1189,8 +1189,6 @@ class NERLoader:
             Generator[List[Tuple[str, str]]]: generator of lists with length `self.batch_size`, where each list contains `(uri, description)` tuples.
         """
 
-        # TODO: make description field follow source description from class instance and rename function.
-
         if random_sample:
             es_query = {
                 "query": {
@@ -1200,7 +1198,7 @@ class NERLoader:
                                 "must": [
                                     {
                                         "exists": {
-                                            "field": "data.http://www.w3.org/2001/XMLSchema#description"
+                                            "field": self.target_fields["description"]
                                         }
                                     },
                                 ]
@@ -1215,11 +1213,7 @@ class NERLoader:
                 "query": {
                     "bool": {
                         "must": [
-                            {
-                                "exists": {
-                                    "field": "data.http://www.w3.org/2001/XMLSchema#description"
-                                }
-                            },
+                            {"exists": {"field": self.target_fields["description"]}},
                         ]
                     }
                 }
@@ -1239,9 +1233,9 @@ class NERLoader:
             (
                 doc["_id"],
                 self.text_preprocess_func(
-                    doc["_source"]["data"][
-                        "http://www.w3.org/2001/XMLSchema#description"
-                    ]
+                    self._get_dict_field_from_dot_notation(
+                        doc, self.target_fields["description"]
+                    )
                 ),
             )
             for doc in doc_generator
