@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.base import BaseEstimator, TransformerMixin
 from sentence_transformers import SentenceTransformer, util
@@ -24,7 +24,7 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
     - the candidate context, for example a description of the candidate (`candidate_context_col`)
 
     Other parameters are:
-    - `sbert_model_name_or_path` (str, Optional): the name of a pretrained model or the path to a custom model according to `sentence-transformers` docs [https://github.com/UKPLab/sentence-transformers].
+    - `sbert_model_name_or_path` (str, Optional): the name of a pretrained model or the path to a custom model according to `sentence-transformers` docs [https://github.com/UKPLab/sentence-transformers]. The model should be uncased (not case-sensitive).
     - `suffix_list` (List[str], Optional): a feature is generated which is the fuzzywuzzy token_sort_ratio between the entity context and candidate context with suffixes removed. By default a list of
         Organisation suffixes from `hc_nlp.constants.ORG_LEGAL_SUFFIXES` is used.
 
@@ -51,14 +51,25 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         candidate_type_col: str,
         candidate_context_col: str,
     ):
-        # fit one-hot-encoders: these are used for generating the entity type and candidate type features
-        self.ent_type_encoder = OneHotEncoder().fit(
-            np.sort(data[ent_type_col].unique()).reshape(-1, 1)
-        )
-        self.candidate_type_encoder = OneHotEncoder().fit(
-            np.sort(data[candidate_type_col].unique()).reshape(-1, 1)
-        )
+        """
+        Fit feature generator. This sets up the one-hot-encoders for entity and candidate type
+        as well as the DataFrame columns for any data passed to the `NELFeatureGenerator.transform`
+        method.
 
+        Args:
+            data (pd.DataFrame)
+            ent_mention_col (str): column name of the entity mention
+            ent_type_col (str): column name of the entity type
+            ent_context_col (str): column name of the entity context
+            candidate_title_col (str): column name of the candidate title
+            candidate_type_col (str): column name of the candidate type
+            candidate_context_col (str): column name of the candidate context
+
+        Returns:
+            self: trained `NELFeatureGenerator` instance
+        """
+        # Set dataframe columns. This is done here due to the constraint that the `transform` method of a scikit-learn
+        # estimator must only have a `data` argument.
         self.ent_mention_col = ent_mention_col
         self.ent_type_col = ent_type_col
         self.ent_context_col = ent_context_col
@@ -66,16 +77,48 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         self.candidate_type_col = candidate_type_col
         self.candidate_context_col = candidate_context_col
 
+        self.all_cols = {
+            "ent_mention_col": self.ent_mention_col,
+            "ent_context_col": self.ent_context_col,
+            "ent_type_col": self.ent_type_col,
+            "candidate_title_col": self.candidate_title_col,
+            "candidate_context_col": self.candidate_context_col,
+            "candidate_type_col": self.candidate_type_col,
+        }
+
+        # Fit one-hot-encoders: these are used for generating the entity type and candidate type features
+        self.ent_type_encoder = OneHotEncoder().fit(
+            np.sort(data[ent_type_col].unique()).reshape(-1, 1)
+        )
+        self.candidate_type_encoder = OneHotEncoder().fit(
+            np.sort(data[candidate_type_col].unique()).reshape(-1, 1)
+        )
+
         return self
 
-    # TODO: remove kwargs here. Column names should be set in `fit` above
     def transform(
         self,
         data: pd.DataFrame,
-    ):
+    ) -> np.ndarray:
+        """
+        Transform data. All transforms are done on a lowercased version of the data.
+
+        Args:
+            data (pd.DataFrame)
+
+        Raises:
+            ValueError: if any of the required columns are not in `data`
+
+        Returns:
+            X (np.ndarray): feature vector. Columns are features, rows correspond to rows in `data`.
+        """
+
+        missing_columns = len(set(self.all_cols.values()) - set(data.columns))
+        if missing_columns > 0:
+            raise ValueError(f"Columns {missing_columns} are not in the provided data.")
+
         self.sbert_model = SentenceTransformer(self.sbert_model_name_or_path)
 
-        # TODO: create lowercase copy of data here
         X = self._calculate_features(
             data,
             self.ent_mention_col,
@@ -99,6 +142,9 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         candidate_type_col: str,
         candidate_context_col: str,
     ):
+        """
+        Fit the transformer and then return the transformed data.
+        """
         return self.fit(
             data,
             ent_mention_col=ent_mention_col,
@@ -111,7 +157,21 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
             data,
         )
 
-    def get_feature_names(self) -> List[str]:
+    @property
+    def column_names(self) -> Dict[str, str]:
+        """
+        Return a dictionary of `{column_role: column name, ...}`
+        """
+
+        if hasattr(self, "all_cols"):
+            return self.all_cols
+        else:
+            raise Exception(
+                "Transformer has not been fit yet so there are no column names. Call `NELFeatureGenerator.fit` first."
+            )
+
+    @property
+    def feature_names(self) -> List[str]:
         """
         Get the name of each feature in X. Each element of the list corresponds to a column of X. This means that the list returned
         will contain duplicate values if a feature spans more than one column of X.
@@ -119,8 +179,6 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         Returns:
             List[str]: features in X
         """
-
-        # TODO: rewrite for scikit-learn ecosystem
 
         return (
             [
@@ -139,7 +197,6 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
                 f"candidate type ({t})"
                 for t in list(self.candidate_type_encoder.categories_)[0]
             ]
-            # + ["sBERT embedding cosine similarity (mention-title)"]
             + ["sBERT embedding cosine similarity (context-context)"]
         )
 
@@ -189,15 +246,10 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
                 data[candidate_title_col], data[ent_mention_col]
             ),
             self._generate_type_features(data[ent_type_col], data[candidate_type_col]),
-            # TODO: make missing_sim_value a parameter of __init__
-            # self._generate_sentence_bert_cosdist(
-            #     data[ent_mention_col],
-            #     data[candidate_title_col],
-            #     missing_sim_value=0.5,
-            # ),
             self._generate_sentence_bert_cosdist(
                 data[ent_context_col],
                 data[candidate_context_col],
+                # TODO: make missing_sim_value an argument to __init__?
                 missing_sim_value=0.5,
             ),
         )
@@ -209,9 +261,9 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
     @staticmethod
     def _remove_suffixes(text: str, suffix_list: List[str]) -> str:
         """
-        Returns lowercased version of text with any of the suffixes in suffix_list removed. Case-insensitive.
+        Returns text with any of the suffixes in suffix_list removed. Detection of suffixes is case-insensitive.
         """
-        mod_text = text[:-1].lower() if text[-1] == "." else text.lower()
+        mod_text = text[:-1] if text[-1] == "." else text
 
         for suffix in suffix_list:
             if mod_text.endswith(suffix.lower()):
@@ -341,10 +393,7 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         n_records = len(col_a)
 
         return np.array(
-            [
-                [float(col_a.iloc[idx].lower() in col_b.iloc[idx].lower())]
-                for idx in range(n_records)
-            ]
+            [[float(col_a.iloc[idx] in col_b.iloc[idx])] for idx in range(n_records)]
         )
 
     def _generate_type_features(
