@@ -22,7 +22,11 @@ from heritageconnector.namespace import (
     HC,
     get_jsonld_context,
 )
-from heritageconnector.utils.generic import paginate_generator, flatten_list_of_lists
+from heritageconnector.utils.generic import (
+    paginate_generator,
+    paginate_dataframe,
+    flatten_list_of_lists,
+)
 from heritageconnector.config import config
 from heritageconnector.nlp.nel import (
     NELFeatureGenerator,
@@ -765,6 +769,14 @@ class NERLoader:
 
         return self.clf
 
+    @property
+    def has_trained_linker(self) -> bool:
+        """
+        Returns True if there appears to be a trained entity linker; False if not.
+        """
+
+        return True if hasattr(self, "clf") else False
+
     def _get_ner_model(self, model_type):
         """Get best spacy NER model"""
         return best_spacy_pipeline.load_model(model_type)
@@ -864,101 +876,131 @@ class NERLoader:
             )
 
     def load_entities_into_es(
-        self, linking_confidence_threshold: float = 0.5, batch_size: float = 32768
+        self,
+        linking_confidence_threshold: float = 0.5,
+        batch_size: float = 32768,
+        force_load_without_linker: bool = False,
     ):
-        # TODO: separate candidates with links and without links here and load them in separately.
+        """
+        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates`),
+        they are loaded in as triples with the entity text as the object. If some entities have link candidates, then for these
+        entities the positive candidates are predicted using the entity linking classifier (which has been trained using
+        `NERLoader.train_entity_linker`), and the detected entities with predicted candidates are loaded in with the candidate
+        URI as the object.
 
+        Args:
+            linking_confidence_threshold (float, optional): [description]. Defaults to 0.5.
+            batch_size (float, optional): [description]. Defaults to 32768.
+            force_load_without_linker (bool, optional): By default the load will exit if link candidates have been fetched but there is
+            no trained linked. Setting this flag to True disables this behaviour. Defaults to False.
+        """
+        # TODO: remove training data and add in ground truth values separately
         logger.info(
-            f"Loading {len(self._entity_list)} entities into {self.source_index} in batches of {batch_size}"
+            f"Loading {len(self._entity_list)} entities into {self.source_index}"
         )
 
-        def split_dataframe(df: pd.DataFrame, chunk_size: int):
-            for start in range(0, df.shape[0], chunk_size):
-                yield df.iloc[start : start + chunk_size]
+        entity_df = self.entity_list_as_dataframe
 
-        if "link_candidates" not in pd.DataFrame(self._entity_list).columns:
-            self.load_entities_into_es_no_links()
+        if "candidate_rank" not in entity_df.columns:
+            # there are no link candidates so we can load everything in and stop here
+            self._load_entities_into_es_no_link_candidates(entity_df, progress_bar=True)
             return
 
-        # TODO: remove training data and add in ground truth values separately
+        if self.has_trained_linker is False:
+            if force_load_without_linker is False:
+                raise Exception(
+                    "Link candidates have been fetched but there is no trained classifier, meaning only entity text will be loaded in. Rerun `NERLoader.load_entities_into_es` with the flag `force_load_without_linker` set to True if you want this, else train an entity linker using `NERLoader.train_entity_linker(train_data)`."
+                )
+            else:
+                # This flag means we load everything in as if it has no links and stop here.
+                # First we drop duplicate entity rows so duplicate triples aren't loaded in.
+                logger.info(
+                    "Flag `force_load_without_linker` has been set to True, so all entities are being loaded with the entity text as the object."
+                )
+                entity_df_unique = entity_df.drop_duplicates(
+                    subset=["item_uri", "ent_label", "item_description_with_ent"],
+                    ignore_index=True,
+                )
+                self._load_entities_into_es_no_link_candidates(
+                    entity_df_unique, progress_bar=True
+                )
+                return
 
-        entity_df = self.entity_list_as_dataframe
+        entities_with_link_candidates, entities_without_link_candidates = (
+            entity_df[~entity_df["candidate_rank"].isna()],
+            entity_df[entity_df["candidate_rank"].isna()],
+        )
+
+        logger.info("Loading entity mentions with no link candidates by type...")
+        self._load_entities_into_es_no_link_candidates(
+            entities_without_link_candidates, progress_bar=True
+        )
+
         num_batches = len(entity_df) // batch_size + 1
 
-        for entity_df_batch in tqdm(
-            split_dataframe(entity_df, batch_size), total=num_batches
+        logger.info(
+            f"Predicting links for entity mentions with link candidates and loading them in, in batches of {batch_size}..."
+        )
+        for data_batch in tqdm(
+            paginate_dataframe(entities_with_link_candidates, batch_size),
+            total=num_batches,
+            unit="batch",
         ):
-            self._load_entities_into_es(
-                entity_df_batch,
+            self._predict_best_links_from_candidates_and_load_into_es(
+                data_batch,
                 linking_confidence_threshold=linking_confidence_threshold,
             )
 
-    def _load_entities_into_es(
+    def _predict_best_links_from_candidates_and_load_into_es(
         self, data: pd.DataFrame, linking_confidence_threshold: float = 0.5
     ):
-        entities_with_link_candidates, entities_without_link_candidates = (
-            data[~data["candidate_rank"].isna()],
-            data[data["candidate_rank"].isna()],
-        )
+        """
+        Predict whether each row in `data` represents a link, then load in:
+            - entity mentions which have >0 linked records as `(item_uri, HC_TYPE, linked_item_uri)` triples;
+            - entity mentions which have 0 linked records as `(item_uri, HC_TYPE, entity_text)` triples.
+        """
         entity_triples_unlinked = []
         entity_triples_linked = []
 
-        if len(entities_with_link_candidates) > 0:
-            # predict True links for entities with link candidates
-            logger.info(f"Predicting links for entity annotations with link candidates")
-            entities_with_link_candidates["y_pred"] = list(
-                self.clf.predict_proba(entities_with_link_candidates)[:, 1]
-                >= linking_confidence_threshold
-            )
+        # Predict True links for entities with link candidates
+        data["y_pred"] = list(
+            self.clf.predict_proba(data)[:, 1] >= linking_confidence_threshold
+        )
 
-            for _, group in entities_with_link_candidates.groupby(
-                ["item_uri", "item_description_with_ent"]
-            ):
-                group_uri = group["item_uri"].iloc[0]
-                group_ent_type = group["ent_label"].iloc[0]
-                group_ent_text = group["ent_text"].iloc[0]
-                group_rdf_predicate = HC["entity" + group_ent_type]
+        # Split data into 'linked' and 'unlinked' depending on whether there is a positive prediction
+        # of a link for each entity
+        for _, group in data.groupby(["item_uri", "item_description_with_ent"]):
+            group_uri = group["item_uri"].iloc[0]
+            group_ent_type = group["ent_label"].iloc[0]
+            group_ent_text = group["ent_text"].iloc[0]
+            group_rdf_predicate = HC["entity" + group_ent_type]
 
-                if sum(group["y_pred"]) > 0:
-                    # there is a record that has been predicted to be a link for this entity mention
-                    group_pos_candidates = group.loc[
-                        group["y_pred"] == True, "candidate_uri"  # noqa: E712
-                    ]
+            if sum(group["y_pred"]) > 0:
+                # there is a record that has been predicted to be a link for this entity mention
+                group_pos_candidates = group.loc[
+                    group["y_pred"] == True, "candidate_uri"  # noqa: E712
+                ]
 
-                    entity_triples_linked += [
-                        {
-                            "item_uri": group_uri,
-                            "rdf_predicate": group_rdf_predicate,
-                            "linked_value": uri,
-                        }
-                        for uri in group_pos_candidates
-                    ]
+                entity_triples_linked += [
+                    {
+                        "item_uri": group_uri,
+                        "rdf_predicate": group_rdf_predicate,
+                        "linked_value": uri,
+                    }
+                    for uri in group_pos_candidates
+                ]
 
-                else:
-                    # there is no predicted linked record, so just add the text
-                    entity_triples_unlinked.append(
-                        {
-                            "item_uri": group_uri,
-                            "rdf_predicate": group_rdf_predicate,
-                            "entity_text": group_ent_text,
-                        }
-                    )
-
-        if len(entities_without_link_candidates) > 0:
-            # add text entities in for entities with no link candidates
-            for _, row in entities_without_link_candidates.iterrows():
+            else:
+                # there is no predicted linked record, so just add the text
                 entity_triples_unlinked.append(
                     {
-                        "item_uri": row["item_uri"],
-                        "rdf_predicate": HC["entity" + row["ent_label"]],
-                        "entity_text": row["ent_text"],
+                        "item_uri": group_uri,
+                        "rdf_predicate": group_rdf_predicate,
+                        "entity_text": group_ent_text,
                     }
                 )
 
-        # load into JSON-LD index
-        logger.info(
-            f"Loading {len(entity_triples_linked)} linked and {len(entity_triples_unlinked)} unlinked entities into {self.source_index}"
-        )
+        # load into ES index
         if len(entity_triples_linked) > 0:
             for _, group in pd.DataFrame(entity_triples_linked).groupby(
                 "rdf_predicate"
@@ -984,6 +1026,28 @@ class NERLoader:
                     object_is_uri=False,
                     progress_bar=False,
                 )
+
+    def _load_entities_into_es_no_link_candidates(
+        self, data: pd.DataFrame, progress_bar=False
+    ):
+        """
+        Take a dataframe of records with no link candidates and load it into the Elasticsearch index.
+        """
+
+        groupby = data.groupby("ent_label")
+        if progress_bar:
+            groupby = tqdm(groupby, unit="ent type")
+
+        for _, group in groupby:
+            rdf_predicate = HC["entity" + group["ent_label"].iloc[0]]
+            self.record_loader.add_triples(
+                group,
+                predicate=rdf_predicate,
+                subject_col="item_uri",
+                object_col="ent_text",
+                object_is_uri=False,
+                progress_bar=False,
+            )
 
     def get_link_candidates(self, candidates_per_entity_mention: int) -> List[dict]:
         """Get link candidates for each of the items in `entity_list` by searching the entity mention in
