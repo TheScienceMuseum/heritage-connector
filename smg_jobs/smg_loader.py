@@ -234,9 +234,13 @@ def load_maker_data(maker_data_path, people_data_path):
     )
 
     logger.info("loading maker data for people and orgs")
+    # use FOAF.maker (with inverse FOAF.made) for people
     people_makers = maker_df[maker_df["GENDER"].isin(["M", "F"])]
     record_loader.add_triples(
         people_makers, FOAF.maker, subject_col="OBJECT_ID", object_col="PERSON_ORG_ID"
+    )
+    record_loader.add_triples(
+        people_makers, FOAF.made, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
     )
 
     # where we don't have gender information use FOAF.maker as it's human-readable
@@ -247,11 +251,17 @@ def load_maker_data(maker_data_path, people_data_path):
         subject_col="OBJECT_ID",
         object_col="PERSON_ORG_ID",
     )
+    record_loader.add_triples(
+        undefined_makers, FOAF.made, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
+    )
 
-    # use 'product or material produced' Wikidata property for organisations
+    # use 'product or material produced' Wikidata property for organisations, and FOAF.maker for the inverse
     orgs_makers = maker_df[maker_df["GENDER"] == "N"]
     record_loader.add_triples(
         orgs_makers, WDT.P1056, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
+    )
+    record_loader.add_triples(
+        orgs_makers, FOAF.maker, subject_col="OBJECT_ID", object_col="PERSON_ORG_ID"
     )
 
     return
