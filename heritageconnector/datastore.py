@@ -50,9 +50,11 @@ if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
     es = Elasticsearch(
         [config.ELASTIC_SEARCH_CLUSTER],
         http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
+        timeout=60,
     )
     logger.debug(
-        f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}"
+        f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
+        timeout=60,
     )
 else:
     # use localhost
