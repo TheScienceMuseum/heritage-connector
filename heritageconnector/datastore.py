@@ -691,7 +691,8 @@ class NERLoader:
         """
         Returns a DataFrame of only entity mentions with a set of link candidates,
         with an entity-candidate pair on each line. Also creates a blank column for
-        review results.
+        review results. This blank column should be populated with a '1' for correct
+        matches and a '0' for incorrect matches.
         """
 
         links_df = self.entity_list_as_dataframe.copy()
@@ -699,9 +700,42 @@ class NERLoader:
 
         return links_df
 
+    def _load_training_data(self, data_path: str) -> pd.DataFrame:
+        """
+        Get training data from an excel sheet.
+        """
+        train_df = pd.read_excel(data_path)
+        missing_cols = {
+            "item_uri",
+            "candidate_rank",
+            "item_description_with_ent",
+            "ent_label",
+            "ent_text",
+            "ent_sentence",
+            "candidate_title",
+            "candidate_type",
+            "candidate_uri",
+            "link_correct",
+            "candidate_alias",
+            "candidate_description",
+            "item_description",
+        } - set(train_df.columns)
+
+        if len(missing_cols) > 0:
+            raise ValueError(
+                f"Columns {missing_cols} are missing from the data. Are you using an Excel sheet exported from `NERLoader.get_links_data_for_review`"
+            )
+
+        # return only the part of the data with populated values for the link_correct column,
+        # and ensure values are integers ({1,0})
+        train_df = train_df[~train_df["link_correct"].isnull()]
+        train_df["link_correct"] = train_df["link_correct"].apply(int)
+
+        return train_df
+
     def train_entity_linker(
         self,
-        train_data: pd.DataFrame,
+        train_data_or_path: Union[pd.DataFrame, str],
         ent_mention_col: str = "ent_text",
         ent_type_col: str = "ent_label",
         ent_context_col: str = "item_description",
@@ -720,14 +754,14 @@ class NERLoader:
         Classifier is also saved as `NERLoader.clf`.
 
         Args:
-            train_data (pd.DataFrame): [description]
-            ent_mention_col (str, optional): [description]. Defaults to "ent_text".
-            ent_type_col (str, optional): [description]. Defaults to "ent_label".
-            ent_context_col (str, optional): [description]. Defaults to "item_description".
-            candidate_title_col (str, optional): [description]. Defaults to "candidate_title".
-            candidate_type_col (str, optional): [description]. Defaults to "candidate_type".
-            candidate_context_col (str, optional): [description]. Defaults to "candidate_description".
-            target_col (str, optional): [description]. Defaults to "link_correct".
+            train_data_or_path (Union[pd.DataFrame, str]): training data (pd.DataFrame) or path (str) to Excel file containing review data, which has been created using `NERLoader.get_links_data_for_review`
+            ent_mention_col (str, optional): Defaults to "ent_text".
+            ent_type_col (str, optional): Defaults to "ent_label".
+            ent_context_col (str, optional): Defaults to "item_description".
+            candidate_title_col (str, optional): Defaults to "candidate_title".
+            candidate_type_col (str, optional): Defaults to "candidate_type".
+            candidate_context_col (str, optional): Defaults to "candidate_description".
+            target_col (str, optional): Defaults to "link_correct".
             linking_classifier (BaseEstimator, optional): scikit-learn classifier. Must have a `fit(X, y, **kwargs)` method. Defaults to MLPClassifier.
             classifier_kwargs (dict, optional): kwargs to pass into `linking_classifier`. If a "random_state" value is not set, it's set as the value of the `random_seed` argument.
                 Defaults to {"random_state": 42, "max_iter": 1000}.
@@ -736,6 +770,26 @@ class NERLoader:
         Returns:
             BaseEstimator: trained classifier
         """
+
+        # import data if `train_data` is a string
+        if isinstance(train_data_or_path, str):
+            if not (
+                train_data_or_path.endswith("xls")
+                or train_data_or_path.endswith("xlsx")
+            ):
+                raise ValueError(
+                    "A file path (string) has been passed to `train_data_or_path` but doesn't seem to be an Excel file. Ensure your training data file path ends with 'xls' or 'xlsx', or pass a dataframe to `train_data_or_path` instead."
+                )
+
+            train_data = self._load_training_data(train_data_or_path)
+
+        elif isinstance(train_data_or_path, pd.DataFrame):
+            train_data = train_data_or_path
+
+        else:
+            raise ValueError(
+                "`train_data_or_path` must be either pd.DataFrame or str (path to Excel file containing data)"
+            )
 
         logger.info("Training entity linker...")
 
