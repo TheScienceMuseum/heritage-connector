@@ -54,11 +54,12 @@ if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
     )
     logger.debug(
         f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
-        timeout=60,
     )
 else:
     # use localhost
-    es = Elasticsearch()
+    es = Elasticsearch(
+        timeout=60,
+    )
     logger.debug("Connected to Elasticsearch cluster on localhost")
 
 index = config.ELASTIC_SEARCH_INDEX
