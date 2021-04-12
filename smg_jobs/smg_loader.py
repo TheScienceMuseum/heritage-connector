@@ -75,6 +75,10 @@ def load_object_data(catalogue_data_path):
     catalogue_df["DATE_MADE"] = catalogue_df["DATE_MADE"].apply(
         get_year_from_date_value
     )
+    catalogue_df = catalogue_df[~catalogue_df["CATEGORY1"].str.contains("Disposal")]
+    catalogue_df["CATEGORY1"] = catalogue_df["CATEGORY1"].apply(
+        lambda x: x.split(" - ")[1].strip()
+    )
 
     logger.info("loading object data")
     record_loader.add_records(table_name, catalogue_df)
@@ -84,6 +88,12 @@ def load_object_data(catalogue_data_path):
 
 def load_people_data(people_data_path):
     """Load data from CSV files """
+
+    def reverse_preferred_name(name: str) -> str:
+        if not pd.isnull(name) and len(name.split(",")) == 2:
+            return f"{name.split(',')[1].strip()} {name.split(',')[0].strip()}"
+        else:
+            return name
 
     # identifier in field_mapping
     table_name = "PERSON"
@@ -99,6 +109,9 @@ def load_people_data(people_data_path):
         lambda i: str(i)
         .capitalize()
         .translate(str.maketrans("", "", string.punctuation))
+    )
+    people_df["PREFERRED_NAME"] = people_df["PREFERRED_NAME"].apply(
+        reverse_preferred_name
     )
     people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
     people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
@@ -221,9 +234,13 @@ def load_maker_data(maker_data_path, people_data_path):
     )
 
     logger.info("loading maker data for people and orgs")
+    # use FOAF.maker (with inverse FOAF.made) for people
     people_makers = maker_df[maker_df["GENDER"].isin(["M", "F"])]
     record_loader.add_triples(
         people_makers, FOAF.maker, subject_col="OBJECT_ID", object_col="PERSON_ORG_ID"
+    )
+    record_loader.add_triples(
+        people_makers, FOAF.made, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
     )
 
     # where we don't have gender information use FOAF.maker as it's human-readable
@@ -234,11 +251,17 @@ def load_maker_data(maker_data_path, people_data_path):
         subject_col="OBJECT_ID",
         object_col="PERSON_ORG_ID",
     )
+    record_loader.add_triples(
+        undefined_makers, FOAF.made, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
+    )
 
-    # use 'product or material produced' Wikidata property for organisations
+    # use 'product or material produced' Wikidata property for organisations, and FOAF.maker for the inverse
     orgs_makers = maker_df[maker_df["GENDER"] == "N"]
     record_loader.add_triples(
         orgs_makers, WDT.P1056, subject_col="PERSON_ORG_ID", object_col="OBJECT_ID"
+    )
+    record_loader.add_triples(
+        orgs_makers, FOAF.maker, subject_col="OBJECT_ID", object_col="PERSON_ORG_ID"
     )
 
     return
@@ -403,9 +426,83 @@ def load_sameas_from_disambiguator(path: str, name: str):
     )
 
 
-def load_ner_annotations(model_type: str):
-    ner_loader = datastore.NERLoader(record_loader, batch_size=4096)
-    ner_loader.add_ner_entities_to_es(model_type)
+def preprocess_text_for_ner(text: str) -> str:
+    # remove URLs
+    text = re.sub(
+        r"((?:https?://|www\.|https?://|www\.)[a-z0-9\.:].*?(?=[\s;,!:\[\]]|$))",
+        "",
+        text,
+    )
+
+    # remove dois, e.g. doi:10.1093/ref:odnb/9153
+    text = re.sub(r"doi:[\w.:/\\;]*\b", "", text)
+
+    # remove any text in normal brackets
+    #     text = re.sub(r"\([^()]*\)", "", text)
+
+    #     # remove any text in square brackets
+    #     text = re.sub(r"\[[^\[\]]*\]", "", text)
+
+    # replace newline characters with spaces
+    text = text.replace("\n", " ")
+
+    # remove strings in `strings_to_remove`
+    strings_to_remove = [
+        "WIKI:",
+        "WIKI",
+        "REF:",
+        "VIAF:",
+        "Oxford Dictionary of National Biography",
+        "Oxford University Press",
+        "Oxford Dictionary of National Biography, Oxford University Press",
+        "Library of Congress Authorities:",
+    ]
+    strings_to_remove.sort(key=len, reverse=True)
+    for s in strings_to_remove:
+        text = text.replace(s, "")
+
+    # finally, remove any leading or trailing whitespace
+    text = text.strip()
+
+    return text
+
+
+def load_ner_annotations(
+    model_type: str,
+    nel_training_data_path: str,
+    linking_confidence_threshold: float = 0.5,
+):
+    # load NEL training data
+    df = pd.read_excel(nel_training_data_path, index_col=0)
+    df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
+        ~df["link_correct"].isnull(), "link_correct"
+    ].apply(int)
+    nel_train_data = df[(~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)]
+
+    source_description_field = (
+        target_description_field
+    ) = "data.http://www.w3.org/2001/XMLSchema#description"
+    target_title_field = "graph.@rdfs:label.@value"
+    target_alias_field = "graph.@skos:altLabel.@value"
+    target_type_field = "graph.@skos:hasTopConcept.@value"
+
+    ner_loader = datastore.NERLoader(
+        record_loader,
+        source_es_index=config.ELASTIC_SEARCH_INDEX,
+        source_description_field=source_description_field,
+        target_es_index=config.ELASTIC_SEARCH_INDEX,
+        target_title_field=target_title_field,
+        target_description_field=target_description_field,
+        target_type_field=target_type_field,
+        target_alias_field=target_alias_field,
+        text_preprocess_func=preprocess_text_for_ner,
+        entity_types_to_link={"PERSON", "OBJECT", "ORG"},
+    )
+
+    _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=128)
+    ner_loader.get_link_candidates(candidates_per_entity_mention=10)
+    ner_loader.train_entity_linker(nel_train_data)
+    ner_loader.load_entities_into_es(linking_confidence_threshold, batch_size=32768)
 
 
 if __name__ == "__main__":
@@ -450,4 +547,7 @@ if __name__ == "__main__":
         "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
         "objects (locomotives & rolling stock)",
     )
-    load_ner_annotations("en_core_web_lg")
+    load_ner_annotations(
+        "en_core_web_lg",
+        nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+    )

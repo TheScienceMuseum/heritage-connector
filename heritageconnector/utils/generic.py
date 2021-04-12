@@ -4,7 +4,8 @@ from itertools import islice
 import shelve
 import functools
 import time
-from typing import List
+from typing import List, Generator
+import pandas as pd
 
 
 def extract_json_values(obj: dict, key: str) -> list:
@@ -51,7 +52,7 @@ def get_redirected_url(url: str) -> str:
 
 def add_dicts(dict1, dict2) -> dict:
     """
-    Return a dictionary with the sum of the values for each key in both dicts. 
+    Return a dictionary with the sum of the values for each key in both dicts.
     """
     return {x: dict1.get(x, 0) + dict2.get(x, 0) for x in set(dict1).union(dict2)}
 
@@ -93,13 +94,23 @@ def paginate_list(l: list, page_size: int) -> List[list]:
 def paginate_generator(generator, page_size: int):
     """
     Returns an iterator that returns items from the provided generator grouped into `page_size`.
-    If the size of the output from the original generator isn't an exact multiple of 
+    If the size of the output from the original generator isn't an exact multiple of
     `page_size`, the last list returned by the iterator will be of size less than `page_size`.
 
     Returns:
         iterator of lists
     """
     return iter(lambda: list(islice(generator, page_size)), [])
+
+
+def paginate_dataframe(
+    data: pd.DataFrame, page_size: int
+) -> Generator[pd.DataFrame, None, None]:
+    """
+    Returns a generator of paginated dataframes
+    """
+    for start in range(0, data.shape[0], page_size):
+        yield data.iloc[start : start + page_size]
 
 
 def _check_cache(cache_, key, func, args, kwargs):

@@ -1,11 +1,11 @@
-from elasticsearch import helpers
-from elasticsearch import Elasticsearch
+from elasticsearch import helpers, Elasticsearch
+from elasticsearch import exceptions as es_exceptions
 import rdflib
 from rdflib import Graph, Literal, URIRef
 from rdflib.serializer import Serializer
 import json
 import os
-from typing import Generator, List, Tuple, Optional
+from typing import Generator, List, Tuple, Optional, Union, Iterable, Callable
 from tqdm.auto import tqdm
 from itertools import islice
 from heritageconnector.namespace import (
@@ -22,11 +22,24 @@ from heritageconnector.namespace import (
     HC,
     get_jsonld_context,
 )
-from heritageconnector.utils.generic import paginate_generator, flatten_list_of_lists
+from heritageconnector.utils.generic import (
+    paginate_generator,
+    paginate_dataframe,
+    flatten_list_of_lists,
+)
 from heritageconnector.config import config
+from heritageconnector.nlp.nel import (
+    NELFeatureGenerator,
+    get_target_values_from_review_data,
+)
 from heritageconnector import logging, errors, best_spacy_pipeline
 import pandas as pd
+import numpy as np
 import spacy
+from sklearn.base import BaseEstimator
+from sklearn.pipeline import Pipeline
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import cross_validate
 
 logger = logging.get_logger(__name__)
 
@@ -37,13 +50,16 @@ if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
     es = Elasticsearch(
         [config.ELASTIC_SEARCH_CLUSTER],
         http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
+        timeout=60,
     )
     logger.debug(
-        f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}"
+        f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
     )
 else:
     # use localhost
-    es = Elasticsearch()
+    es = Elasticsearch(
+        timeout=60,
+    )
     logger.debug("Connected to Elasticsearch cluster on localhost")
 
 index = config.ELASTIC_SEARCH_INDEX
@@ -426,18 +442,14 @@ def update_graph(s_uri, p, o_uri):
     es.update(index=index, id=s_uri, body=body, ignore=404)
 
 
-def delete(id):
-    """Delete an existing ElasticSearch record"""
+def get_by_uri(uri: str) -> dict:
+    """Return an existing ElasticSearch record. Raise ValueError if record with specified URI doesn't exist."""
 
-    es.delete(id)
-
-
-def get_by_uri(uri):
-    """Return an existing ElasticSearch record"""
-
-    res = es.search(index=index, body={"query": {"term": {"uri.keyword": uri}}})
-    if len(res["hits"]["hits"]):
-        return res["hits"]["hits"][0]
+    try:
+        res = es.get(index=index, id=uri)
+        return res
+    except es_exceptions.TransportError:
+        raise ValueError(f"No record with uri {uri} exists.")
 
 
 def get_by_type(type, size=1000):
@@ -506,8 +518,15 @@ class NERLoader:
     def __init__(
         self,
         record_loader: RecordLoader,
-        batch_size: Optional[int] = 1024,
-        entity_types: List[str] = [
+        source_es_index: str,
+        source_description_field: str,
+        target_es_index: str,
+        target_title_field: str,
+        target_description_field: str,
+        target_type_field: str,
+        target_alias_field: str = None,
+        # batch_size: Optional[int] = 1024,
+        entity_types: Iterable[str] = [
             "PERSON",
             "ORG",
             "NORP",
@@ -516,27 +535,310 @@ class NERLoader:
             "OBJECT",
             "LANGUAGE",
             "DATE",
+            "EVENT",
         ],
+        entity_types_to_link: Iterable[str] = [
+            "PERSON",
+            "ORG",
+            "OBJECT",
+        ],
+        text_preprocess_func: Optional[Callable[[str], str]] = None,
+        entity_markers: Iterable[str] = ("[[", "]]"),
     ):
         """
         Initialise instance of NERLoader.
 
         Args:
             record_loader (RecordLoader): instance of RecordLoader, with parameters suitable for the current Heritage Connector index.
-            batch_size (Optional[int], optional): size of batches to process documents in. Defaults to 1024.
-            entity_types (List[str], optional): entity types extracted from the spaCy model.
+            entity_types (List[str], optional): entity types to extract from the spaCy model.
+            entity_types_to_link (List[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`.
         """
 
         self.record_loader = record_loader
-        self.es_index = index
-        self.batch_size = batch_size
-        self.entity_types = entity_types
+
+        self.entity_types = set(entity_types)
+        self.entity_types_to_link = set(entity_types_to_link).intersection(
+            self.entity_types
+        )
+
+        self.source_index = source_es_index
+        self.target_index = target_es_index
+
+        self.source_fields = {"description": source_description_field}
+
+        self.target_fields = {
+            "title": target_title_field,
+            "description": target_description_field,
+            "type": target_type_field,
+        }
+
+        if target_alias_field is not None:
+            self.target_fields.update(
+                {
+                    "alias": target_alias_field,
+                }
+            )
+
+        self.text_preprocess_func = (
+            text_preprocess_func if text_preprocess_func is not None else lambda x: x
+        )
+
+        if not all([isinstance(i, str) for i in entity_markers]) or not (
+            len(entity_markers) == 2
+        ):
+            raise ValueError(
+                "Parameter `entity_markers` must be an iterable (e.g. list or tuple) containing exactly two items, both of which are strings."
+            )
+        self.entity_markers = entity_markers
+
+        self._entity_list = []
+
+    @property
+    def entity_list(self) -> List[dict]:
+        """
+        List of `{"item_uri": _, "ent_label": _, "ent_text": _,}` dictionaries, with one dictionary per entity.
+        Each dictionary has an optional `{"link_candidates": {}}` member if link candidates have been retrieved
+        for that entity.
+        """
+        return self._entity_list
+
+    @property
+    def entity_list_as_dataframe(self) -> pd.DataFrame:
+        ent_df = pd.DataFrame(self._entity_list)
+
+        if "link_candidates" not in ent_df.columns:
+            return ent_df
+
+        # Get DataFrame of entity mentions without link candidates, either because they have types that haven't requested
+        # to be linked (link_candidates column isna()) or because no results were returned from the linking search
+        # (link candidates column is empty list).
+        ents_no_candidates_df = pd.concat(
+            [
+                ent_df[ent_df["link_candidates"].isna()],
+                ent_df[ent_df.astype(str)["link_candidates"] == "[]"],
+            ]
+        )
+
+        # Transform data with link candidates for easy review.
+        ents_with_candidates_df = (
+            ent_df.dropna(subset=["link_candidates"])
+            .set_index(
+                [
+                    "item_uri",
+                    "item_description",
+                    "item_description_with_ent",
+                    "ent_label",
+                    "ent_text",
+                    "ent_sentence",
+                ]
+            )["link_candidates"]
+            .apply(pd.Series)
+            .stack()
+            .reset_index()
+            # the level of level_n below is the length of the list used in `set_index above`
+            .rename(columns={"level_6": "candidate_rank"})
+        )
+
+        candidate_cols = ents_with_candidates_df[0].apply(pd.Series)
+        candidate_cols = candidate_cols.rename(
+            columns={col: f"candidate_{col}" for col in candidate_cols}
+        )
+
+        ents_with_candidates_transformed_df = (
+            pd.concat([ents_with_candidates_df, candidate_cols], axis=1)
+            .drop(columns=[0])
+            .fillna("")
+        )
+        ents_with_candidates_transformed_df["link_correct"] = ""
+
+        cols_order = [
+            "item_uri",
+            "candidate_rank",
+            "item_description_with_ent",
+            "ent_label",
+            "ent_text",
+            "ent_sentence",
+            "candidate_title",
+            "candidate_type",
+            "candidate_uri",
+            "link_correct",
+            "candidate_alias",
+            "candidate_description",
+            "item_description",
+        ]
+        other_cols = [
+            col
+            for col in ents_with_candidates_transformed_df.columns
+            if col not in cols_order
+        ]
+
+        # Return the concatenation of the DataFrame with links and the DataFrame without links.
+        df_linked_and_unlinked = pd.concat(
+            [ents_no_candidates_df, ents_with_candidates_transformed_df]
+        )
+
+        df_linked_and_unlinked = df_linked_and_unlinked[cols_order + other_cols]
+        # ents_with_candidates_transformed_df = ents_with_candidates_transformed_df[cols_order + other_cols]
+
+        # for debugging: check all records have ended up in final dataframe
+        assert set(df_linked_and_unlinked["item_uri"]) == set(
+            [item["item_uri"] for item in self._entity_list]
+        )
+
+        return df_linked_and_unlinked
+
+    def get_links_data_for_review(self) -> pd.DataFrame:
+        """
+        Returns a DataFrame of only entity mentions with a set of link candidates,
+        with an entity-candidate pair on each line. Also creates a blank column for
+        review results. This blank column should be populated with a '1' for correct
+        matches and a '0' for incorrect matches.
+        """
+
+        links_df = self.entity_list_as_dataframe.copy()
+        links_df = links_df[~links_df["candidate_rank"].isnull()]
+
+        return links_df
+
+    def _load_training_data(self, data_path: str) -> pd.DataFrame:
+        """
+        Get training data from an excel sheet.
+        """
+        train_df = pd.read_excel(data_path)
+        missing_cols = {
+            "item_uri",
+            "candidate_rank",
+            "item_description_with_ent",
+            "ent_label",
+            "ent_text",
+            "ent_sentence",
+            "candidate_title",
+            "candidate_type",
+            "candidate_uri",
+            "link_correct",
+            "candidate_alias",
+            "candidate_description",
+            "item_description",
+        } - set(train_df.columns)
+
+        if len(missing_cols) > 0:
+            raise ValueError(
+                f"Columns {missing_cols} are missing from the data. Are you using an Excel sheet exported from `NERLoader.get_links_data_for_review`"
+            )
+
+        # return only the part of the data with populated values for the link_correct column,
+        # and ensure values are integers ({1,0})
+        train_df = train_df[~train_df["link_correct"].isnull()]
+        train_df["link_correct"] = train_df["link_correct"].apply(int)
+
+        return train_df
+
+    def train_entity_linker(
+        self,
+        train_data_or_path: Union[pd.DataFrame, str],
+        ent_mention_col: str = "ent_text",
+        ent_type_col: str = "ent_label",
+        ent_context_col: str = "item_description",
+        candidate_title_col: str = "candidate_title",
+        candidate_type_col: str = "candidate_type",
+        candidate_context_col: str = "candidate_description",
+        target_col: str = "link_correct",
+        sbert_model: Optional[str] = None,
+        suffix_list: Optional[str] = None,
+        linking_classifier: BaseEstimator = MLPClassifier,
+        classifier_kwargs: dict = {"random_state": 42, "max_iter": 1000},
+        random_seed: int = 42,
+    ) -> BaseEstimator:
+        """
+        Train entity linking binary classifier using a DataFrame such as the one returned by `NERLoader.get_links_for_review`.
+        Classifier is also saved as `NERLoader.clf`.
+
+        Args:
+            train_data_or_path (Union[pd.DataFrame, str]): training data (pd.DataFrame) or path (str) to Excel file containing review data, which has been created using `NERLoader.get_links_data_for_review`
+            ent_mention_col (str, optional): Defaults to "ent_text".
+            ent_type_col (str, optional): Defaults to "ent_label".
+            ent_context_col (str, optional): Defaults to "item_description".
+            candidate_title_col (str, optional): Defaults to "candidate_title".
+            candidate_type_col (str, optional): Defaults to "candidate_type".
+            candidate_context_col (str, optional): Defaults to "candidate_description".
+            target_col (str, optional): Defaults to "link_correct".
+            linking_classifier (BaseEstimator, optional): scikit-learn classifier. Must have a `fit(X, y, **kwargs)` method. Defaults to MLPClassifier.
+            classifier_kwargs (dict, optional): kwargs to pass into `linking_classifier`. If a "random_state" value is not set, it's set as the value of the `random_seed` argument.
+                Defaults to {"random_state": 42, "max_iter": 1000}.
+            random_seed (int, optional): Used in all random generators. Defaults to 42.
+
+        Returns:
+            BaseEstimator: trained classifier
+        """
+
+        # import data if `train_data` is a string
+        if isinstance(train_data_or_path, str):
+            if not (
+                train_data_or_path.endswith("xls")
+                or train_data_or_path.endswith("xlsx")
+            ):
+                raise ValueError(
+                    "A file path (string) has been passed to `train_data_or_path` but doesn't seem to be an Excel file. Ensure your training data file path ends with 'xls' or 'xlsx', or pass a dataframe to `train_data_or_path` instead."
+                )
+
+            train_data = self._load_training_data(train_data_or_path)
+
+        elif isinstance(train_data_or_path, pd.DataFrame):
+            train_data = train_data_or_path
+
+        else:
+            raise ValueError(
+                "`train_data_or_path` must be either pd.DataFrame or str (path to Excel file containing data)"
+            )
+
+        logger.info("Training entity linker...")
+
+        extra_kwargs = {}
+        if sbert_model is not None:
+            extra_kwargs.update({"sbert_model": sbert_model})
+        if suffix_list is not None:
+            extra_kwargs.update({"suffix_list": suffix_list})
+
+        if "random_state" not in classifier_kwargs.keys():
+            classifier_kwargs["random_state"] = random_seed
+
+        nel_pipeline = Pipeline(
+            [
+                ("featgen", NELFeatureGenerator()),
+                ("classifier", linking_classifier(**classifier_kwargs)),
+            ]
+        )
+
+        y_true = get_target_values_from_review_data(train_data, target_col)
+
+        nel_pipeline = nel_pipeline.fit(
+            train_data,
+            y=y_true,
+            featgen__ent_mention_col=ent_mention_col,
+            featgen__ent_type_col=ent_type_col,
+            featgen__ent_context_col=ent_context_col,
+            featgen__candidate_title_col=candidate_title_col,
+            featgen__candidate_type_col=candidate_type_col,
+            featgen__candidate_context_col=candidate_context_col,
+        )
+
+        self.clf = nel_pipeline
+
+        return self.clf
+
+    @property
+    def has_trained_linker(self) -> bool:
+        """
+        Returns True if there appears to be a trained entity linker; False if not.
+        """
+
+        return True if hasattr(self, "clf") else False
 
     def _get_ner_model(self, model_type):
         """Get best spacy NER model"""
         return best_spacy_pipeline.load_model(model_type)
 
-    def add_ner_entities_to_es(
+    def get_list_of_entities_from_es(
         self,
         model_type: str,
         limit: int = None,
@@ -544,9 +846,10 @@ class NERLoader:
         random_seed: int = 42,
         spacy_batch_size: int = 128,
         spacy_no_processes: int = 1,
-    ):
+        ignore_duplicated_ents: bool = True,
+    ) -> List[dict]:
         """
-        Run NER on entities in the Heritage Connector index and add the results back to the index using the
+        Run NER on entities in the source (Heritage Connector) index and add the results back to the index using the
         HC namespace.
 
         Args:
@@ -557,37 +860,61 @@ class NERLoader:
             random_seed (int, optional): random seed for `random_sample`. Defaults to 42.
             spacy_batch_size (int, optional): batch size for spaCy's `nlp.pipe`. Defaults to 128.
             spacy_no_processes (int, optional): n_process for spaCy's `nlp.pipe`. Defaults to 1.
+
+        Returns:
+            List[dict]: The current state of `entity_list`.
         """
 
-        logger.info(
-            f"fetching docs, running NER and loading entities into index {index} in batches of {self.batch_size} documents"
-        )
+        logger.info(f"Fetching docs and running NER.")
 
-        doc_generator = self._get_doc_generator(limit, random_sample, random_seed)
+        doc_list = list(
+            self._get_doc_generator(
+                self.source_index, limit, random_sample, random_seed
+            )
+        )
         self.nlp = self._get_ner_model(model_type)
 
-        for batch in tqdm(doc_generator, unit="batch", total=limit):
-            # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples for loading into ES
-            # we load in every batch to prevent excessive memory usage from storing data + spaCy models
-            batch_list = []
+        if ignore_duplicated_ents and (
+            not spacy.tokens.Span.has_extension("entity_duplicate")
+        ):
+            logger.warn(
+                "Parameter `ignore_duplicate_ents` has been set to True for `NERLoader.add_ner_entities_to_es()` but spaCy spans have no `entity_duplicate` attribute. "
+                "You can resolve this by adding the `duplicate_entity_detector` component from hc_nlp.pipeline to the end of your spaCy pipeline. "
+                "For now, the detection of duplicate entity mentions in a document will be disabled."
+            )
+            ignore_duplicated_ents = False
 
-            descriptions = [item[1] for item in batch]
-            spacy_doc_batch = list(
+        # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples
+        entity_list = []
+        uris = [item[0] for item in doc_list]
+        descriptions = [item[1] for item in doc_list]
+
+        spacy_docs = list(
+            tqdm(
                 self.nlp.pipe(
                     descriptions,
                     batch_size=spacy_batch_size,
                     n_process=spacy_no_processes,
                 )
             )
+        )
 
-            for idx, doc in enumerate(spacy_doc_batch):
-                batch_list += self._spacy_doc_to_dataframe(batch[idx][0], doc)
+        for idx, doc in enumerate(spacy_docs):
+            entity_list += self._spacy_doc_to_ent_list(
+                uris[idx], descriptions[idx], doc, ignore_duplicated_ents
+            )
 
-            self._load_triples_list_into_es(batch_list)
+        self._entity_list = entity_list
 
-    def _load_triples_list_into_es(self, triples_list: List[dict]):
-        """create a DataFrame from a list of triples, and load it into the ES index one entity label at a time"""
-        entity_triples_df = pd.DataFrame(triples_list)
+        return self.entity_list
+
+    def load_entities_into_es_no_links(self):
+        logger.info(
+            f"Loading {len(self._entity_list)} entities into {self.source_index}"
+        )
+
+        """create a DataFrame from a list of (uri, entity label, entity text) triples, and load it into the ES index one entity label at a time"""
+        entity_triples_df = pd.DataFrame(self._entity_list)
 
         for entity_label in entity_triples_df["ent_label"].unique():
             # logger.debug(f"label {entity_label}..")
@@ -605,31 +932,366 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def _spacy_doc_to_dataframe(
-        self, item_uri: str, doc: spacy.tokens.Doc
-    ) -> pd.DataFrame:
+    def load_entities_into_es(
+        self,
+        linking_confidence_threshold: float = 0.5,
+        batch_size: float = 32768,
+        force_load_without_linker: bool = False,
+    ):
         """
-        Convert batch of spaCy docs with generated entities into a DataFrame on which `record_loader.add_triples()` can
-        be called.
+        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates`),
+        they are loaded in as triples with the entity text as the object. If some entities have link candidates, then for these
+        entities the positive candidates are predicted using the entity linking classifier (which has been trained using
+        `NERLoader.train_entity_linker`), and the detected entities with predicted candidates are loaded in with the candidate
+        URI as the object.
+
+        Args:
+            linking_confidence_threshold (float, optional): [description]. Defaults to 0.5.
+            batch_size (float, optional): [description]. Defaults to 32768.
+            force_load_without_linker (bool, optional): By default the load will exit if link candidates have been fetched but there is
+            no trained linked. Setting this flag to True disables this behaviour. Defaults to False.
+        """
+        # TODO: remove training data and add in ground truth values separately
+        logger.info(
+            f"Loading {len(self._entity_list)} entities into {self.source_index}"
+        )
+
+        entity_df = self.entity_list_as_dataframe
+
+        if "candidate_rank" not in entity_df.columns:
+            # there are no link candidates so we can load everything in and stop here
+            self._load_entities_into_es_no_link_candidates(entity_df, progress_bar=True)
+            return
+
+        if self.has_trained_linker is False:
+            if force_load_without_linker is False:
+                raise Exception(
+                    "Link candidates have been fetched but there is no trained classifier, meaning only entity text will be loaded in. Rerun `NERLoader.load_entities_into_es` with the flag `force_load_without_linker` set to True if you want this, else train an entity linker using `NERLoader.train_entity_linker(train_data)`."
+                )
+            else:
+                # This flag means we load everything in as if it has no links and stop here.
+                # First we drop duplicate entity rows so duplicate triples aren't loaded in.
+                logger.info(
+                    "Flag `force_load_without_linker` has been set to True, so all entities are being loaded with the entity text as the object."
+                )
+                entity_df_unique = entity_df.drop_duplicates(
+                    subset=["item_uri", "ent_label", "item_description_with_ent"],
+                    ignore_index=True,
+                )
+                self._load_entities_into_es_no_link_candidates(
+                    entity_df_unique, progress_bar=True
+                )
+                return
+
+        entities_with_link_candidates, entities_without_link_candidates = (
+            entity_df[~entity_df["candidate_rank"].isna()],
+            entity_df[entity_df["candidate_rank"].isna()],
+        )
+
+        logger.info("Loading entity mentions with no link candidates by type...")
+        self._load_entities_into_es_no_link_candidates(
+            entities_without_link_candidates, progress_bar=True
+        )
+
+        num_batches = len(entity_df) // batch_size + 1
+
+        logger.info(
+            f"Predicting links for entity mentions with link candidates and loading them in, in batches of {batch_size}..."
+        )
+        for data_batch in tqdm(
+            paginate_dataframe(entities_with_link_candidates, batch_size),
+            total=num_batches,
+            unit="batch",
+        ):
+            self._predict_best_links_from_candidates_and_load_into_es(
+                data_batch,
+                linking_confidence_threshold=linking_confidence_threshold,
+            )
+
+    def _predict_best_links_from_candidates_and_load_into_es(
+        self, data: pd.DataFrame, linking_confidence_threshold: float = 0.5
+    ):
+        """
+        Predict whether each row in `data` represents a link, then load in:
+            - entity mentions which have >0 linked records as `(item_uri, HC_TYPE, linked_item_uri)` triples;
+            - entity mentions which have 0 linked records as `(item_uri, HC_TYPE, entity_text)` triples.
+        """
+        entity_triples_unlinked = []
+        entity_triples_linked = []
+
+        # Predict True links for entities with link candidates
+        data["y_pred"] = list(
+            self.clf.predict_proba(data)[:, 1] >= linking_confidence_threshold
+        )
+
+        # Split data into 'linked' and 'unlinked' depending on whether there is a positive prediction
+        # of a link for each entity
+        for _, group in data.groupby(["item_uri", "item_description_with_ent"]):
+            group_uri = group["item_uri"].iloc[0]
+            group_ent_type = group["ent_label"].iloc[0]
+            group_ent_text = group["ent_text"].iloc[0]
+            group_rdf_predicate = HC["entity" + group_ent_type]
+
+            if sum(group["y_pred"]) > 0:
+                # there is a record that has been predicted to be a link for this entity mention
+                group_pos_candidates = group.loc[
+                    group["y_pred"] == True, "candidate_uri"  # noqa: E712
+                ]
+
+                entity_triples_linked += [
+                    {
+                        "item_uri": group_uri,
+                        "rdf_predicate": group_rdf_predicate,
+                        "linked_value": uri,
+                    }
+                    for uri in group_pos_candidates
+                ]
+
+            else:
+                # there is no predicted linked record, so just add the text
+                entity_triples_unlinked.append(
+                    {
+                        "item_uri": group_uri,
+                        "rdf_predicate": group_rdf_predicate,
+                        "entity_text": group_ent_text,
+                    }
+                )
+
+        # load into ES index
+        if len(entity_triples_linked) > 0:
+            for _, group in pd.DataFrame(entity_triples_linked).groupby(
+                "rdf_predicate"
+            ):
+                self.record_loader.add_triples(
+                    group,
+                    predicate=group["rdf_predicate"].iloc[0],
+                    subject_col="item_uri",
+                    object_col="linked_value",
+                    object_is_uri=True,
+                    progress_bar=False,
+                )
+
+        if len(entity_triples_unlinked) > 0:
+            for _, group in pd.DataFrame(entity_triples_unlinked).groupby(
+                "rdf_predicate"
+            ):
+                self.record_loader.add_triples(
+                    group,
+                    predicate=group["rdf_predicate"].iloc[0],
+                    subject_col="item_uri",
+                    object_col="entity_text",
+                    object_is_uri=False,
+                    progress_bar=False,
+                )
+
+    def _load_entities_into_es_no_link_candidates(
+        self, data: pd.DataFrame, progress_bar=False
+    ):
+        """
+        Take a dataframe of records with no link candidates and load it into the Elasticsearch index.
+        """
+
+        groupby = data.groupby("ent_label")
+        if progress_bar:
+            groupby = tqdm(groupby, unit="ent type")
+
+        for _, group in groupby:
+            rdf_predicate = HC["entity" + group["ent_label"].iloc[0]]
+            self.record_loader.add_triples(
+                group,
+                predicate=rdf_predicate,
+                subject_col="item_uri",
+                object_col="ent_text",
+                object_is_uri=False,
+                progress_bar=False,
+            )
+
+    def get_link_candidates(self, candidates_per_entity_mention: int) -> List[dict]:
+        """Get link candidates for each of the items in `entity_list` by searching the entity mention in
+        the target Elasticsearch index. Only searches for link candidates for entities with types specified in `entity_types_to_link`,
+        and excludes any candidates with a URI which is the same as the URI of the source entity.
+
+        Args:
+            entity_list (List[dict]): each item has the form `{"item_uri": _, "ent_label": _, "ent_text": _,}`
+
+        Returns:
+            List[dict]: The current state of `entity_list`. Each item has the form `{"item_uri": _, "ent_label": _, "ent_text": _,}`
+                (not in types to link) or `{"item_uri": _, "ent_label": _, "ent_text": _, "link_candidates": [{"uri": _, "label": _,
+                "description": _}, ...]}` (in types to link).
+        """
+
+        if not self._entity_list:
+            raise ValueError(
+                "Entities have not yet been retrieved from the Elasticsearch index. Run `get_list_of_entities_from_es` first."
+            )
+
+        entity_list_with_link_candidates = []
+        logger.info(
+            f"Getting link candidates for each of {len(self._entity_list)} entities"
+        )
+        for item in tqdm(self._entity_list):
+            if item["ent_label"] in self.entity_types_to_link:
+                link_candidates = self._search_es_for_entity_mention(
+                    item["ent_text"],
+                    n=candidates_per_entity_mention * 2,
+                    reduce_to_key_fields=True,
+                )
+                link_candidates = [
+                    i for i in link_candidates if i["uri"] != item["item_uri"]
+                ][:candidates_per_entity_mention]
+                entity_list_with_link_candidates.append(
+                    dict(item, **{"link_candidates": link_candidates})
+                )
+            else:
+                entity_list_with_link_candidates.append(item)
+
+        self._entity_list = entity_list_with_link_candidates
+
+        return self._entity_list
+
+    def _search_es_for_entity_mention(
+        self, mention: str, n: int, reduce_to_key_fields: bool = True
+    ) -> List[dict]:
+        """
+        Given an entity mention, search the target Elasticsearch fields and return up to `n` documents.
+        """
+
+        # empty string for a field in multi_match query doesn't register as a field
+        search_fields = [
+            self.target_fields["title"],
+            self.target_fields.get("alias", ""),
+        ]
+
+        # this query boosts exact matches (type: phrase) over fuzzy matches, which don't return exact matches first
+        # because of Elasticsearch field analysis.
+        query = {
+            "query": {
+                "bool": {
+                    "should": [
+                        {
+                            "multi_match": {
+                                "query": mention,
+                                "type": "phrase",
+                                "fields": search_fields,
+                                "boost": 10,
+                            }
+                        },
+                        {
+                            "multi_match": {
+                                "query": mention,
+                                "type": "best_fields",
+                                "fields": search_fields,
+                                "fuzziness": "AUTO",
+                            }
+                        },
+                    ]
+                }
+            }
+        }
+
+        search_results = (
+            es.search(
+                index=self.target_index,
+                body=query,
+                size=n,
+            )
+            .get("hits", {})
+            .get("hits", [])
+        )
+
+        if reduce_to_key_fields:
+            return [self._reduce_doc_to_key_fields(i) for i in search_results]
+
+        return search_results
+
+    def _get_dict_field_from_dot_notation(
+        self, doc: dict, field_dot_notation: str
+    ) -> dict:
+        """Get a field from a dictonary from Elasticsearch dot notation."""
+
+        nested_field = doc["_source"]
+        fields_split = field_dot_notation.split(".")
+        if fields_split[0] != "graph" and fields_split[-1] == "@value":
+            fields_split = fields_split[0:-1]
+
+        if field_dot_notation.startswith("data") and "." in field_dot_notation[5:]:
+            fields_split = ["data", field_dot_notation[5:]]
+
+        for idx, field in enumerate(fields_split):
+            if idx + 1 < len(fields_split):
+                nested_field = nested_field.get(field, {})
+            else:
+                nested_field = nested_field.get(field, "")
+
+        return nested_field
+
+    def _reduce_doc_to_key_fields(self, doc: dict) -> dict:
+        """Reduce doc to target_uri, target_title_field, target_description_field, target_alias_field"""
+
+        # key_fields = set(["uri"] + list(self.target_fields.values()))
+
+        reduced_doc = {"uri": self._get_dict_field_from_dot_notation(doc, "uri")}
+
+        for target_field_name, target_field in self.target_fields.items():
+            if target_field_name == "description":
+                target_field_value = self.text_preprocess_func(
+                    self._get_dict_field_from_dot_notation(doc, target_field)
+                )
+            else:
+                target_field_value = self._get_dict_field_from_dot_notation(
+                    doc, target_field
+                )
+
+            reduced_doc.update({target_field_name: target_field_value})
+
+        return {k: v for k, v in reduced_doc.items() if v != ""}
+
+    def _spacy_doc_to_ent_list(
+        self,
+        item_uri: str,
+        item_description: str,
+        doc: spacy.tokens.Doc,
+        ignore_duplicated_ents: bool,
+    ) -> List[dict]:
+        """
+        Convert a spaCy doc with entities found into a list of dictionaries.
         """
 
         ent_data_list = []
 
+        if ignore_duplicated_ents:
+            ent_is_suitable = lambda ent: (ent.label_ in self.entity_types) and (
+                ent._.entity_duplicate is False
+            )
+        else:
+            ent_is_suitable = lambda ent: ent.label_ in self.entity_types
+
         for ent in doc.ents:
-            if ent.label_ in self.entity_types:
+            if ent_is_suitable(ent):
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
+                        "item_description": item_description,
+                        "item_description_with_ent": item_description[
+                            : doc[ent.start].idx
+                        ]
+                        + self.entity_markers[0]
+                        + ent.text
+                        + self.entity_markers[1]
+                        + item_description[doc[ent.start].idx + len(ent.text) :],
                         "ent_label": ent.label_,
                         "ent_text": ent.text,
+                        "ent_sentence": ent.sent.text,
+                        "ent_start_idx": doc[ent.start].idx,
+                        "ent_end_idx": doc[ent.start].idx + len(ent.text),
                     }
                 )
 
-        # return pd.DataFrame(ent_data_list)
         return ent_data_list
 
     def _get_doc_generator(
         self,
+        index: str,
         limit: Optional[int] = None,
         random_sample: bool = True,
         random_seed: int = 42,
@@ -657,7 +1319,7 @@ class NERLoader:
                                 "must": [
                                     {
                                         "exists": {
-                                            "field": "data.http://www.w3.org/2001/XMLSchema#description"
+                                            "field": self.target_fields["description"]
                                         }
                                     },
                                 ]
@@ -672,11 +1334,7 @@ class NERLoader:
                 "query": {
                     "bool": {
                         "must": [
-                            {
-                                "exists": {
-                                    "field": "data.http://www.w3.org/2001/XMLSchema#description"
-                                }
-                            },
+                            {"exists": {"field": self.target_fields["description"]}},
                         ]
                     }
                 }
@@ -684,7 +1342,7 @@ class NERLoader:
 
         doc_generator = helpers.scan(
             client=es,
-            index=self.es_index,
+            index=index,
             query=es_query,
             preserve_order=True,
         )
@@ -695,10 +1353,13 @@ class NERLoader:
         doc_generator = (
             (
                 doc["_id"],
-                doc["_source"]["data"]["http://www.w3.org/2001/XMLSchema#description"],
+                self.text_preprocess_func(
+                    self._get_dict_field_from_dot_notation(
+                        doc, self.target_fields["description"]
+                    )
+                ),
             )
             for doc in doc_generator
         )
-        doc_generator = paginate_generator(doc_generator, self.batch_size)
 
         return doc_generator
