@@ -29,5 +29,5 @@ if __name__ == "__main__":
     )
 
     blink_service.process_unlinked_entity_mentions(
-        "../GITIGNORE_DATA/blink_output.jsonl", page_size=5, limit=20
+        "../GITIGNORE_DATA/blink_output.jsonl", page_size=5, limit=None
     )
