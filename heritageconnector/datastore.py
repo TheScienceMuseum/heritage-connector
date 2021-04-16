@@ -28,10 +28,7 @@ from heritageconnector.utils.generic import (
     flatten_list_of_lists,
 )
 from heritageconnector.config import config
-from heritageconnector.nlp.nel import (
-    NELFeatureGenerator,
-    get_target_values_from_review_data,
-)
+from heritageconnector.nlp import nel
 from heritageconnector import logging, errors, best_spacy_pipeline
 import pandas as pd
 import numpy as np
@@ -804,12 +801,12 @@ class NERLoader:
 
         nel_pipeline = Pipeline(
             [
-                ("featgen", NELFeatureGenerator()),
+                ("featgen", nel.NELFeatureGenerator()),
                 ("classifier", linking_classifier(**classifier_kwargs)),
             ]
         )
 
-        y_true = get_target_values_from_review_data(train_data, target_col)
+        y_true = nel.get_target_values_from_review_data(train_data, target_col)
 
         nel_pipeline = nel_pipeline.fit(
             train_data,
@@ -1204,41 +1201,20 @@ class NERLoader:
 
         return search_results
 
-    def _get_dict_field_from_dot_notation(
-        self, doc: dict, field_dot_notation: str
-    ) -> dict:
-        """Get a field from a dictonary from Elasticsearch dot notation."""
-
-        nested_field = doc["_source"]
-        fields_split = field_dot_notation.split(".")
-        if fields_split[0] != "graph" and fields_split[-1] == "@value":
-            fields_split = fields_split[0:-1]
-
-        if field_dot_notation.startswith("data") and "." in field_dot_notation[5:]:
-            fields_split = ["data", field_dot_notation[5:]]
-
-        for idx, field in enumerate(fields_split):
-            if idx + 1 < len(fields_split):
-                nested_field = nested_field.get(field, {})
-            else:
-                nested_field = nested_field.get(field, "")
-
-        return nested_field
-
     def _reduce_doc_to_key_fields(self, doc: dict) -> dict:
         """Reduce doc to target_uri, target_title_field, target_description_field, target_alias_field"""
 
         # key_fields = set(["uri"] + list(self.target_fields.values()))
 
-        reduced_doc = {"uri": self._get_dict_field_from_dot_notation(doc, "uri")}
+        reduced_doc = {"uri": _get_dict_field_from_dot_notation(doc, "uri")}
 
         for target_field_name, target_field in self.target_fields.items():
             if target_field_name == "description":
                 target_field_value = self.text_preprocess_func(
-                    self._get_dict_field_from_dot_notation(doc, target_field)
+                    _get_dict_field_from_dot_notation(doc, target_field)
                 )
             else:
-                target_field_value = self._get_dict_field_from_dot_notation(
+                target_field_value = _get_dict_field_from_dot_notation(
                     doc, target_field
                 )
 
@@ -1354,7 +1330,7 @@ class NERLoader:
             (
                 doc["_id"],
                 self.text_preprocess_func(
-                    self._get_dict_field_from_dot_notation(
+                    _get_dict_field_from_dot_notation(
                         doc, self.target_fields["description"]
                     )
                 ),
@@ -1363,3 +1339,26 @@ class NERLoader:
         )
 
         return doc_generator
+
+
+def _get_dict_field_from_dot_notation(doc: dict, field_dot_notation: str) -> dict:
+    """Get a field from a dictonary from Elasticsearch dot notation."""
+
+    nested_field = doc["_source"]
+    fields_split = field_dot_notation.split(".")
+    if fields_split[0] != "graph" and fields_split[-1] == "@value":
+        fields_split = fields_split[0:-1]
+
+    if field_dot_notation.startswith("data") and "." in field_dot_notation[5:]:
+        fields_split = ["data", field_dot_notation[5:]]
+
+    for idx, field in enumerate(fields_split):
+        if (field == "@value") and isinstance(nested_field, list):
+            return [item["@value"] for item in nested_field]
+
+        if idx + 1 < len(fields_split):
+            nested_field = nested_field.get(field, {})
+        else:
+            nested_field = nested_field.get(field, "")
+
+    return nested_field

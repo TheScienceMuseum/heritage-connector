@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional, Generator
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.base import BaseEstimator, TransformerMixin
 from sentence_transformers import SentenceTransformer, util
@@ -8,7 +8,18 @@ from fuzzywuzzy import fuzz
 import textdistance
 from hc_nlp.constants import ORG_LEGAL_SUFFIXES
 from heritageconnector.base.disambiguation import Classifier
+from heritageconnector import datastore
+from heritageconnector.utils.generic import paginate_generator
+from heritageconnector.config import config
 from heritageconnector import logging
+from elasticsearch import helpers
+import json
+import requests
+import time
+import math
+from itertools import islice
+from tqdm.auto import tqdm
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 logger = logging.get_logger(__name__)
 
@@ -476,3 +487,169 @@ def get_target_values_from_review_data(data: pd.DataFrame, target_values_column:
         )
 
     return list(1 * (data[target_values_column].values))
+
+
+class BLINKServiceWrapper:
+    """
+    Wrapper around a BLINK service (REST API) such as the one at https://github.com/TheScienceMuseum/BLINK.
+    """
+
+    def __init__(
+        self,
+        blink_endpoint: str,
+        description_field: str,
+        entity_fields: List[str],
+        wiki_link_threshold: Optional[float] = 0,
+    ):
+        """Initialise an instance of BLINKServiceWrapper.
+
+        Args:
+            blink_endpoint (str): API endpoint. E.g. 'http://localhost:8000/blink/multiple'
+        """
+
+        self.endpoint = blink_endpoint
+        self.headers = {"Content-Type": "application/json"}
+
+        self.description_field = description_field
+        self.entity_fields = entity_fields
+
+        self.link_threshold = wiki_link_threshold
+
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+    def make_blink_request(self, query: dict, silent: bool = False) -> dict:
+        """Make a request to BLINK.
+
+        See https://github.com/TheScienceMuseum/BLINK#using-the-rest-api for request and response formats.
+
+        Args:
+            query (dict): BLINK query body in Python dict format.
+            silent (bool, optional): Whether to suppress logs (of the number of items processed and the time taken). Defaults to False.
+
+        Returns:
+            dict: BLINK response
+        """
+        request_len = len(query["items"])
+        start = time.time()
+        response_json = requests.request(
+            "POST", self.endpoint, headers=self.headers, data=json.dumps(query)
+        ).json()
+        end = time.time()
+        response_time = end - start
+        response_rate = response_time / request_len
+
+        if not silent:
+            logger.info(
+                f"{request_len} items processed in {round(response_time, 1)} seconds ({response_rate} seconds/item)"
+            )
+
+        return response_json
+
+    def _get_unlinked_entities_generator(
+        self, entity_fields: List[str]
+    ) -> Generator[dict, None, None]:
+        """Get generator which yields documents from the Elasticsearch index with at least one of the fields in `entity_fields`.
+
+        Args:
+            entity_fields (List[str]): e.g. ["graph.@hc:entityPERSON.@value", "graph.@hc:entityORG.@value"]
+
+        Yields:
+            Generator[dict, None, None]: [description]
+        """
+
+        if not all([i.endswith("@value") for i in entity_fields]):
+            logger.warning(
+                "Some of the entity fields provided look like they're not valid JSON-LD (don't end in '@value')."
+            )
+
+        fields_exist = [{"exists": {"field": field}} for field in entity_fields]
+
+        es_query = {"query": {"bool": {"should": fields_exist}}}
+
+        doc_generator = helpers.scan(
+            client=datastore.es,
+            index=config.ELASTIC_SEARCH_INDEX,
+            query=es_query,
+            preserve_order=True,
+        )
+
+        return doc_generator
+
+    def _covert_doc_to_blink_query_format(
+        self, doc: dict, description_field: str, entity_fields: List[str]
+    ) -> List[dict]:
+        # get description and entity mentions
+        uri = doc["_id"]
+        description = datastore._get_dict_field_from_dot_notation(
+            doc, description_field
+        )
+        ent_mentions = []
+
+        for field_name in entity_fields:
+            field_val = datastore._get_dict_field_from_dot_notation(doc, field_name)
+
+            if isinstance(field_val, str):
+                ent_mentions.append((field_val, field_name))
+            elif isinstance(field_val, list):
+                ent_mentions += [(v, field_name) for v in field_val]
+
+        blink_request_items = []
+
+        for mention, label in ent_mentions:
+            # only the first mention is highlighted, if the entity mention occurs more than once in the description
+            mod_desc = description.replace(mention, f"[[{mention}]]", 1)
+            blink_request_items.append(
+                {
+                    "id": uri,
+                    "text": mod_desc,
+                    "metadata": {"mention": mention, "label": label},
+                }
+            )
+
+        return blink_request_items
+
+    def _convert_page_of_docs_to_blink_query_format(
+        self, page_of_docs: List[dict], description_field: str, entity_fields: List[str]
+    ) -> List[dict]:
+        output = []
+
+        for doc in page_of_docs:
+            output += self._covert_doc_to_blink_query_format(
+                doc, description_field, entity_fields
+            )
+
+        return output
+
+    def _write_items_to_jsonl_file(self, data: List[dict], file_path: str):
+        """Append the items in `data` to the .jsonl file specified by `file_path`."""
+        with open(file_path, "a") as f:
+            for dict_obj in data:
+                if len(dict_obj["links"]) > 0:
+                    f.write(json.dumps(dict_obj))
+                    f.write("\n")
+
+    def process_unlinked_entity_mentions(
+        self, output_path: str, page_size: int, limit: Optional[int] = None
+    ):
+        # get generator for unlinked mentions
+        doc_generator = self._get_unlinked_entities_generator(self.entity_fields)
+        if limit is not None:
+            doc_generator = islice(doc_generator, limit)
+
+        doc_generator_paginated = paginate_generator(doc_generator, page_size)
+
+        no_pages = math.ceil(limit / page_size) if limit is not None else None
+
+        for page in tqdm(doc_generator_paginated, total=no_pages):
+            # convert these to a format that can be used in the BLINK query
+            body = {
+                "items": self._convert_page_of_docs_to_blink_query_format(
+                    page, self.description_field, self.entity_fields
+                ),
+                "threshold": self.link_threshold,
+            }
+
+            # stream through BLINK
+            response_items = self.make_blink_request(body, silent=True).get("items")
+
+            # save to JSON
+            self._write_items_to_jsonl_file(response_items, output_path)
