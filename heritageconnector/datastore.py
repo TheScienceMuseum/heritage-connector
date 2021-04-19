@@ -1341,8 +1341,11 @@ class NERLoader:
         return doc_generator
 
 
-def _get_dict_field_from_dot_notation(doc: dict, field_dot_notation: str) -> dict:
-    """Get a field from a dictonary from Elasticsearch dot notation."""
+def _get_dict_field_from_dot_notation(
+    doc: dict, field_dot_notation: str
+) -> Union[dict, list, str]:
+    """Get a field from a dictonary from Elasticsearch dot notation. Only looks for @value
+    fields (literals) not @id fields (URIs)."""
 
     nested_field = doc["_source"]
     fields_split = field_dot_notation.split(".")
@@ -1354,7 +1357,7 @@ def _get_dict_field_from_dot_notation(doc: dict, field_dot_notation: str) -> dic
 
     for idx, field in enumerate(fields_split):
         if (field == "@value") and isinstance(nested_field, list):
-            return [item["@value"] for item in nested_field]
+            return [item["@value"] for item in nested_field if "@value" in item.keys()]
 
         if idx + 1 < len(fields_split):
             nested_field = nested_field.get(field, {})
