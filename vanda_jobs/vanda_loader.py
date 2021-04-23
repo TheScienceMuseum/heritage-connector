@@ -50,6 +50,7 @@ record_loader = datastore.RecordLoader(
 
 #  ======================================================
 
+## Content Table Loading
 
 def load_object_data(data_path):
     """Load data from ndjson files """
@@ -58,7 +59,7 @@ def load_object_data(data_path):
     object_df = pd.read_json(data_path, lines=True, nrows=max_records)
 
     logger.info("loading object data")
-    record_loader.add_records(table_name, object_df)
+    record_loader.add_records(table_name, object_df, add_type=WD.Q488383)
 
     return
 
@@ -69,7 +70,7 @@ def load_person_data(data_path):
     person_df = pd.read_json(data_path, lines=True, nrows=max_records)
 
     logger.info("loading person data")
-    record_loader.add_records(table_name, person_df)
+    record_loader.add_records(table_name, person_df, add_type=WD.Q5)
 
     return
 
@@ -80,7 +81,40 @@ def load_org_data(data_path):
     org_df = pd.read_json(data_path, lines=True, nrows=max_records)
 
     logger.info("loading org data")
-    record_loader.add_records(table_name, org_df)
+    record_loader.add_records(table_name, org_df, add_type=WD.Q43229)
+
+    return
+
+## Join Table Loading
+
+def load_join_data(data_path):
+    """Load subject-object-predicate triple from ndjson files and add to existing records"""
+    join_df = pd.read_json(data_path, lines=True, nrows=max_records)
+    join_df = join_df.rename(columns={"URI_1": "OBJECT", "URI_2": "SUBJECT"})
+
+    logger.info("loading maker data (made by & made)")
+    maker_df = join_df[join_df['relationship'] == 'made_by']
+    manufactured_df = join_df[join_df['relationship'] == 'manufactured_by']
+    made_df = pd.concat([maker_df, manufactured_df])
+    # made
+    record_loader.add_triples(
+        made_df, FOAF.maker, subject_col="SUBJECT", object_col="OBJECT"
+    )
+    # made by
+    record_loader.add_triples(
+        made_df, FOAF.made, subject_col="OBJECT", object_col="SUBJECT"
+    )
+
+    logger.info("loading depicts data (depicts and depicted)")
+    depicts_df = join_df[join_df['relationship'] == 'made_by']
+    # depicts - A thing depicted in this representation
+    record_loader.add_triples(
+        depicts_df, FOAF.depicts, subject_col="OBJECT", object_col="SUBJECT"
+    )
+    # depiction - A depiction of some thing
+    record_loader.add_triples(
+        depicts_df, FOAF.depiction, subject_col="SUBJECT", object_col="OBJECT"
+    )
 
     return
 
@@ -88,12 +122,14 @@ if __name__ == "__main__":
     object_data_path = ("../GITIGNORE_DATA/hc_import/content/20210422/objects.ndjson")
     person_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/persons.ndjson"
     org_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/organisations.ndjson"
+    join_data_path = "../GITIGNORE_DATA/hc_import/join/20210422/joins.ndjson"
 
     datastore.create_index()
 
     load_object_data(object_data_path)
     load_person_data(person_data_path)
     load_org_data(org_data_path)
+    load_join_data(join_data_path)
     
 
     # load_related_from_wikidata()
