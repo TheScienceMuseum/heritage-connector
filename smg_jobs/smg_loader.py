@@ -508,7 +508,7 @@ def load_ner_annotations(
         entity_types_to_link={"PERSON", "OBJECT", "ORG"},
     )
 
-    _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=128)
+    _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=16)
     ner_loader.get_link_candidates(candidates_per_entity_mention=10)
     ner_loader.train_entity_linker(nel_train_data)
     ner_loader.load_entities_into_es(linking_confidence_threshold, batch_size=32768)
@@ -523,40 +523,40 @@ if __name__ == "__main__":
     user_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_users.csv"
 
     datastore.create_index()
-    # load_people_data(people_data_path)
-    # load_orgs_data(people_data_path)
+    load_people_data(people_data_path)
+    load_orgs_data(people_data_path)
     load_object_data(object_data_path)
-    # load_maker_data(maker_data_path, people_data_path)
-    # load_user_data(user_data_path)
-    # load_related_from_wikidata()
-    # load_sameas_from_wikidata_smg_people_id()
-    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    # load_crowdsourced_links(
-    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
-    #     "people",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
-    #     "organisations",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
-    #     "objects (photographic technology & aeronautics)",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
-    #     "objects (computing & space)",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
-    #     "objects (locomotives & rolling stock)",
-    # )
-    # load_ner_annotations(
-    #     "en_core_web_lg",
-    #     nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
-    # )
+    load_maker_data(maker_data_path, people_data_path)
+    load_user_data(user_data_path)
+    load_related_from_wikidata()
+    load_sameas_from_wikidata_smg_people_id()
+    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    load_crowdsourced_links(
+        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
+        "people",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
+        "organisations",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
+        "objects (photographic technology & aeronautics)",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
+        "objects (computing & space)",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
+        "objects (locomotives & rolling stock)",
+    )
+    load_ner_annotations(
+        "en_core_web_trf",
+        nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+    )
