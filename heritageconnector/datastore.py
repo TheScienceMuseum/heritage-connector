@@ -883,22 +883,17 @@ class NERLoader:
 
         # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples
         entity_list = []
-        uris = [item[0] for item in doc_list]
-        descriptions = [item[1] for item in doc_list]
+        # list of (description, uri) tuples to give to nlp.pipe
+        descriptions_and_uris = [(item[1], item[0]) for item in doc_list]
 
-        spacy_docs = list(
-            tqdm(
-                self.nlp.pipe(
-                    descriptions,
-                    batch_size=spacy_batch_size,
-                    n_process=spacy_no_processes,
-                )
-            )
-        )
-
-        for idx, doc in enumerate(spacy_docs):
+        for doc, uri in self.nlp.pipe(
+            descriptions_and_uris,
+            as_tuples=True,
+            batch_size=spacy_batch_size,
+            n_process=spacy_no_processes,
+        ):
             entity_list += self._spacy_doc_to_ent_list(
-                uris[idx], descriptions[idx], doc, ignore_duplicated_ents
+                uri, doc.text, doc, ignore_duplicated_ents
             )
 
         self._entity_list = entity_list
