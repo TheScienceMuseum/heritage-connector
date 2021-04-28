@@ -886,11 +886,14 @@ class NERLoader:
         # list of (description, uri) tuples to give to nlp.pipe
         descriptions_and_uris = [(item[1], item[0]) for item in doc_list]
 
-        for doc, uri in self.nlp.pipe(
-            descriptions_and_uris,
-            as_tuples=True,
-            batch_size=spacy_batch_size,
-            n_process=spacy_no_processes,
+        for doc, uri in tqdm(
+            self.nlp.pipe(
+                descriptions_and_uris,
+                as_tuples=True,
+                batch_size=spacy_batch_size,
+                n_process=spacy_no_processes,
+            ),
+            total=len(doc_list),
         ):
             entity_list += self._spacy_doc_to_ent_list(
                 uri, doc.text, doc, ignore_duplicated_ents
