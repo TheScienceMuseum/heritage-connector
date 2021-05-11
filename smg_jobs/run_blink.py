@@ -13,10 +13,11 @@ if __name__ == "__main__":
         "graph.@hc:entityORG.@value",
         "graph.@hc:entityLOC.@value",
         "graph.@hc:entityFAC.@value",
-        "graph.@hc:entityOBJECT.@value"
+        "graph.@hc:entityOBJECT.@value",
+        "graph.@hc:entityLANGUAGE.@value",
+        "graph.@hc:entityNORP.@value",
+        "graph.@hc:entityEVENT.@value",
         # "graph.@hc:entityDATE.@value",
-        # "graph.@hc:entityLANGUAGE.@value",
-        # "graph.@hc:entityNORP.@value",
     ]
 
     threshold = 0.8
