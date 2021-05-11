@@ -1242,6 +1242,7 @@ class NERLoader:
 
         for ent in doc.ents:
             if ent_is_suitable(ent):
+                ent_text = ent._.alt_ent_text or ent.text
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
@@ -1250,14 +1251,14 @@ class NERLoader:
                             : doc[ent.start].idx
                         ]
                         + self.entity_markers[0]
-                        + ent.text
+                        + ent_text
                         + self.entity_markers[1]
-                        + item_description[doc[ent.start].idx + len(ent.text) :],
+                        + item_description[doc[ent.start].idx + len(ent_text) :],
                         "ent_label": ent.label_,
-                        "ent_text": ent.text,
+                        "ent_text": ent_text,
                         "ent_sentence": ent.sent.text,
                         "ent_start_idx": doc[ent.start].idx,
-                        "ent_end_idx": doc[ent.start].idx + len(ent.text),
+                        "ent_end_idx": doc[ent.start].idx + len(ent_text),
                     }
                 )
 
