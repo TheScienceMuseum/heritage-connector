@@ -47,6 +47,10 @@ def load_model(model_type: str, thesaurus_path=None):
     nlp.add_pipe("entity_filter", config={"ent_labels_ignore": ["DATE"]}, last=True)
     nlp.add_pipe("map_entity_types", last=True)
     nlp.add_pipe("entity_joiner", last=True)
+    # DuplicateEntityDetector should go after EntityJoiner, as it can then use any first names
+    # referred to as 'firstname and othername surname' to mark other occurrences of that name
+    # as duplicates.
+    # See https://github.com/TheScienceMuseum/heritage-connector-nlp/commit/ada3b098eeff3d40dc847f8d92b64f215c7f4be3
     nlp.add_pipe("duplicate_entity_detector", last=True)
 
     return nlp
