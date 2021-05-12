@@ -116,7 +116,7 @@ def load_join_data(data_path):
         depicts_df, FOAF.depiction, subject_col="SUBJECT", object_col="OBJECT"
     )
 
-    logger.info("loading associated data (significant_person and significant_to)")
+    logger.info("loading associated data (significant_person and )")
     associate_df = join_df[join_df['relationship'] == 'associated_with']
     # significant_person - person linked to the item in any possible way
     record_loader.add_triples(
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     object_data_path = ("../GITIGNORE_DATA/hc_import/content/20210422/objects.ndjson")
     person_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/persons.ndjson"
     org_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/organisations.ndjson"
-    join_data_path = "../GITIGNORE_DATA/hc_import/join/20210512/joins.ndjson"
+    join_data_path = "../GITIGNORE_DATA/hc_import/join/20210422/joins.ndjson"
 
     datastore.create_index()
 
