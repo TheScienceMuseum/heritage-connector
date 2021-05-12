@@ -106,7 +106,7 @@ def load_join_data(data_path):
     )
 
     logger.info("loading depicts data (depicts and depicted)")
-    depicts_df = join_df[join_df['relationship'] == 'made_by']
+    depicts_df = join_df[join_df['relationship'] == 'depicts']
     # depicts - A thing depicted in this representation
     record_loader.add_triples(
         depicts_df, FOAF.depicts, subject_col="OBJECT", object_col="SUBJECT"
@@ -116,13 +116,24 @@ def load_join_data(data_path):
         depicts_df, FOAF.depiction, subject_col="SUBJECT", object_col="OBJECT"
     )
 
+    logger.info("loading associated data (significant_person and significant_to)")
+    associate_df = join_df[join_df['relationship'] == 'associated_with']
+    # significant_person - person linked to the item in any possible way
+    record_loader.add_triples(
+        associate_df, WDT.P3342, subject_col="OBJECT", object_col="SUBJECT"
+    )
+    # significant_to
+    record_loader.add_triples(
+        associate_df, WDT.Q67185741, subject_col="SUBJECT", object_col="OBJECT"
+    )
+
     return
 
 if __name__ == "__main__":
     object_data_path = ("../GITIGNORE_DATA/hc_import/content/20210422/objects.ndjson")
     person_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/persons.ndjson"
     org_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/organisations.ndjson"
-    join_data_path = "../GITIGNORE_DATA/hc_import/join/20210422/joins.ndjson"
+    join_data_path = "../GITIGNORE_DATA/hc_import/join/20210512/joins.ndjson"
 
     datastore.create_index()
 
