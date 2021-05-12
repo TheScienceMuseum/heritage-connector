@@ -23,6 +23,8 @@ Run from the root of repo:
 
 Run from vanda_jobs:
 
+- cd vanda_jobs
+- Update paths in vanda_loader.py
 - `python vanda_loader.py`
 
 ### TODO
