@@ -17,7 +17,18 @@ logger = logging.get_logger(__name__)
 tqdm.pandas()
 
 
-class reconciler:
+class Reconciler:
+    """
+    For reconciling a categorical column in a DataFrame to a set of Wikidata QIDs. Uses a Wikidata Elasticsearch
+    dump as well as SPARQL queries.
+
+    The workflow using an instance of this class (here `rec`) is as follows:
+    1. Run `rec.process_column` to perform controlled reconciliation of a DataFrame column against Wikidata. This will
+    produce a DataFrame which maps the unique values in your column to Wikidata QIDs.
+    2. Check that the values are mapped correctly.
+    3. Run `rec.create_column_from_map_df` on the original column to produce a new column with values mapped to Wikidata QIDs.
+    """
+
     def __init__(self, dataframe: pd.DataFrame, table: str):
         self.df = dataframe
         self.table = table.upper()
@@ -25,7 +36,19 @@ class reconciler:
         self._map_df = None
         self._map_df_imported = None
 
-    def get_column_pid(self, column: str) -> str:
+    @property
+    def map_df(self):
+        """
+        DataFrame containing the mapping between the values in a processed column and their reconciled QIDs.
+        """
+        if self._map_df_imported or self._map_df:
+            return self._map_df_imported or self._map_df
+        else:
+            raise ValueError(
+                "A mapping DataFrame has not yet been generated or imported. Run `self.process_columns` or `self.import_map_df`."
+            )
+
+    def _get_column_pid(self, column: str) -> str:
         """
         Retrieves the column PID from field mapping config. Returns None if one is not present.
         """
@@ -49,7 +72,7 @@ class reconciler:
                 return config_column["PID"]
 
     @staticmethod
-    def get_subject_items_from_pid(pid: str) -> list:
+    def _get_subject_items_from_pid(pid: str) -> list:
         """
         Gets a list of subject items from a Wikidata property ID using 'subject
         item of this property (P1629)'. If a URL is passed extracts the PID from
@@ -121,10 +144,10 @@ class reconciler:
 
         # get PID and lookup filter (entity type) for PID
         if not class_include and not pid:
-            pid = self.get_column_pid(column)
-            class_include = self.get_subject_items_from_pid(pid)
+            pid = self._get_column_pid(column)
+            class_include = self._get_subject_items_from_pid(pid)
         elif not class_include:
-            class_include = self.get_subject_items_from_pid(pid)
+            class_include = self._get_subject_items_from_pid(pid)
 
         if multiple_vals:
             all_vals = self.df[column].sum()
@@ -185,7 +208,7 @@ class reconciler:
 
         self._map_df = map_df
 
-        # return self.create_column_from_map_df(column, map_df, multiple_vals)
+        return map_df
 
     def export_map_df(self, file_path: str = None):
         """

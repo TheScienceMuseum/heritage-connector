@@ -16,7 +16,7 @@ from heritageconnector.entity_matching import reconciler, lookup
 @pytest.fixture
 def rec():
     data = pd.DataFrame.from_dict({"item_name": ["photograph", "camera", "model"]})
-    rec = reconciler.reconciler(data, table="OBJECT")
+    rec = reconciler.Reconciler(data, table="OBJECT")
 
     rec.process_column(
         "item_name",
