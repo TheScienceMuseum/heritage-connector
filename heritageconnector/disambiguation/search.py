@@ -3,7 +3,8 @@ import pandas as pd
 import re
 
 from tenacity import retry, stop_after_attempt, wait_fixed
-
+from typing import Union
+import elasticsearch
 from heritageconnector.base.disambiguation import TextSearch
 from heritageconnector.config import config
 from heritageconnector.nlp.string_pairs import fuzzy_match_lists
@@ -229,7 +230,11 @@ class wikipedia_text_search(TextSearch):
 
 
 class es_text_search(TextSearch):
-    def __init__(self, index: str = config.ELASTIC_SEARCH_WIKI_INDEX):
+    def __init__(
+        self,
+        index: str = config.ELASTIC_SEARCH_WIKI_INDEX,
+        es_connector: Union[elasticsearch.client.Elasticsearch, str] = "from_config",
+    ):
         """
         Args:
             index (str): Elasticsearch index to search
@@ -237,7 +242,10 @@ class es_text_search(TextSearch):
         Raises:
             ValueError: Raised if index doesn't exist in the Elasticsearch index specified in config.
         """
-        if not es.indices.exists(index=index):
+
+        self.es = es if es_connector == "from_config" else es_connector
+
+        if not self.es.indices.exists(index=index):
             raise ValueError(
                 f"Index {index} does not exist in the connected Elasticsearch index"
             )
@@ -320,7 +328,7 @@ class es_text_search(TextSearch):
         else:
             body = {"query": {"match": {field: {"query": text, "fuzziness": "AUTO"}}}}
 
-        res = es.search(
+        res = self.es.search(
             index=self.index,
             body=body,
             size=min(
