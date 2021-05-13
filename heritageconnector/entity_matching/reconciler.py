@@ -26,8 +26,9 @@ class Reconciler:
     The workflow using an instance of this class (here `rec`) is as follows:
     1. Run `rec.process_column` to perform controlled reconciliation of a DataFrame column against Wikidata. This will
     produce a DataFrame which maps the unique values in your column to Wikidata QIDs.
-    2. Check that the values are mapped correctly.
-    3. Run `rec.create_column_from_map_df` on the original column to produce a new column with values mapped to Wikidata QIDs.
+    2. Check that the values are mapped correctly. If you want to modify them, you can export them using `export_map_df_to_csv`
+    and re-import them using `import_map_df_from_csv`.
+    3. Run `create_column_from_map_df` on the original column to produce a new column (pd.Series) with values mapped to Wikidata QIDs.
     """
 
     def __init__(
@@ -81,14 +82,7 @@ class Reconciler:
         text_similarity_thresh: int,
         field_exists_filter: str,
     ) -> List[str]:
-        """Lookup text and return list of QIDs
-
-        Args:
-            text (str): [description]
-
-        Returns:
-            [type]: [description]
-        """
+        """Lookup text and return list of QIDs"""
         qids = self.search.run_search(
             # limit is large here as we want to fetch all the results then filter them by
             # text similarity later
@@ -109,16 +103,18 @@ class Reconciler:
         pid: str = None,
         class_include: Union[str, list] = None,
         class_exclude: Union[str, list] = None,
-        search_limit_per_item: int = 5000,
-        text_similarity_thresh: int = 95,
-        field_exists_filter: str = None,
+        search_args: dict = {
+            "search_limit_per_item": 5000,
+            "text_similarity_thresh": 95,
+            "field_exists_filter": None,
+        },
     ) -> pd.Series:
         """
         Run reconciliation on a categorical column.
 
         Args:
             column (pd.Series): column to reconcile.
-            multiple_vals (bool): whether the column contains multiple values per record.
+            multiple_vals (bool): whether the column contains multiple values per record
                 If values are: lists -> True, strings -> False.
             pid (str, Optional): Wikidata PID of the selected column. Only needed to look up a class
                 constraint using 'subject item of this property' (P1629).
@@ -126,13 +122,8 @@ class Reconciler:
                 PID is specified. Defaults to None.
             class_exclude (Union[str, list], Optional): class trees containing this class (above the entity)
                 will be excluded. Defaults to None.
-            search_limit_per_item (int): Number of results to return from the Elasticsearch index per search.
-                Set lower (~200) for speed if queries are more unique. With a small limit some results for generic
-                queries may be missed. Defaults to 5000.
-            text_similarity_thresh (int). Text similarity threshold for a match. Defaults to 95.
-            field_exists_filter (str, optional): if specified, all searches will be filtered to only documents which have a value for this field.
-                For example to filter to documents which have a P279 value, set `field_exists_filter = "claims.P279"`. Defaults to None.
-
+            search_args (dict, Optional): keyword arguments for text search. See `heritageconnector.disambiguation.search.es_text_search`
+                for the full set of arguments.
         """
 
         # if PID is specified, get the classes to include using the 'subject item of this property' (P1629)
@@ -153,9 +144,7 @@ class Reconciler:
         logger.info("Looking up Wikidata QIDs against Elasticsearch Wikidata dump")
 
         map_df["qids"] = map_df.index.to_series().progress_apply(
-            lambda v: self._lookup_value(
-                v, search_limit_per_item, text_similarity_thresh, field_exists_filter
-            )
+            lambda v: self._lookup_value(v, **search_args)
         )
 
         # get set of types to look up in subclass tree

@@ -23,7 +23,6 @@ def fixt():
         multiple_vals=False,
         class_include="Q488383",
         class_exclude=["Q5", "Q43229", "Q28640", "Q618123", "Q16222597"],
-        text_similarity_thresh=95,
     )
 
     return data, rec, map_df
