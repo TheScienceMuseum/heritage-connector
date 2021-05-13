@@ -287,10 +287,10 @@ class es_text_search(TextSearch):
             dict (optional): dict of {QID: P31_value, ...} for all QIDs. For records with no P31 value, the corresponding value is None.
         """
 
-        # if "fuzzy_scorer" not in kwargs:
-        #     fuzzy_scorer = fuzz.token_sort_ratio
-        # else:
-        #     fuzzy_scorer = kwargs["fuzzy_scorer"]
+        if "fuzzy_scorer" not in kwargs:
+            fuzzy_scorer = fuzz.token_sort_ratio
+        else:
+            fuzzy_scorer = kwargs["fuzzy_scorer"]
 
         # get more results than we need to allow for removing values with return_unique flag
         duplicate_safety_factor = 1.2
@@ -354,12 +354,13 @@ class es_text_search(TextSearch):
                     [
                         item["_source"]["id"]
                         for item in res
-                        # if fuzzy_match_lists(
-                        #     item["_source"].get("labels", ""),
-                        #     text,
-                        #     threshold=similarity_thresh,
-                        #     scorer=fuzzy_scorer,
-                        # )
+                        if (not similarity_thresh)
+                        or fuzzy_match_lists(
+                            item["_source"].get("labels", ""),
+                            text,
+                            threshold=similarity_thresh,
+                            scorer=fuzzy_scorer,
+                        )
                     ]
                 )
             )[0:limit]
@@ -368,12 +369,13 @@ class es_text_search(TextSearch):
             return [
                 item["_source"]["id"]
                 for item in res
-                # if fuzzy_match_lists(
-                #     item["_source"].get("labels", ""),
-                #     text,
-                #     threshold=similarity_thresh,
-                #     scorer=fuzzy_scorer,
-                # )
+                if (not similarity_thresh)
+                or fuzzy_match_lists(
+                    item["_source"].get("labels", ""),
+                    text,
+                    threshold=similarity_thresh,
+                    scorer=fuzzy_scorer,
+                )
             ][0:limit]
 
         if len(res) > 0:

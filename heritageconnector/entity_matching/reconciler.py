@@ -78,9 +78,9 @@ class Reconciler:
     def _lookup_value(
         self,
         text: str,
-        search_limit_per_item: int,
-        text_similarity_thresh: int,
-        field_exists_filter: str,
+        search_limit_per_item: int = 5000,
+        text_similarity_thresh: int = 95,
+        field_exists_filter: str = None,
     ) -> List[str]:
         """Lookup text and return list of QIDs"""
         qids = self.search.run_search(
