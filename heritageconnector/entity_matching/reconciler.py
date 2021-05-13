@@ -117,9 +117,9 @@ class Reconciler:
             multiple_vals (bool): whether the column contains multiple values per record
                 If values are: lists -> True, strings -> False.
             pid (str, Optional): Wikidata PID of the selected column. Only needed to look up a class
-                constraint using 'subject item of this property' (P1629).
-            class_include (Union[str, list], Optional): class tree to look under. Will be ignored if
-                PID is specified. Defaults to None.
+                constraint using 'subject item of this property' (P1629). Will be ignored if `class_include`
+                is specified.
+            class_include (Union[str, list], Optional): class tree to look under. Defaults to None.
             class_exclude (Union[str, list], Optional): class trees containing this class (above the entity)
                 will be excluded. Defaults to None.
             search_args (dict, Optional): keyword arguments for text search. See `heritageconnector.disambiguation.search.es_text_search`
@@ -129,6 +129,10 @@ class Reconciler:
         # if PID is specified, get the classes to include using the 'subject item of this property' (P1629)
         if pid and (not class_include):
             class_include = self._get_subject_items_from_pid(pid)
+        elif pid and class_include:
+            logger.warning(
+                "Both `pid` and class_include arguments have been specified. `class_include` will overwrite the entities set by `pid`, meaning that the argument `pid` will have no effect."
+            )
 
         if multiple_vals:
             all_vals = column.sum()
