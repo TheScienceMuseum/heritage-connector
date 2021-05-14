@@ -9,3 +9,4 @@ recommonmark
 coverage
 pytest-cov
 flake8
+sphinx_rtd_theme

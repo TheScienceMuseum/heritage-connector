@@ -9,7 +9,7 @@ Heritage Connector documentation
 The Heritage Connector is a framework for automatically connecting items within and across `GLAM`_ collections and  publications through linking with `Wikidata`_. It achieves this by applying the following techniques *(links in sidebar)*:
 
 - data ingestion: tabular data to knowledge graphs (RDF); mining existing data for Wikidata connections;
-- entity matching: training a machine learning model to predict :code:`owl:sameAs` links between collection items and Wikidata items;
+- record linkage: training a machine learning model to predict :code:`owl:sameAs` links between collection items and Wikidata items;
 - information retrieval: adding new entities and relations to the knowledge graph from text using named entity recognition (NER) and entity linking (NEL) techniques.
 
 .. _glam: https://en.wikipedia.org/wiki/GLAM_(industry_sector)
@@ -33,14 +33,25 @@ Useful links
 .. toctree::
    :maxdepth: 2
    :hidden:
+   :caption: Getting Started
 
    architecture
    getting_started
-   data_ingestion
-   entity_matching
-   information_retrieval
+   reconciling_fields
+   
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Reference
+   
    api
    tutorials
+
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Appendix
+
    bibliography
    about
 
