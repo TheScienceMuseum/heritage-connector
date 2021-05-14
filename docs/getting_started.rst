@@ -1,4 +1,4 @@
-Getting Started
+First Steps
 ===============
 
 To set up an instance of Heritage Connector you need to complete the following steps.
@@ -16,15 +16,14 @@ To set up an instance of Heritage Connector you need to complete the following s
 Prerequisites
 *************
 
-Python 3.6+
-Only tested on Mac OSX but should work on Windows and Linux
+Python 3.6+. Only tested on Mac OSX but should work on Windows and Linux
 
 Installation from GitHub repo
 ********************************
 
 We use pipenv [#pipenv]_ for package management. 
 
-At the moment there is no installable version. Instead, set up the package and run commands from the root directory as follows.
+At the moment the code is not pip installable. Instead, set up the package and run commands from the root directory as follows.
 
 .. code-block:: bash
     
@@ -221,7 +220,7 @@ The :py:meth:`heritageconnector.datastore.RecordLoader.add_records` method is us
 
 The required the argument :code:`table_name` sets the values of :code:`doc['_source']['type']` for each Elasticsearch record and :code:`skos:hasTopConcept` for each entity in the triplestore, meaning that an entity's source table can always be idenfified from both databases.
 
-The optional argument :code:`add_type` sets the value of :code:`RDF.type` for all records in the table. A Wikidata entity is recommended here for entity matching purposes.
+The optional argument :code:`add_type` sets the value of :code:`RDF.type` for all records in the table. A Wikidata entity is recommended here for record linkage purposes.
 
 **Example of importing a content table using RecordLoader.add_records**
 
