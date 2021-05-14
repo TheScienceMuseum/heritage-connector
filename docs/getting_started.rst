@@ -99,7 +99,7 @@ The Elasticsearch index containing the Wikidata dump is denoted in :code:`config
 
 .. _prepare-collection-data:
 
-3. Prepare collection data and field_mapping.py
+1. Prepare collection data and field_mapping.py
 ------------------------------------------------
 
 There are 3 requirements for collection data for it to be imported into the Heritage Connector graph:

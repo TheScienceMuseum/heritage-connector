@@ -37,6 +37,7 @@ Useful links
 
    architecture
    getting_started
+   reconciling_fields
    
 .. toctree::
    :maxdepth: 2
