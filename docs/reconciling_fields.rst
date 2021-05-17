@@ -61,17 +61,17 @@ See the *Elasticsearch - Wikidata dump* section of `First Steps <getting_started
 2. Check data format
 *********************
 
-:code:`Reconciler` takes in a pandas Series (equivalent to a DataFrame column). For good results, the data in this Series should:
+The Reconciler takes in a pandas Series (equivalent to a DataFrame column). For good results, the data in this Series should:
 
-* be categorical (many values appear many times);
-* correspond to an area of the Wikidata ontology. 
+* be categorical (many values appear many times), and
+* correspond to an area of the Wikidata ontology (e.g. *occupations* or *bodies of water*). 
 
-The Series must also have either all *list-like* or *string-like* values, which will determine the value of the boolean parameter :code:`multiple_valuess` in the next step.
+The Series must have either all *list-like* or all *string-like* values, which will determine the value of the boolean parameter :code:`multiple_values` in the next step.
 
-1. Process data to create a mapping table
+3. Process data to create a mapping table
 ******************************************
 
-First, create an instance of :py:meth:`heritageconnector.entity_matching.reconciler.Reconciler`. The default :code:`"from_config"` values means that the Elasticsearch instance and index defined in :code:`config.ini` are used.
+First, create an instance of :py:meth:`heritageconnector.entity_matching.reconciler.Reconciler`. The default :code:`"from_config"` argument values mean that the Elasticsearch instance and index defined in :code:`config.ini` are used.
 
 .. code-block:: python
 
@@ -83,9 +83,9 @@ First, create an instance of :py:meth:`heritageconnector.entity_matching.reconci
 
 The :py:meth:`heritageconnector.entity_matching.reconciler.Reconciler.process_column` method can then be used to create a *mapping table* between values in a pandas Series and Wikidata QIDs, according to a series of constraints.
 
-The constraints rely on the concept of the *Wikidata class tree*: a series of *subclass of (P279)* properties connecting together QIDs in an ontology structure. For example we want *camera* (photography equipment) to resolve to *camera (Q15328)* which is in the subclass tree of *object (Q488383)*, and not *camera (Q97301845)*, which is in the subclass tree of *geographical feature (Q618123)*. This constraint can be expressed using the :code:`class_include` and :code:`class_exclude` arguments as in the following example.
+The constraints rely on the concept of the *Wikidata class tree*: a series of *subclass of (P279)* properties connecting together QIDs in an ontology structure. For example we may want *camera* (photography equipment) to resolve to *camera (Q15328)* which is in the subclass tree of *object (Q488383)*, and not *camera (Q97301845)*, which is in the subclass tree of *geographical feature (Q618123)*. Constraits related to the class tree can be expressed using the arguments :code:`class_include` and :code:`class_exclude` as in the following example.
 
-Instead of providing a value for the :code:`class_include` argument, the :code:`pid` argument can be passed instead, which uses the property *subject item of this property (P1629)* to get a value for :code:`class_include` from a PID.
+(Instead of providing a value for the :code:`class_include` argument, the :code:`pid` argument can be passed instead, which uses the property *subject item of this property (P1629)* to get a value for :code:`class_include` from a PID).
 
 .. code-block:: python
 
