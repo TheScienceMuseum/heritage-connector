@@ -76,7 +76,7 @@ def load_object_data(catalogue_data_path):
     newline = " \n "
     catalogue_df.loc[:, "DESCRIPTION"] = catalogue_df[["DESCRIPTION", "OPTION1"]].apply(
         lambda x: f"{newline.join(x)}"
-        if x["DESCRIPTION"] != x["OPTION1"]
+        if x["DESCRIPTION"] != x["OPTION1"] and (str(x["OPTION1"]) != "nan")
         else x["DESCRIPTION"],
         axis=1,
     )
