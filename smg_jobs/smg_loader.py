@@ -3,7 +3,7 @@ import sys
 sys.path.append("..")
 
 import pandas as pd
-import rdflib
+import random
 import string
 import re
 import os
@@ -24,7 +24,6 @@ from heritageconnector.utils.data_transformation import get_year_from_date_value
 from heritageconnector.entity_matching.lookup import (
     get_internal_urls_from_wikidata,
     get_sameas_links_from_external_id,
-    DenonymConverter,
     get_wikidata_uri_from_placename,
 )
 from heritageconnector.utils.generic import flatten_list_of_lists
@@ -57,6 +56,67 @@ placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qid
 #  ======================================================
 
 
+def create_object_disambiguating_description(row: pd.Series) -> str:
+    """
+    Original description col = DESCRIPTION.
+    Components:
+    - ITEM_NAME -> 'Pocket watch.'
+    - PLACE_MADE + DATE_MADE -> 'Made in London, 1940.'
+    - DESCRIPTION (original description)
+    NOTE: must be used before dates are converted to numbers using `get_year_from_date_string`, so that
+    uncertainty such as 'about 1971' is added to the description.
+    """
+
+    # ITEM_NAME
+    # Here we also check that the name without 's' or 'es' is not already in the description,
+    # which should cover the majority of plurals.
+    if (
+        (str(row.ITEM_NAME[0]) != "nan")
+        and (str(row.ITEM_NAME[0]).lower() not in row.DESCRIPTION.lower())
+        and (str(row.ITEM_NAME[0]).rstrip("s").lower() not in row.DESCRIPTION.lower())
+        and (str(row.ITEM_NAME[0]).rstrip("es").lower() not in row.DESCRIPTION.lower())
+    ):
+        item_name = f"{row.ITEM_NAME[0].capitalize().strip()}."
+    else:
+        item_name = ""
+
+    # PLACE_MADE + DATE_MADE
+    add_place_made = (str(row["PLACE_MADE"]) != "nan") and (
+        str(row["PLACE_MADE"]).lower() not in row.DESCRIPTION.lower()
+    )
+    add_date_made = (str(row["DATE_MADE"]) != "nan") and (
+        str(row["DATE_MADE"]).lower() not in row.DESCRIPTION.lower()
+    )
+    # Also check for dates minus suffixes, e.g. 200-250 should match with 200-250 AD and vice-versa
+    if re.findall(r"\d+-?\d*", str(row["DATE_MADE"])):
+        add_date_made = add_date_made and (
+            re.findall(r"\d+-?\d*", row["DATE_MADE"])[0].lower()
+            not in row.DESCRIPTION.lower()
+        )
+
+    if add_place_made and add_date_made:
+        made_str = f"Made in {row.PLACE_MADE.strip()}, {row.DATE_MADE.strip()}."
+    elif add_place_made:
+        made_str = f"Made in {row.PLACE_MADE.strip()}."
+    elif add_date_made:
+        made_str = f"Made {row.DATE_MADE.strip()}."
+    else:
+        made_str = ""
+
+    # add space and full stop (if needed) to end of description
+    description = (
+        row.DESCRIPTION.strip()
+        if row.DESCRIPTION.strip()[-1] == "."
+        else f"{row.DESCRIPTION.strip()}."
+    )
+
+    # we shuffle the components of the description so any model using them does not learn the order that we put them in
+    aug_description_components = [item_name, description, made_str]
+    random.shuffle(aug_description_components)
+
+    return (" ".join(aug_description_components)).strip()
+
+
 def load_object_data(catalogue_data_path):
     """Load data from CSV files """
 
@@ -81,6 +141,10 @@ def load_object_data(catalogue_data_path):
         axis=1,
     )
 
+    catalogue_df["DISAMBIGUATING_DESCRIPTION"] = catalogue_df.apply(
+        create_object_disambiguating_description, axis=1
+    )
+
     catalogue_df["DATE_MADE"] = catalogue_df["DATE_MADE"].apply(
         get_year_from_date_value
     )
@@ -93,6 +157,125 @@ def load_object_data(catalogue_data_path):
     record_loader.add_records(table_name, catalogue_df)
 
     return
+
+
+def create_people_disambiguating_description(row: pd.Series) -> str:
+    """
+    Original description col = BIOGRAPHY.
+    Components:
+    - NATIONALITY + OCCUPATION -> 'American photographer.'
+    - BIRTH_DATE + BIRTH_PLACE -> 'Born 1962, United Kingdom.'
+    - DEATH_DATE + DEATH_PLACE + CAUSE_OF_DEATH -> 'Died 1996 of heart attack.' (Add place if no overlap between
+        BIRTH_PLACE and DEATH_PLACE strings. Joined to founded string above)
+    - BIOGRAPHY (original description)
+    NOTE: must be used before dates are converted to numbers using `get_year_from_date_string`, so that
+    uncertainty such as 'about 1971' is added to the description.
+    """
+
+    # NATIONALITY + OCCUPATION (only uses first of each)
+    nationality = str(row["NATIONALITY"][0])
+    occupation = str(row["OCCUPATION"][0])
+    add_nationality = (nationality != "nan") and (
+        nationality.lower() not in row.BIOGRAPHY.lower()
+    )
+    add_occupation = (occupation != "nan") and (
+        occupation.lower() not in row.BIOGRAPHY.lower()
+    )
+
+    if add_nationality and add_occupation:
+        nationality_occupation_str = (
+            f"{nationality.strip().title()} {occupation.strip()}."
+        )
+    elif add_nationality:
+        nationality_occupation_str = f"{nationality.strip().title()}."
+    elif add_occupation:
+        nationality_occupation_str = f"{occupation.strip().capitalize()}."
+    else:
+        nationality_occupation_str = ""
+
+    # BIRTH_PLACE + BIRTH_DATE
+    add_birth_place = (str(row["BIRTH_PLACE"]) != "nan") and (
+        str(row["BIRTH_PLACE"]).lower() not in row.BIOGRAPHY.lower()
+    )
+    add_birth_date = (str(row["BIRTH_DATE"]) != "nan") and (
+        str(row["BIRTH_DATE"]).lower() not in row.BIOGRAPHY.lower()
+    )
+
+    # Also check for dates minus suffixes, e.g. 200-250 should match with 200-250 AD and vice-versa
+    if re.findall(r"\d+-?\d*", str(row["BIRTH_DATE"])):
+        add_birth_date = add_birth_date and (
+            re.findall(r"\d+-?\d*", row["BIRTH_DATE"])[0].lower()
+            not in row.BIOGRAPHY.lower()
+        )
+
+    if add_birth_place and add_birth_date:
+        founded_str = f"Born in {row.BIRTH_PLACE.strip()}, {row.BIRTH_DATE.strip()}."
+    elif add_birth_place:
+        founded_str = f"Born in {row.BIRTH_PLACE.strip()}."
+    elif add_birth_date:
+        founded_str = f"Born {row.BIRTH_DATE.strip()}."
+    else:
+        founded_str = ""
+
+    # DEATH_PLACE + DEATH_DATE
+    add_death_place = (
+        row["DEATH_PLACE"]
+        and (str(row["DEATH_PLACE"]) != "nan")
+        and (str(row["DEATH_PLACE"]).lower() not in row.BIOGRAPHY.lower())
+        and (str(row["DEATH_PLACE"]) not in str(row["BIRTH_PLACE"]))
+        and (str(row["BIRTH_PLACE"]) not in str(row["DEATH_PLACE"]))
+    )
+    add_death_date = (str(row["DEATH_DATE"]) != "nan") and (
+        str(row["DEATH_DATE"]).lower() not in row.BIOGRAPHY.lower()
+    )
+    # Also check for dates minus suffixes, e.g. 200-250 should match with 200-250 AD and vice-versa
+    if re.findall(r"\d+-?\d*", str(row["DEATH_DATE"])):
+        add_death_date = add_death_date and (
+            re.findall(r"\d+-?\d*", row["DEATH_DATE"])[0].lower()
+            not in row.BIOGRAPHY.lower()
+        )
+
+    cause_of_death = str(row["CAUSE_OF_DEATH"]).strip()
+    add_cause_of_death = (cause_of_death != "nan") and (
+        cause_of_death.lower() not in row.BIOGRAPHY.lower()
+    )
+    if cause_of_death.startswith("illness (") and cause_of_death.endswith(")"):
+        cause_of_death = cause_of_death.split("(")[1][0:-1]
+
+    if add_death_place and add_death_date:
+        dissolved_str = f"Died in {row.DEATH_PLACE.strip()}, {row.DEATH_DATE.strip()}."
+    elif add_death_place:
+        dissolved_str = f"Died in {row.DEATH_PLACE.strip()}."
+    elif add_death_date:
+        dissolved_str = f"Died {row.DEATH_DATE.strip()}."
+    else:
+        dissolved_str = ""
+
+    if add_cause_of_death and (add_death_date or add_death_place):
+        dissolved_str = (
+            dissolved_str[0:-1] + " of " + row.CAUSE_OF_DEATH.lower().strip() + "."
+        )
+    elif add_cause_of_death:
+        dissolved_str += f"Cause of death was {row.CAUSE_OF_DEATH.lower().strip()}."
+
+    # Assemble
+    dates_str = " ".join([founded_str, dissolved_str]).strip()
+
+    # add space and full stop (if needed) to end of description
+    if row.BIOGRAPHY:
+        description = (
+            row.BIOGRAPHY.strip()
+            if row.BIOGRAPHY.strip()[-1] == "."
+            else f"{row.BIOGRAPHY.strip()}."
+        )
+    else:
+        description = ""
+
+    # we shuffle the components of the description so any model using them does not learn the order that we put them in
+    aug_description_components = [nationality_occupation_str, description, dates_str]
+    random.shuffle(aug_description_components)
+
+    return (" ".join(aug_description_components)).strip()
 
 
 def load_people_data(people_data_path):
@@ -122,25 +305,11 @@ def load_people_data(people_data_path):
     people_df["PREFERRED_NAME"] = people_df["PREFERRED_NAME"].apply(
         reverse_preferred_name
     )
-    people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
-    people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
         datastore_helpers.split_list_string
     )
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
         datastore_helpers.split_list_string
-    )
-    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
-        lambda x: flatten_list_of_lists(
-            [datastore_helpers.get_country_from_nationality(i) for i in x]
-        )
-    )
-
-    people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
-        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping)
-    )
-    people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
-        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping)
     )
     people_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = people_df[
         ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
@@ -164,12 +333,137 @@ def load_people_data(people_data_path):
         ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
     ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
 
+    people_df["DISAMBIGUATING_DESCRIPTION"] = people_df.apply(
+        create_people_disambiguating_description, axis=1
+    )
+
+    # all of these must happen after creating DISAMBIGUATING_DESCRIPTION as they modify the text values of fields
+    # that are used
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists(
+            [datastore_helpers.get_country_from_nationality(i) for i in x]
+        )
+    )
+
+    people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
+        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping)
+    )
+    people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
+        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping)
+    )
+    people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
         {"F": WD.Q6581072, "M": WD.Q6581097}
     )
 
     logger.info("loading people data")
     record_loader.add_records(table_name, people_df, add_type=WD.Q5)
+
+
+def create_org_disambiguating_description(row: pd.Series) -> str:
+    """
+    Original description col = BIOGRAPHY.
+    Components:
+    - NATIONALITY + OCCUPATION -> 'British Railway Board'
+    - BIRTH_DATE + BIRTH_PLACE -> 'Founded 1962, United Kingdom'
+    - DEATH_DATE + DEATH_PLACE -> 'Dissolved 1996.' (Add place if no overlap between
+        BIRTH_PLACE and DEATH_PLACE strings. Joined to founded string above)
+    - BIOGRAPHY (original description)
+    NOTE: must be used before dates are converted to numbers using `get_year_from_date_string`, so that
+    uncertainty such as 'about 1971' is added to the description.
+    """
+
+    # NATIONALITY + OCCUPATION (only uses first of each)
+    nationality = str(row["NATIONALITY"][0])
+    occupation = str(row["OCCUPATION"][0])
+    add_nationality = (nationality != "nan") and (
+        nationality.lower() not in row.BIOGRAPHY.lower()
+    )
+    add_occupation = (occupation != "nan") and (
+        occupation.lower() not in row.BIOGRAPHY.lower()
+    )
+
+    if add_nationality and add_occupation:
+        nationality_occupation_str = (
+            f"{nationality.strip().title()} {occupation.strip()}."
+        )
+    elif add_nationality:
+        nationality_occupation_str = f"{nationality.strip().title()}."
+    elif add_occupation:
+        nationality_occupation_str = f"{occupation.strip().capitalize()}."
+    else:
+        nationality_occupation_str = ""
+
+    # BIRTH_PLACE + BIRTH_DATE
+    add_birth_place = (str(row["BIRTH_PLACE"]) != "nan") and (
+        str(row["BIRTH_PLACE"]).lower() not in row.BIOGRAPHY.lower()
+    )
+    add_birth_date = (str(row["BIRTH_DATE"]) != "nan") and (
+        str(row["BIRTH_DATE"]).lower() not in row.BIOGRAPHY.lower()
+    )
+    # Also check for dates minus suffixes, e.g. 200-250 should match with 200-250 AD and vice-versa
+    if re.findall(r"\d+-?\d*", str(row["BIRTH_DATE"])):
+        add_birth_date = add_birth_date and (
+            re.findall(r"\d+-?\d*", row["BIRTH_DATE"])[0].lower()
+            not in row.BIOGRAPHY.lower()
+        )
+
+    if add_birth_place and add_birth_date:
+        founded_str = f"Founded in {row.BIRTH_PLACE.strip()}, {row.BIRTH_DATE.strip()}."
+    elif add_birth_place:
+        founded_str = f"Founded in {row.BIRTH_PLACE.strip()}."
+    elif add_birth_date:
+        founded_str = f"Founded {row.BIRTH_DATE.strip()}."
+    else:
+        founded_str = ""
+
+    # DEATH_PLACE + DEATH_DATE
+    add_death_place = (
+        (str(row["DEATH_PLACE"]) != "nan")
+        and (str(row["DEATH_PLACE"]).lower() not in row.BIOGRAPHY.lower())
+        and (str(row["DEATH_PLACE"]) not in str(row["BIRTH_PLACE"]))
+        and (str(row["BIRTH_PLACE"]) not in str(row["DEATH_PLACE"]))
+    )
+    add_death_date = (str(row["DEATH_DATE"]) != "nan") and (
+        str(row["DEATH_DATE"]).lower() not in row.BIOGRAPHY.lower()
+    )
+    # Also check for dates minus suffixes, e.g. 200-250 should match with 200-250 AD and vice-versa
+    if re.findall(r"\d+-?\d*", str(row["DEATH_DATE"])):
+        add_death_date = add_death_date and (
+            re.findall(r"\d+-?\d*", row["DEATH_DATE"])[0].lower()
+            not in row.BIOGRAPHY.lower()
+        )
+
+    if add_death_place and add_death_date:
+        dissolved_str = (
+            f"Dissolved in {row.DEATH_PLACE.strip()}, {row.DEATH_DATE.strip()}."
+        )
+    elif add_death_place:
+        dissolved_str = f"Dissolved in {row.DEATH_PLACE.strip()}."
+    elif add_death_date:
+        dissolved_str = f"Dissolved {row.DEATH_DATE.strip()}."
+    else:
+        dissolved_str = ""
+
+    # Assemble
+    dates_str = " ".join([founded_str, dissolved_str]).strip()
+
+    # add space and full stop (if needed) to end of description
+    if row.BIOGRAPHY:
+        description = (
+            row.BIOGRAPHY.strip()
+            if row.BIOGRAPHY.strip()[-1] == "."
+            else f"{row.BIOGRAPHY.strip()}."
+        )
+    else:
+        description = ""
+
+    # we shuffle the components of the description so any model using them does not learn the order that we put them in
+    aug_description_components = [nationality_occupation_str, description, dates_str]
+    random.shuffle(aug_description_components)
+
+    return (" ".join(aug_description_components)).strip()
 
 
 def load_orgs_data(people_data_path):
@@ -182,9 +476,6 @@ def load_orgs_data(people_data_path):
 
     # PREPROCESS
     org_df["URI"] = people_prefix + org_df["LINK_ID"].astype(str)
-
-    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
-    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
 
     org_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = org_df[
         ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
@@ -215,6 +506,13 @@ def load_orgs_data(people_data_path):
     org_df.loc[:, "BIOGRAPHY"] = org_df[
         ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
     ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
+
+    org_df["DISAMBIGUATING_DESCRIPTION"] = org_df.apply(
+        create_org_disambiguating_description, axis=1
+    )
+
+    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
 
     logger.info("loading orgs data")
     record_loader.add_records(table_name, org_df)
@@ -490,7 +788,7 @@ def load_ner_annotations(
 
     source_description_field = (
         target_description_field
-    ) = "data.http://www.w3.org/2001/XMLSchema#description"
+    ) = "data.https://schema.org/disambiguatingDescription"
     target_title_field = "graph.@rdfs:label.@value"
     target_alias_field = "graph.@skos:altLabel.@value"
     target_type_field = "graph.@skos:hasTopConcept.@value"
