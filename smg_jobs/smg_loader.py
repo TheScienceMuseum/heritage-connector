@@ -7,6 +7,7 @@ import random
 import string
 import re
 import os
+from typing import Optional
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore, datastore_helpers
 from heritageconnector.namespace import (
@@ -26,7 +27,7 @@ from heritageconnector.entity_matching.lookup import (
     get_sameas_links_from_external_id,
     get_wikidata_uri_from_placename,
 )
-from heritageconnector.utils.generic import flatten_list_of_lists
+from heritageconnector.utils.generic import flatten_list_of_lists, get_timestamp
 from heritageconnector.utils.wikidata import qid_to_url
 from heritageconnector import logging
 
@@ -50,9 +51,14 @@ record_loader = datastore.RecordLoader(
 # different purpose: they are meant for converting IDs in internal documents into SMG URLs.
 collection_prefix = "https://collection.sciencemuseumgroup.org.uk/objects/co"
 people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/cp"
+document_prefix = "https://collection.sciencemuseumgroup.org.uk/documents/"
+adlib_people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/"
 
 # used for `get_wikidata_uri_from_placename`. Generate your own CSV using the notebook at `experiments/disambiguating place names (geocoding).ipynb`
 placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qids.pkl")
+adlib_placename_qid_mapping = pd.read_csv(
+    "s3://heritageconnector/adlib_placenames_to_qids.csv"
+)
 #  ======================================================
 
 
@@ -157,6 +163,154 @@ def load_object_data(catalogue_data_path):
     record_loader.add_records(table_name, catalogue_df)
 
     return
+
+
+def load_adlib_document_data(adlib_document_data_path):
+    document_df = pd.read_csv(
+        adlib_document_data_path, low_memory=False, nrows=max_records
+    )
+    table_name = "DOCUMENT"
+
+    # PREPROCESS
+    document_df = document_df.rename(columns={"admin.uid": "ID"})
+    document_df = document_df.rename(columns={"summary_title": "TITLE"})
+    document_df = document_df.rename(
+        columns={"content.description.0.value": "DESCRIPTION"}
+    )
+    # We won't add any more context to documents here as we are not planning to link named entities
+    # to documents. This description will just be used to link entities found within it (which are not
+    # the document itself) to people, orgs, or objects.
+    document_df["DISAMBIGUATING_DESCRIPTION"] = document_df["DESCRIPTION"].copy()
+    document_df = document_df.rename(
+        columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"}
+    )
+    document_df["URI"] = document_prefix + document_df["ID"].astype(str)
+
+    # SUBJECT (e.g. photography)
+    document_df["SUBJECT"] = ""
+    subject_cols = [
+        col for col in document_df.columns if col.startswith("content.subjects")
+    ]
+    for idx, row in document_df.iterrows():
+        document_df.at[idx, "SUBJECT"] = [
+            item for item in row[subject_cols].tolist() if str(item) != "nan"
+        ]
+
+    # fonds, maker, agents, web/urls, date-range, measurements, materials?
+    document_df["PREFIX"] = document_prefix
+    document_df["DESCRIPTION"] = document_df["DESCRIPTION"].apply(
+        datastore_helpers.process_text
+    )
+    document_df["DATE_MADE"] = document_df["DATE_MADE"].apply(get_year_from_date_value)
+
+    logger.info("loading adlib document data")
+    record_loader.add_records(table_name, document_df)
+
+    # makers / users / agents
+    document_df[
+        "lifecycle.creation.0.maker.0.admin.uid"
+    ] = adlib_people_prefix + document_df[
+        "lifecycle.creation.0.maker.0.admin.uid"
+    ].astype(
+        str
+    )
+    record_loader.add_triples(
+        document_df,
+        FOAF.made,
+        subject_col="lifecycle.creation.0.maker.0.admin.uid",
+        object_col="URI",
+    )
+    record_loader.add_triples(
+        document_df,
+        FOAF.maker,
+        subject_col="URI",
+        object_col="lifecycle.creation.0.maker.0.admin.uid",
+    )
+
+    # when adding prov.used triples, we first need to filter the document dataframe to a new one, which only contains valid URIs in both columns
+    # (add triples can't handle empty values)
+    related_people_docs_df = document_df[
+        pd.notnull(document_df["content.agents.0.admin.uid"])
+    ]
+    related_people_docs_df[
+        "content.agents.0.admin.uid"
+    ] = adlib_people_prefix + related_people_docs_df[
+        "content.agents.0.admin.uid"
+    ].astype(
+        str
+    )
+    record_loader.add_triples(
+        related_people_docs_df,
+        SKOS.related,
+        subject_col="content.agents.0.admin.uid",
+        object_col="URI",
+    )
+    record_loader.add_triples(
+        related_people_docs_df,
+        SKOS.related,
+        subject_col="URI",
+        object_col="content.agents.0.admin.uid",
+    )
+
+
+def load_adlib_people_data(adlib_people_data_path):
+    table_name = "PERSON_ADLIB"
+
+    people_df = pd.read_csv(adlib_people_data_path, low_memory=False, nrows=max_records)
+
+    # PREPROCESS
+    people_df = people_df[people_df["type.type"] == "person"]
+    people_df = people_df.rename(columns={"admin.uid": "ID"})
+    people_df = people_df.rename(columns={"name.0.title_prefix": "TITLE_NAME"})
+    people_df = people_df.rename(columns={"name.0.first_name": "FIRSTMID_NAME"})
+    people_df = people_df.rename(columns={"name.0.last_name": "LASTSUFF_NAME"})
+    people_df = people_df.rename(columns={"name.0.value": "PREFERRED_NAME"})
+    people_df = people_df.rename(
+        columns={"lifecycle.birth.0.date.0.value": "BIRTH_DATE"}
+    )
+    people_df = people_df.rename(
+        columns={"lifecycle.death.0.date.0.value": "DEATH_DATE"}
+    )
+    people_df = people_df.rename(
+        columns={"lifecycle.birth.0.place.0.summary_title": "BIRTH_PLACE"}
+    )
+    people_df = people_df.rename(
+        columns={"lifecycle.death.0.place.0.summary_title": "DEATH_PLACE"}
+    )
+    people_df = people_df.rename(columns={"nationality.0": "NATIONALITY"})
+    people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION"})
+    people_df = people_df.rename(columns={"gender": "GENDER"})
+
+    people_df["URI"] = adlib_people_prefix + people_df["ID"].astype(str)
+    people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
+        datastore_helpers.split_list_string
+    )
+    people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists(
+            [datastore_helpers.get_country_from_nationality(i) for i in x]
+        )
+    )
+
+    people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
+        lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
+    )
+    people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
+        lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
+    )
+
+    # remove newlines and tab chars
+    people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
+        datastore_helpers.process_text
+    )
+
+    people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
+        {"female": WD.Q6581072, "male": WD.Q6581097}
+    )
+
+    logger.info("loading adlib people data")
+    record_loader.add_records(table_name, people_df, add_type=WD.Q5)
 
 
 def create_people_disambiguating_description(row: pd.Series) -> str:
@@ -311,27 +465,18 @@ def load_people_data(people_data_path):
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
         datastore_helpers.split_list_string
     )
-    people_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = people_df[
-        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
-    ].fillna("")
-    people_df["adlib_id"] = people_df["adlib_id"].apply(
-        lambda i: [
-            f"https://collection.sciencemuseumgroup.org.uk/people/{x}"
-            for x in str(i).split(",")
-        ]
-        if i
-        else ""
-    )
+    people_df[["DESCRIPTION", "NOTE"]] = people_df[["DESCRIPTION", "NOTE"]].fillna("")
+
     # remove newlines and tab chars
-    people_df.loc[:, ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]] = people_df.loc[
-        :, ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
+    people_df.loc[:, ["DESCRIPTION", "NOTE"]] = people_df.loc[
+        :, ["DESCRIPTION", "NOTE"]
     ].applymap(datastore_helpers.process_text)
 
     # create combined text fields
     newline = " \n "  # can't insert into fstring below
-    people_df.loc[:, "BIOGRAPHY"] = people_df[
-        ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
-    ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
+    people_df.loc[:, "BIOGRAPHY"] = people_df[["DESCRIPTION", "NOTE"]].apply(
+        lambda x: f"{newline.join(x)}" if any(x) else "", axis=1
+    )
 
     people_df["DISAMBIGUATING_DESCRIPTION"] = people_df.apply(
         create_people_disambiguating_description, axis=1
@@ -359,6 +504,58 @@ def load_people_data(people_data_path):
 
     logger.info("loading people data")
     record_loader.add_records(table_name, people_df, add_type=WD.Q5)
+
+
+def load_adlib_orgs_data(adlib_people_data_path):
+    # identifier in field_mapping
+    table_name = "ORGANISATION_ADLIB"
+
+    org_df = pd.read_csv(adlib_people_data_path, low_memory=False, nrows=max_records)
+
+    # PREPROCESS
+    org_df = org_df[org_df["type.type"] == "institution"]
+    org_df = org_df.rename(columns={"admin.uid": "ID"})
+    org_df = org_df.rename(columns={"name.0.value": "PREFERRED_NAME"})
+    org_df = org_df.rename(columns={"use.0.summary_title": "SUMMARY_TITLE"})
+    org_df = org_df.rename(columns={"lifecycle.birth.0.date.0.value": "BIRTH_DATE"})
+    org_df = org_df.rename(columns={"lifecycle.death.0.date.0.value": "DEATH_DATE"})
+    org_df = org_df.rename(columns={"nationality.0": "NATIONALITY"})
+    org_df = org_df.rename(columns={"description.0.value": "DESCRIPTION"})
+
+    org_df["PREFIX"] = people_prefix
+
+    org_df["URI"] = org_df["ID"].apply(lambda i: adlib_people_prefix + str(i))
+    # if SUMMARY_TITLE exists, use it as a label over PREFERRED_NAME, then apply PREFERRED_NAME as an alias
+    org_df["LABEL"] = org_df.apply(
+        lambda row: row["SUMMARY_TITLE"]
+        if not pd.isnull(row["SUMMARY_TITLE"])
+        else row["PREFERRED_NAME"],
+        axis=1,
+    )
+    org_df["ALIAS"] = org_df.apply(
+        lambda row: row["PREFERRED_NAME"]
+        if not pd.isnull(row["SUMMARY_TITLE"])
+        else "",
+        axis=1,
+    )
+
+    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
+        datastore_helpers.split_list_string
+    )
+    org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
+        lambda x: flatten_list_of_lists(
+            [datastore_helpers.get_country_from_nationality(i) for i in x]
+        )
+    )
+
+    # remove newlines and tab chars
+    org_df.loc[:, "DESCRIPTION"] = org_df.loc[:, "DESCRIPTION"].apply(
+        datastore_helpers.process_text
+    )
+    logger.info("loading adlib orgs data")
+    record_loader.add_records(table_name, org_df, add_type=WD.Q43229)
 
 
 def create_org_disambiguating_description(row: pd.Series) -> str:
@@ -477,38 +674,27 @@ def load_orgs_data(people_data_path):
     # PREPROCESS
     org_df["URI"] = people_prefix + org_df["LINK_ID"].astype(str)
 
-    org_df[["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]] = org_df[
-        ["adlib_id", "adlib_DESCRIPTION", "DESCRIPTION", "NOTE"]
-    ].fillna("")
-    org_df[["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]] = org_df[
-        ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
-    ].applymap(datastore_helpers.process_text)
+    org_df[["DESCRIPTION", "NOTE"]] = org_df[["DESCRIPTION", "NOTE"]].fillna("")
+    org_df[["DESCRIPTION", "NOTE"]] = org_df[["DESCRIPTION", "NOTE"]].applymap(
+        datastore_helpers.process_text
+    )
     org_df[["OCCUPATION", "NATIONALITY"]] = org_df[
         ["OCCUPATION", "NATIONALITY"]
     ].applymap(datastore_helpers.split_list_string)
+
+    newline = " \n "  # can't insert into fstring below
+    org_df.loc[:, "BIOGRAPHY"] = org_df[["DESCRIPTION", "NOTE"]].apply(
+        lambda x: f"{newline.join(x)}" if any(x) else "", axis=1
+    )
+
+    org_df["DISAMBIGUATING_DESCRIPTION"] = org_df.apply(
+        create_org_disambiguating_description, axis=1
+    )
 
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
         lambda x: flatten_list_of_lists(
             [datastore_helpers.get_country_from_nationality(i) for i in x]
         )
-    )
-
-    org_df["adlib_id"] = org_df["adlib_id"].apply(
-        lambda i: [
-            f"https://collection.sciencemuseumgroup.org.uk/people/{x}"
-            for x in str(i).split(",")
-        ]
-        if i
-        else ""
-    )
-
-    newline = " \n "  # can't insert into fstring below
-    org_df.loc[:, "BIOGRAPHY"] = org_df[
-        ["DESCRIPTION", "adlib_DESCRIPTION", "NOTE"]
-    ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
-
-    org_df["DISAMBIGUATING_DESCRIPTION"] = org_df.apply(
-        create_org_disambiguating_description, axis=1
     )
 
     org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
@@ -524,6 +710,19 @@ def load_orgs_data(people_data_path):
     )
 
     return
+
+
+def load_adlib_mimsy_join_people_orgs(join_table_path):
+    join_df = pd.read_csv(join_table_path)
+    join_df["mimsy_url"] = people_prefix + join_df["mimsy_id"].astype(str)
+    join_df["adlib_url"] = adlib_people_prefix + join_df["adlib_id"].astype(str)
+
+    record_loader.add_triples(
+        join_df, FOAF.page, subject_col="mimsy_url", object_col="adlib_url"
+    )
+    record_loader.add_triples(
+        join_df, FOAF.page, subject_col="adlib_url", object_col="mimsy_url"
+    )
 
 
 def load_maker_data(maker_data_path, people_data_path):
@@ -585,11 +784,11 @@ def load_user_data(user_data_path):
     logger.info("loading user data (used by & used)")
     # uses
     record_loader.add_triples(
-        user_df, WDT.P2283, subject_col="SUBJECT", object_col="OBJECT"
+        user_df, SKOS.related, subject_col="SUBJECT", object_col="OBJECT"
     )
     # used by
     record_loader.add_triples(
-        user_df, WDT.P1535, subject_col="OBJECT", object_col="SUBJECT"
+        user_df, SKOS.related, subject_col="OBJECT", object_col="SUBJECT"
     )
 
     return
@@ -776,15 +975,18 @@ def preprocess_text_for_ner(text: str) -> str:
 
 def load_ner_annotations(
     model_type: str,
-    nel_training_data_path: str,
-    linking_confidence_threshold: float = 0.5,
+    use_trained_linker: bool,
+    nel_training_data_path: Optional[str] = None,
+    linking_confidence_threshold: float = 0.8,
 ):
-    # load NEL training data
-    df = pd.read_excel(nel_training_data_path, index_col=0)
-    df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
-        ~df["link_correct"].isnull(), "link_correct"
-    ].apply(int)
-    nel_train_data = df[(~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)]
+    """
+    Args:
+        model_type (str): spacy model type e.g. "en_core_web_trf"
+        use_trained_linker (bool): whether to use trained entity linker to add links to graph (True), or
+            export training data to train an entity linker (False)
+        nel_training_data_path (Optional[str], optional): Path to training data Excel file for linker, either to train it, or where it's exported. Defaults to None.
+        linking_confidence_threshold (float, optional): Threshold for linker. Defaults to 0.8.
+    """
 
     source_description_field = (
         target_description_field
@@ -803,27 +1005,57 @@ def load_ner_annotations(
         target_type_field=target_type_field,
         target_alias_field=target_alias_field,
         text_preprocess_func=preprocess_text_for_ner,
-        entity_types_to_link={"PERSON", "OBJECT", "ORG"},
+        entity_types_to_link={
+            "PERSON",
+            "OBJECT",
+            "ORG",
+        },
     )
 
     _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=16)
     ner_loader.get_link_candidates(candidates_per_entity_mention=10)
-    ner_loader.train_entity_linker(nel_train_data)
+
+    if use_trained_linker:
+        # load NEL training data
+        print(f"Using NEL training data from {nel_training_data_path}")
+        df = pd.read_excel(nel_training_data_path, index_col=0)
+        df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
+            ~df["link_correct"].isnull(), "link_correct"
+        ].apply(int)
+        nel_train_data = df[
+            (~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)
+        ]
+        ner_loader.train_entity_linker(nel_train_data)
+    else:
+        # get NEL training data to annotate
+        links_data = ner_loader.get_links_data_for_review()
+        links_data.to_excel(nel_training_data_path)
+        print(f"NEL training data exported to {nel_training_data_path}")
+
     ner_loader.load_entities_into_es(linking_confidence_threshold, batch_size=32768)
 
 
 if __name__ == "__main__":
-    people_data_path = "../GITIGNORE_DATA/mimsy_adlib_joined_people.csv"
+    people_data_path = "../GITIGNORE_DATA/smg-datasets-private/mimsy-people-export.csv"
     object_data_path = (
         "../GITIGNORE_DATA/smg-datasets-private/mimsy-catalogue-export.csv"
     )
+    adlib_data_path = "s3://smg-datasets/adlib-document-dump-relevant-columns.csv"
+    adlib_people_data_path = "s3://heritageconnector/adlib-people-dump.csv"
     maker_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_makers.csv"
     user_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_users.csv"
+    mimsy_adlib_join_data_path = "../GITIGNORE_DATA/mimsy_adlib_link_table.csv"
+
+    # ---
 
     datastore.create_index()
     load_people_data(people_data_path)
+    load_adlib_people_data(adlib_people_data_path)
     load_orgs_data(people_data_path)
+    load_adlib_orgs_data(adlib_people_data_path)
+    load_adlib_mimsy_join_people_orgs(mimsy_adlib_join_data_path)
     load_object_data(object_data_path)
+    load_adlib_document_data(adlib_data_path)
     load_maker_data(maker_data_path, people_data_path)
     load_user_data(user_data_path)
     load_related_from_wikidata()
@@ -854,7 +1086,15 @@ if __name__ == "__main__":
         "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
         "objects (locomotives & rolling stock)",
     )
+    # # for running using a trained linker
     load_ner_annotations(
         "en_core_web_trf",
+        use_trained_linker=True,
         nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
     )
+    # # for running to produce unlabelled training data at `nel_training_data_path`
+    # # load_ner_annotations(
+    # #     "en_core_web_trf",
+    # #     use_trained_linker=False,
+    # #     nel_training_data_path=f"../GITIGNORE_DATA/NEL/nel_train_data_{get_timestamp()}.xlsx",
+    # # )
