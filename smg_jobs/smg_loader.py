@@ -465,6 +465,7 @@ def load_adlib_orgs_data(adlib_people_data_path):
     org_df = org_df[org_df["type.type"] == "institution"]
     org_df = org_df.rename(columns={"admin.uid": "ID"})
     org_df = org_df.rename(columns={"name.0.value": "PREFERRED_NAME"})
+    org_df = org_df.rename(columns={"use.0.summary_title": "SUMMARY_TITLE"})
     org_df = org_df.rename(columns={"lifecycle.birth.0.date.0.value": "BIRTH_DATE"})
     org_df = org_df.rename(columns={"lifecycle.death.0.date.0.value": "DEATH_DATE"})
     org_df = org_df.rename(columns={"nationality.0": "NATIONALITY"})
@@ -473,6 +474,20 @@ def load_adlib_orgs_data(adlib_people_data_path):
     org_df["PREFIX"] = people_prefix
 
     org_df["URI"] = org_df["ID"].apply(lambda i: adlib_people_prefix + str(i))
+    # if SUMMARY_TITLE exists, use it as a label over PREFERRED_NAME, then apply PREFERRED_NAME as an alias
+    org_df["LABEL"] = org_df.apply(
+        lambda row: row["SUMMARY_TITLE"]
+        if not pd.isnull(row["SUMMARY_TITLE"])
+        else row["PREFERRED_NAME"],
+        axis=1,
+    )
+    org_df["ALIAS"] = org_df.apply(
+        lambda row: row["PREFERRED_NAME"]
+        if not pd.isnull(row["SUMMARY_TITLE"])
+        else "",
+        axis=1,
+    )
+
     org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
     org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
