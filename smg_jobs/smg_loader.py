@@ -1087,11 +1087,11 @@ if __name__ == "__main__":
         "objects (locomotives & rolling stock)",
     )
     # # for running using a trained linker
-    # load_ner_annotations(
-    #     "en_core_web_trf",
-    #     use_trained_linker=True,
-    #     nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
-    # )
+    load_ner_annotations(
+        "en_core_web_trf",
+        use_trained_linker=True,
+        nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+    )
     # # for running to produce unlabelled training data at `nel_training_data_path`
     # # load_ner_annotations(
     # #     "en_core_web_trf",
