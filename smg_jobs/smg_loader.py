@@ -941,11 +941,8 @@ def load_ner_annotations(
         text_preprocess_func=preprocess_text_for_ner,
         entity_types_to_link={
             "PERSON",
-            "PERSON_adlib",
             "OBJECT",
             "ORG",
-            "ORG_adlib",
-            "DOCUMENT",
         },
     )
 
