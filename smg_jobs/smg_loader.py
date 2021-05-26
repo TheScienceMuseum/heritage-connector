@@ -177,6 +177,10 @@ def load_adlib_document_data(adlib_document_data_path):
     document_df = document_df.rename(
         columns={"content.description.0.value": "DESCRIPTION"}
     )
+    # We won't add any more context to documents here as we are not planning to link named entities
+    # to documents. This description will just be used to link entities found within it (which are not
+    # the document itself) to people, orgs, or objects.
+    document_df["DISAMBIGUATING_DESCRIPTION"] = document_df["DESCRIPTION"].copy()
     document_df = document_df.rename(
         columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"}
     )
