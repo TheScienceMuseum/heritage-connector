@@ -780,11 +780,11 @@ def load_user_data(user_data_path):
     logger.info("loading user data (used by & used)")
     # uses
     record_loader.add_triples(
-        user_df, WDT.P2283, subject_col="SUBJECT", object_col="OBJECT"
+        user_df, SKOS.related, subject_col="SUBJECT", object_col="OBJECT"
     )
     # used by
     record_loader.add_triples(
-        user_df, WDT.P1535, subject_col="OBJECT", object_col="SUBJECT"
+        user_df, SKOS.related, subject_col="OBJECT", object_col="SUBJECT"
     )
 
     return
