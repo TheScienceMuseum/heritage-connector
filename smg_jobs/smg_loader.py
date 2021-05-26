@@ -289,14 +289,11 @@ def load_adlib_people_data(adlib_people_data_path):
         )
     )
 
-    # the mapping used is for Mimsy not Adlib places, so we return the place string if the QID can't be found
     people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
         lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
-        or i
     )
     people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
         lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
-        or i
     )
 
     # remove newlines and tab chars
