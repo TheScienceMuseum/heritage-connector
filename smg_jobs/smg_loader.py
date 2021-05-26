@@ -56,6 +56,9 @@ adlib_people_prefix = "https://collection.sciencemuseumgroup.org.uk/people/"
 
 # used for `get_wikidata_uri_from_placename`. Generate your own CSV using the notebook at `experiments/disambiguating place names (geocoding).ipynb`
 placename_qid_mapping = pd.read_pickle("s3://heritageconnector/placenames_to_qids.pkl")
+adlib_placename_qid_mapping = pd.read_csv(
+    "s3://heritageconnector/adlib_placenames_to_qids.csv"
+)
 #  ======================================================
 
 
@@ -238,10 +241,12 @@ def load_adlib_people_data(adlib_people_data_path):
 
     # the mapping used is for Mimsy not Adlib places, so we return the place string if the QID can't be found
     people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
-        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping) or i
+        lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
+        or i
     )
     people_df["DEATH_PLACE"] = people_df["DEATH_PLACE"].apply(
-        lambda i: get_wikidata_uri_from_placename(i, False, placename_qid_mapping) or i
+        lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
+        or i
     )
 
     # remove newlines and tab chars
@@ -981,43 +986,43 @@ if __name__ == "__main__":
     # ---
 
     datastore.create_index()
-    load_people_data(people_data_path)
+    # load_people_data(people_data_path)
     load_adlib_people_data(adlib_people_data_path)
-    load_orgs_data(people_data_path)
-    load_adlib_orgs_data(adlib_people_data_path)
-    load_adlib_mimsy_join_people_orgs(mimsy_adlib_join_data_path)
-    load_object_data(object_data_path)
-    # load_adlib_document_data(adlib_data_path)
-    load_maker_data(maker_data_path, people_data_path)
-    load_user_data(user_data_path)
-    load_related_from_wikidata()
-    load_sameas_from_wikidata_smg_people_id()
-    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    load_crowdsourced_links(
-        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
-    )
-    load_sameas_from_disambiguator(
-        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
-        "people",
-    )
-    load_sameas_from_disambiguator(
-        "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
-        "organisations",
-    )
-    load_sameas_from_disambiguator(
-        "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
-        "objects (photographic technology & aeronautics)",
-    )
-    load_sameas_from_disambiguator(
-        "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
-        "objects (computing & space)",
-    )
-    load_sameas_from_disambiguator(
-        "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
-        "objects (locomotives & rolling stock)",
-    )
+    # load_orgs_data(people_data_path)
+    # load_adlib_orgs_data(adlib_people_data_path)
+    # load_adlib_mimsy_join_people_orgs(mimsy_adlib_join_data_path)
+    # load_object_data(object_data_path)
+    # # load_adlib_document_data(adlib_data_path)
+    # load_maker_data(maker_data_path, people_data_path)
+    # load_user_data(user_data_path)
+    # load_related_from_wikidata()
+    # load_sameas_from_wikidata_smg_people_id()
+    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    # load_crowdsourced_links(
+    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
+    # )
+    # load_sameas_from_disambiguator(
+    #     "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
+    #     "people",
+    # )
+    # load_sameas_from_disambiguator(
+    #     "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
+    #     "organisations",
+    # )
+    # load_sameas_from_disambiguator(
+    #     "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
+    #     "objects (photographic technology & aeronautics)",
+    # )
+    # load_sameas_from_disambiguator(
+    #     "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
+    #     "objects (computing & space)",
+    # )
+    # load_sameas_from_disambiguator(
+    #     "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
+    #     "objects (locomotives & rolling stock)",
+    # )
     # # for running using a trained linker
     # load_ner_annotations(
     #     "en_core_web_trf",
