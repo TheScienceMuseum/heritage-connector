@@ -978,7 +978,7 @@ if __name__ == "__main__":
         "../GITIGNORE_DATA/smg-datasets-private/mimsy-catalogue-export.csv"
     )
     adlib_data_path = "s3://smg-datasets/adlib-document-dump-relevant-columns.csv"
-    adlib_people_data_path = "../GITIGNORE_DATA/adlib-people-dump.csv"
+    adlib_people_data_path = "s3://heritageconnector/adlib-people-dump.csv"
     maker_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_makers.csv"
     user_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_users.csv"
     mimsy_adlib_join_data_path = "../GITIGNORE_DATA/mimsy_adlib_link_table.csv"
@@ -989,7 +989,7 @@ if __name__ == "__main__":
     # load_people_data(people_data_path)
     load_adlib_people_data(adlib_people_data_path)
     # load_orgs_data(people_data_path)
-    # load_adlib_orgs_data(adlib_people_data_path)
+    load_adlib_orgs_data(adlib_people_data_path)
     # load_adlib_mimsy_join_people_orgs(mimsy_adlib_join_data_path)
     # load_object_data(object_data_path)
     # # load_adlib_document_data(adlib_data_path)
