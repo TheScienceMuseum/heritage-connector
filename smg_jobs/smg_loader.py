@@ -165,38 +165,88 @@ def load_object_data(catalogue_data_path):
     return
 
 
-# def load_adlib_document_data(adlib_document_data_path):
-#     document_df = pd.read_csv(adlib_document_data_path, low_memory=False, nrows=max_records)
-#     table_name = "DOCUMENT"
+def load_adlib_document_data(adlib_document_data_path):
+    document_df = pd.read_csv(
+        adlib_document_data_path, low_memory=False, nrows=max_records
+    )
+    table_name = "DOCUMENT"
 
-#     # PREPROCESS
-#     document_df = document_df.rename(columns={"admin.uid": "ID"})
-#     document_df = document_df.rename(columns={"summary_title": "TITLE"})
-#     document_df = document_df.rename(columns={"content.description.0.value": "DESCRIPTION"})
-#     document_df = document_df.rename(columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"})
-#     document_df["URI"] = document_prefix + document_df["ID"].astype(str)
+    # PREPROCESS
+    document_df = document_df.rename(columns={"admin.uid": "ID"})
+    document_df = document_df.rename(columns={"summary_title": "TITLE"})
+    document_df = document_df.rename(
+        columns={"content.description.0.value": "DESCRIPTION"}
+    )
+    document_df = document_df.rename(
+        columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"}
+    )
+    document_df["URI"] = document_prefix + document_df["ID"].astype(str)
 
-#     # SUBJECT (ie. photography)
-#     document_df['SUBJECT'] = ""
-#     subject_cols = [col for col in document_df.columns if col.startswith("content.subjects")]
-#     for idx, row in document_df.iterrows():
-#         document_df.at[idx, 'SUBJECT'] = [item for item in row[subject_cols].tolist() if str(item) != 'nan']
+    # SUBJECT (e.g. photography)
+    document_df["SUBJECT"] = ""
+    subject_cols = [
+        col for col in document_df.columns if col.startswith("content.subjects")
+    ]
+    for idx, row in document_df.iterrows():
+        document_df.at[idx, "SUBJECT"] = [
+            item for item in row[subject_cols].tolist() if str(item) != "nan"
+        ]
 
-#     # fonds, maker, agents, web/urls, date-range, measurements, materials?
-#     document_df["PREFIX"] = document_prefix
-#     document_df["DESCRIPTION"] = document_df["DESCRIPTION"].apply(datastore_helpers.process_text)
-#     document_df["DATE_MADE"] = document_df["DATE_MADE"].apply(
-#         get_year_from_date_value
-#     )
+    # fonds, maker, agents, web/urls, date-range, measurements, materials?
+    document_df["PREFIX"] = document_prefix
+    document_df["DESCRIPTION"] = document_df["DESCRIPTION"].apply(
+        datastore_helpers.process_text
+    )
+    document_df["DATE_MADE"] = document_df["DATE_MADE"].apply(get_year_from_date_value)
 
-#     logger.info("loading adlib document data")
-#     record_loader.add_records(table_name, document_df)
+    logger.info("loading adlib document data")
+    record_loader.add_records(table_name, document_df)
 
-#     # makers / users / agents
-#     document_df["lifecycle.creation.0.maker.0.admin.uid"] = people_prefix + document_df["lifecycle.creation.0.maker.0.admin.uid"].astype(str)
-#     record_loader.add_triples(document_df, FOAF.maker, subject_col="lifecycle.creation.0.maker.0.admin.uid", object_col="URI")
-#     document_df["content.agents.0.admin.uid"] = people_prefix + document_df["content.agents.0.admin.uid"].astype(str)
-#     record_loader.add_triples(document_df, PROV.used, subject_col="content.agents.0.admin.uid", object_col="URI")
+    # makers / users / agents
+    document_df[
+        "lifecycle.creation.0.maker.0.admin.uid"
+    ] = adlib_people_prefix + document_df[
+        "lifecycle.creation.0.maker.0.admin.uid"
+    ].astype(
+        str
+    )
+    record_loader.add_triples(
+        document_df,
+        FOAF.made,
+        subject_col="lifecycle.creation.0.maker.0.admin.uid",
+        object_col="URI",
+    )
+    record_loader.add_triples(
+        document_df,
+        FOAF.maker,
+        subject_col="URI",
+        object_col="lifecycle.creation.0.maker.0.admin.uid",
+    )
+
+    # when adding prov.used triples, we first need to filter the document dataframe to a new one, which only contains valid URIs in both columns
+    # (add triples can't handle empty values)
+    related_people_docs_df = document_df[
+        pd.notnull(document_df["content.agents.0.admin.uid"])
+    ]
+    related_people_docs_df[
+        "content.agents.0.admin.uid"
+    ] = adlib_people_prefix + related_people_docs_df[
+        "content.agents.0.admin.uid"
+    ].astype(
+        str
+    )
+    record_loader.add_triples(
+        related_people_docs_df,
+        SKOS.related,
+        subject_col="content.agents.0.admin.uid",
+        object_col="URI",
+    )
+    record_loader.add_triples(
+        related_people_docs_df,
+        SKOS.related,
+        subject_col="URI",
+        object_col="content.agents.0.admin.uid",
+    )
 
 
 def load_adlib_people_data(adlib_people_data_path):
@@ -998,43 +1048,43 @@ if __name__ == "__main__":
     # ---
 
     datastore.create_index()
-    # load_people_data(people_data_path)
+    load_people_data(people_data_path)
     load_adlib_people_data(adlib_people_data_path)
-    # load_orgs_data(people_data_path)
+    load_orgs_data(people_data_path)
     load_adlib_orgs_data(adlib_people_data_path)
-    # load_adlib_mimsy_join_people_orgs(mimsy_adlib_join_data_path)
-    # load_object_data(object_data_path)
-    # # load_adlib_document_data(adlib_data_path)
-    # load_maker_data(maker_data_path, people_data_path)
-    # load_user_data(user_data_path)
-    # load_related_from_wikidata()
-    # load_sameas_from_wikidata_smg_people_id()
-    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    # load_crowdsourced_links(
-    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
-    #     "people",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
-    #     "organisations",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
-    #     "objects (photographic technology & aeronautics)",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
-    #     "objects (computing & space)",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
-    #     "objects (locomotives & rolling stock)",
-    # )
+    load_adlib_mimsy_join_people_orgs(mimsy_adlib_join_data_path)
+    load_object_data(object_data_path)
+    load_adlib_document_data(adlib_data_path)
+    load_maker_data(maker_data_path, people_data_path)
+    load_user_data(user_data_path)
+    load_related_from_wikidata()
+    load_sameas_from_wikidata_smg_people_id()
+    load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
+    load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
+    load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
+    load_crowdsourced_links(
+        "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
+        "people",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
+        "organisations",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
+        "objects (photographic technology & aeronautics)",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
+        "objects (computing & space)",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
+        "objects (locomotives & rolling stock)",
+    )
     # # for running using a trained linker
     # load_ner_annotations(
     #     "en_core_web_trf",
