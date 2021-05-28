@@ -1,6 +1,4 @@
-# Various scripts for SMG:
-# - `wikistream` creates an ndjson file from a Wikidata dump using Maxlath's Wikibase dump filter
-# - `wikidump` imports specific properties from the ndjson file created by `wikistream` into an Elasticsearch index using elastic-wikidata
+# Various scripts for SMG
 
 # Elasticsearch credentials: elastic_cluster, elastic_user, elastic_password. In .gitignore.
 include credentials.mk
@@ -11,8 +9,12 @@ PATH_TO_PROPERTIES_CONFIG=./wikidump_pids.cfg
 DUMP_INDEX=wikidump
 OUTPUT_PATH_WIKISTREAM=/Volumes/Kalyan_SSD/SMG/wikidata/wikidata_all_no_articles_170521.ndjson
 
-.PHONY: wikistream wikidump
+.PHONY: wikistream wikidump dictionary_exhibitions
 
+# --- Wikidata dump ---
+# - `wikistream` creates an ndjson file from a Wikidata dump using Maxlath's Wikibase dump filter
+# - `wikidump` imports specific properties from the ndjson file created by `wikistream` into an Elasticsearch index using elastic-wikidata
+# ---------------------
 # remove scholarly articles, taxon, wikimedia list article, wikinews article
 # page showing categories is here: https://www.wikidata.org/wiki/Wikidata:Statistics
 wikistream: 
@@ -24,3 +26,15 @@ wikistream:
 
 wikidump: wikidump_pids.cfg
 	ew dump -p $(OUTPUT_PATH_WIKISTREAM) --cluster $(elastic_cluster) --user $(elastic_user) --password $(elastic_password) --index $(DUMP_INDEX) --properties $(PATH_TO_PROPERTIES_CONFIG)
+
+# --- spaCy dictionaries ---
+# `make dictionaries` -> make all dictionaries
+# - `dictionary_exhibitions` creates a dictionary from exhibition lists
+# - `dictionary_collection` creates a dictionary from names in the heritage connector graph`
+dictionary_exhibitions:
+	python scripts/make_events_dictionary.py -i ../GITIGNORE_DATA/make_data/events_NER/Temporary_Exhibitions_1912-1988.xlsx ../GITIGNORE_DATA/make_data/events_NER/ExhibitionsMimsy.xlsx -o ../GITIGNORE_DATA/make_data/output/dictionary_matcher_events.jsonl
+
+dictionary_collection:
+	python scripts/make_collection_dictionary.py -o ../GITIGNORE_DATA/make_data/output/dictionary_matcher_collection.jsonl
+
+dictionaries: dictionary_exhibitions dictionary_collection
