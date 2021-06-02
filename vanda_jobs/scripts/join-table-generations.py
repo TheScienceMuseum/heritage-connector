@@ -6,7 +6,7 @@ import time
 import urllib.parse
 from datetime import datetime
 
-from utils.extract import bz2Reader
+from utils.extract import bz2Reader, gzipReader
 from utils.transforming import object_joins
 
 """
@@ -20,8 +20,11 @@ def folder_date():
 
 def parse_args(args):
     parser = argparse.ArgumentParser()
-    parser.add_argument("-j", "--json_input", help="BZ2 JSON file path with objects to import", required=True)
+    parser.add_argument("-j", "--json_input", help="JSON file path with objects to import", required=True)
     parser.add_argument("-o", "--json_output", help="Path for content table output", required=True)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-b", "--bz2_format", help="Is input file in bz2 format", action='store_true', default=False)
+    group.add_argument("-g", "--gzip_format", help="Is input file in gzip format", action='store_true', default=False)
     return parser.parse_args(args[1:])
 
 
@@ -29,7 +32,10 @@ def main(argv):
     args = parse_args(argv)
 
     # Extract records from the esdump file
-    documents = bz2Reader(args.json_input)
+    if args.gzip_format:
+        documents = gzipReader(args.json_input)
+    else:
+        documents = bz2Reader(args.json_input)
 
     if documents:
         output_path = args.json_output

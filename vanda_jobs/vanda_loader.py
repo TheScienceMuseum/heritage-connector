@@ -1,12 +1,13 @@
 # Generate content tables
 # Run from the root of the repo:
-# python3 vanda_jobs/scripts/content-table-generations.py -i objects -j ./GITIGNORE_DATA/elastic_export/objects/all -o ./GITIGNORE_DATA/hc_import/content
-# python3 vanda_jobs/scripts/content-table-generations.py -i persons -j ./GITIGNORE_DATA/elastic_export/persons/all -o ./GITIGNORE_DATA/hc_import/content
-# python3 vanda_jobs/scripts/content-table-generations.py -i organisations -j ./GITIGNORE_DATA/elastic_export/organisations/all -o ./GITIGNORE_DATA/hc_import/content
+# python3 vanda_jobs/scripts/content-table-generations.py -i objects -j ./GITIGNORE_DATA/elastic_export/objects/custom -g -o ./GITIGNORE_DATA/hc_import/content
+# python3 vanda_jobs/scripts/content-table-generations.py -i persons -j ./GITIGNORE_DATA/elastic_export/persons/all -b -o ./GITIGNORE_DATA/hc_import/content
+# python3 vanda_jobs/scripts/content-table-generations.py -i organisations -j ./GITIGNORE_DATA/elastic_export/organisations/all -b -o ./GITIGNORE_DATA/hc_import/content
+# python3 vanda_jobs/scripts/content-table-generations.py -i events -j ./GITIGNORE_DATA/elastic_export/events/all -g -o ./GITIGNORE_DATA/hc_import/content
 
 # Generate join tables
 # Run from the root of repo:
-# python3 vanda_jobs/scripts/join-table-generations.py -j ./GITIGNORE_DATA/elastic_export/objects/all -o ./GITIGNORE_DATA/hc_import/join
+# python3 vanda_jobs/scripts/join-table-generations.py -j ./GITIGNORE_DATA/elastic_export/objects/custom -g -o ./GITIGNORE_DATA/hc_import/join
 
 import sys
 
@@ -85,6 +86,17 @@ def load_org_data(data_path):
 
     return
 
+def load_event_data(data_path):
+    """Load data from ndjson files """
+
+    table_name = "EVENT"
+    event_df = pd.read_json(data_path, lines=True, nrows=max_records)
+
+    logger.info("loading event data")
+    record_loader.add_records(table_name, event_df, add_type=WD.P793)
+
+    return
+
 ## Join Table Loading
 
 def load_join_data(data_path):
@@ -98,11 +110,11 @@ def load_join_data(data_path):
     made_df = pd.concat([maker_df, manufactured_df])
     # made
     record_loader.add_triples(
-        made_df, FOAF.maker, subject_col="SUBJECT", object_col="OBJECT"
+        made_df, FOAF.maker, subject_col="OBJECT", object_col="SUBJECT"
     )
     # made by
     record_loader.add_triples(
-        made_df, FOAF.made, subject_col="OBJECT", object_col="SUBJECT"
+        made_df, FOAF.made, subject_col="SUBJECT", object_col="OBJECT"
     )
 
     logger.info("loading depicts data (depicts and depicted)")
@@ -127,19 +139,60 @@ def load_join_data(data_path):
         associate_df, WDT.Q67185741, subject_col="SUBJECT", object_col="OBJECT"
     )
 
+    logger.info("loading materials data (made from material and uses_this_material)")
+    materials_df = join_df[join_df['relationship'] == 'made_from_material']
+    # made_from_material
+    record_loader.add_triples(
+        materials_df, WDT.P186, subject_col="OBJECT", object_col="SUBJECT"
+    )
+    # uses_this_material
+    record_loader.add_triples(
+        materials_df, WDT.Q104626285, subject_col="SUBJECT", object_col="OBJECT"
+    )
+
+    logger.info("loading techniques data (fabrication_method)")
+    technique_df = join_df[join_df['relationship'] == 'fabrication_method']
+    # fabrication_method
+    record_loader.add_triples(
+        technique_df, WDT.P2079, subject_col="OBJECT", object_col="SUBJECT"
+    )
+
+    record_loader.add_triples(
+        technique_df, WDT.P2079, subject_col="SUBJECT", object_col="OBJECT"
+    )
+
+    logger.info("loading events data (significant_event)")
+    events_df = join_df[join_df['relationship'] == 'significant_event']
+    # significant event
+    record_loader.add_triples(
+        events_df, WDT.P793, subject_col="OBJECT", object_col="SUBJECT"
+    )
+
+    record_loader.add_triples(
+        events_df, WDT.P793, subject_col="SUBJECT", object_col="OBJECT"
+    )
+
     return
 
 if __name__ == "__main__":
-    object_data_path = ("../GITIGNORE_DATA/hc_import/content/20210422/objects.ndjson")
-    person_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/persons.ndjson"
-    org_data_path = "../GITIGNORE_DATA/hc_import/content/20210422/organisations.ndjson"
-    join_data_path = "../GITIGNORE_DATA/hc_import/join/20210422/joins.ndjson"
+    # object_data_path = ("../GITIGNORE_DATA/hc_import/content/20210519/objects.ndjson")
+    # person_data_path = "../GITIGNORE_DATA/hc_import/content/20210526/persons.ndjson"
+    # org_data_path = "../GITIGNORE_DATA/hc_import/content/20210526/organisations.ndjson"
+    # event_data_path = "../GITIGNORE_DATA/hc_import/content/20210526/events.ndjson"
+    # join_data_path = "../GITIGNORE_DATA/hc_import/join/20210526/joins.ndjson"
+
+    object_data_path = ("../VANDA_DATA/objects.ndjson")
+    person_data_path = "../VANDA_DATA/persons.ndjson"
+    org_data_path = "../VANDA_DATA/organisations.ndjson"
+    event_data_path = "../VANDA_DATA/events.ndjson"
+    join_data_path = "../VANDA_DATA/joins.ndjson"
 
     datastore.create_index()
 
     load_object_data(object_data_path)
     load_person_data(person_data_path)
     load_org_data(org_data_path)
+    load_event_data(event_data_path)
     load_join_data(join_data_path)
     
 

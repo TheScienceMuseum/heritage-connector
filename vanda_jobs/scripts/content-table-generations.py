@@ -6,10 +6,11 @@ import time
 import urllib.parse
 from datetime import datetime
 
-from utils.extract import bz2Reader
+from utils.extract import bz2Reader, gzipReader
 from utils.transforming import (objects_transforming,
                               organisations_transforming,
-                              persons_transforming)
+                              persons_transforming,
+                              events_transforming)
 
 """
 SETTING UP THE ARGUMENT PARSER
@@ -23,8 +24,13 @@ def folder_date():
 def parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--index", help="Name of index to use", required=True)
-    parser.add_argument("-j", "--json_input", help="BZ2 JSON file path to import", required=True)
+    parser.add_argument("-j", "--json_input", help="JSON file path to import", required=True)
     parser.add_argument("-o", "--json_output", help="Path for content table output", required=True)
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-b", "--bz2_format", help="Is input file in bz2 format", action='store_true', default=False)
+    group.add_argument("-g", "--gzip_format", help="Is input file in gzip format", action='store_true', default=False)
+    
     return parser.parse_args(args[1:])
 
 
@@ -33,7 +39,10 @@ def main(argv):
     index = args.index
 
     # Extract records from the esdump file
-    documents = bz2Reader(args.json_input)
+    if args.gzip_format:
+        documents = gzipReader(args.json_input)
+    else:
+        documents = bz2Reader(args.json_input)
 
     if documents:
         output_path = args.json_output
@@ -54,6 +63,8 @@ def main(argv):
                 document = persons_transforming(original_document)
             elif index == "organisations":
                 document = organisations_transforming(original_document)
+            elif index == "events":
+                document = events_transforming(original_document)
             else:
                 document = original_document
 
