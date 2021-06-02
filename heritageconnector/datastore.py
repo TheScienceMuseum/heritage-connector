@@ -547,8 +547,17 @@ class NERLoader:
 
         Args:
             record_loader (RecordLoader): instance of RecordLoader, with parameters suitable for the current Heritage Connector index.
+            source_es_index (str): name of source index.
+            source_description_field (str): dot notation for source description field.
+            target_es_index (str): name of target index.
+            target_title_field (str): dot notation for target title/label field.
+            target_description_field (str): dot notation for target description field.
+            target_type_field (str): dot notation for target type field (to be one-hot-encoded and compared with NER entity type).
+            target_alias_field (str, optional): dot notation for target alias field. Only used when searching for link candidates; not in the features for the entity linker.
             entity_types (List[str], optional): entity types to extract from the spaCy model.
-            entity_types_to_link (List[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`.
+            entity_types_to_link (List[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`. Defaults to None.
+            text_preprocess_func (Callable[[str], str], optional): function to preprocess descriptions before NER is run on them.
+            entity_markers (Iterable[str], optional): markers to use for the start and end of an entity. Defaults to ("[[", "]]"), i.e. "Lewis Carroll was born in [[Daresbury, Cheshire]]".
         """
 
         self.record_loader = record_loader
@@ -659,7 +668,6 @@ class NERLoader:
             "candidate_type",
             "candidate_uri",
             "link_correct",
-            "candidate_alias",
             "candidate_description",
             "item_description",
         ]
@@ -713,7 +721,6 @@ class NERLoader:
             "candidate_type",
             "candidate_uri",
             "link_correct",
-            "candidate_alias",
             "candidate_description",
             "item_description",
         } - set(train_df.columns)
@@ -835,7 +842,7 @@ class NERLoader:
         """Get best spacy NER model"""
         return best_spacy_pipeline.load_model(model_type)
 
-    def get_list_of_entities_from_es(
+    def get_list_of_entities_from_source_index(
         self,
         model_type: str,
         limit: int = None,
@@ -846,8 +853,7 @@ class NERLoader:
         ignore_duplicated_ents: bool = True,
     ) -> List[dict]:
         """
-        Run NER on entities in the source (Heritage Connector) index and add the results back to the index using the
-        HC namespace.
+        Run NER to get entities from descriptions in the source index, and store the results.
 
         Args:
             model_type (str): spaCy model type
@@ -865,7 +871,7 @@ class NERLoader:
         logger.info(f"Fetching docs and running NER.")
 
         doc_list = list(
-            self._get_doc_generator(
+            self._get_source_doc_generator(
                 self.source_index, limit, random_sample, random_seed
             )
         )
@@ -927,14 +933,14 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def load_entities_into_es(
+    def load_entities_into_source_index(
         self,
         linking_confidence_threshold: float = 0.5,
         batch_size: float = 32768,
         force_load_without_linker: bool = False,
     ):
         """
-        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates`),
+        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates_from_target`),
         they are loaded in as triples with the entity text as the object. If some entities have link candidates, then for these
         entities the positive candidates are predicted using the entity linking classifier (which has been trained using
         `NERLoader.train_entity_linker`), and the detected entities with predicted candidates are loaded in with the candidate
@@ -1101,7 +1107,9 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def get_link_candidates(self, candidates_per_entity_mention: int) -> List[dict]:
+    def get_link_candidates_from_target_index(
+        self, candidates_per_entity_mention: int
+    ) -> List[dict]:
         """Get link candidates for each of the items in `entity_list` by searching the entity mention in
         the target Elasticsearch index. Only searches for link candidates for entities with types specified in `entity_types_to_link`,
         and excludes any candidates with a URI which is the same as the URI of the source entity.
@@ -1126,7 +1134,7 @@ class NERLoader:
         )
         for item in tqdm(self._entity_list):
             if item["ent_label"] in self.entity_types_to_link:
-                link_candidates = self._search_es_for_entity_mention(
+                link_candidates = self._search_es_target_for_entity_mention(
                     item["ent_text"],
                     n=candidates_per_entity_mention * 2,
                     reduce_to_key_fields=True,
@@ -1144,7 +1152,7 @@ class NERLoader:
 
         return self._entity_list
 
-    def _search_es_for_entity_mention(
+    def _search_es_target_for_entity_mention(
         self, mention: str, n: int, reduce_to_key_fields: bool = True
     ) -> List[dict]:
         """
@@ -1195,14 +1203,14 @@ class NERLoader:
         )
 
         if reduce_to_key_fields:
-            return [self._reduce_doc_to_key_fields(i) for i in search_results]
+            return [self._reduce_target_doc_to_key_fields(i) for i in search_results]
 
         return search_results
 
-    def _reduce_doc_to_key_fields(self, doc: dict) -> dict:
-        """Reduce doc to target_uri, target_title_field, target_description_field, target_alias_field"""
-
-        # key_fields = set(["uri"] + list(self.target_fields.values()))
+    def _reduce_target_doc_to_key_fields(self, doc: dict) -> dict:
+        """
+        Reduce doc to target uri, title, description and alias fields. Run preprocessing function on description field.
+        """
 
         reduced_doc = {"uri": _get_dict_field_from_dot_notation(doc, "uri")}
 
@@ -1264,7 +1272,7 @@ class NERLoader:
 
         return ent_data_list
 
-    def _get_doc_generator(
+    def _get_source_doc_generator(
         self,
         index: str,
         limit: Optional[int] = None,
@@ -1274,7 +1282,7 @@ class NERLoader:
         """
         Returns a generator of document IDs and descriptions from the Elasticsearch index, batched according to
             `self.batch_size` and limited according to `limit`. Only documents with an XSD.description value are
-            returned.
+            returned, and these are processed by the function specified in class instance creation.
 
         Args:
             limit (Optional[int], optional): limit the number of documents to get and therefore load. Defaults to None.
@@ -1294,7 +1302,7 @@ class NERLoader:
                                 "must": [
                                     {
                                         "exists": {
-                                            "field": self.target_fields["description"]
+                                            "field": self.source_fields["description"]
                                         }
                                     },
                                 ]
@@ -1309,7 +1317,7 @@ class NERLoader:
                 "query": {
                     "bool": {
                         "must": [
-                            {"exists": {"field": self.target_fields["description"]}},
+                            {"exists": {"field": self.source_fields["description"]}},
                         ]
                     }
                 }
@@ -1330,7 +1338,7 @@ class NERLoader:
                 doc["_id"],
                 self.text_preprocess_func(
                     _get_dict_field_from_dot_notation(
-                        doc, self.target_fields["description"]
+                        doc, self.source_fields["description"]
                     )
                 ),
             )

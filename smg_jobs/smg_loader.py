@@ -990,7 +990,7 @@ def load_ner_annotations(
 
     source_description_field = (
         target_description_field
-    ) = "data.https://schema.org/disambiguatingDescription"
+    ) = "data.http://www.w3.org/2001/XMLSchema#description"  # "data.https://schema.org/disambiguatingDescription"
     target_title_field = "graph.@rdfs:label.@value"
     target_alias_field = "graph.@skos:altLabel.@value"
     target_type_field = "graph.@skos:hasTopConcept.@value"
@@ -1012,8 +1012,10 @@ def load_ner_annotations(
         },
     )
 
-    _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=16)
-    ner_loader.get_link_candidates(candidates_per_entity_mention=10)
+    _ = ner_loader.get_list_of_entities_from_source_index(
+        model_type, spacy_batch_size=16
+    )
+    ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=10)
 
     if use_trained_linker:
         # load NEL training data
@@ -1032,7 +1034,9 @@ def load_ner_annotations(
         links_data.to_excel(nel_training_data_path)
         print(f"NEL training data exported to {nel_training_data_path}")
 
-    ner_loader.load_entities_into_es(linking_confidence_threshold, batch_size=32768)
+    ner_loader.load_entities_into_source_index(
+        linking_confidence_threshold, batch_size=32768
+    )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 scikit-learn
 lxml
-pandas
+pandas>=1.2.0
 sparqlwrapper
 fuzzywuzzy
 python-levenshtein
