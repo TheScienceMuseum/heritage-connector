@@ -1242,11 +1242,16 @@ class NERLoader:
         ent_data_list = []
 
         if ignore_duplicated_ents:
-            ent_is_suitable = lambda ent: (ent.label_ in self.entity_types) and (
-                ent._.entity_duplicate is False
-            )
+
+            def ent_is_suitable(ent):
+                return (ent.label_ in self.entity_types) and (
+                    ent._.entity_duplicate is False
+                )
+
         else:
-            ent_is_suitable = lambda ent: ent.label_ in self.entity_types
+
+            def ent_is_suitable(ent):
+                return ent.label_ in self.entity_types
 
         for ent in doc.ents:
             if ent_is_suitable(ent):
