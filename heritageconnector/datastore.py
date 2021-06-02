@@ -1236,7 +1236,7 @@ class NERLoader:
         ignore_duplicated_ents: bool,
     ) -> List[dict]:
         """
-        Convert a spaCy doc with entities found into a list of dictionaries.
+        Convert a spaCy doc with entities found into List[Dict].
         """
 
         ent_data_list = []
