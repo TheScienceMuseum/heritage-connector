@@ -519,10 +519,10 @@ class NERLoader:
         source_description_field: str,
         target_es_index: str,
         target_title_field: str,
-        target_description_field: str,
+        target_context_field: str,
         target_type_field: str,
         target_alias_field: str = None,
-        # batch_size: Optional[int] = 1024,
+        source_context_field: str = None,
         entity_types: Iterable[str] = [
             "PERSON",
             "ORG",
@@ -551,9 +551,10 @@ class NERLoader:
             source_description_field (str): dot notation for source description field.
             target_es_index (str): name of target index.
             target_title_field (str): dot notation for target title/label field.
-            target_description_field (str): dot notation for target description field.
+            target_context_field (str): dot notation for target description/context field used by the entity linker.
             target_type_field (str): dot notation for target type field (to be one-hot-encoded and compared with NER entity type).
             target_alias_field (str, optional): dot notation for target alias field. Only used when searching for link candidates; not in the features for the entity linker.
+            source_context_field (str, optional): dot notation for the source context field used by the entity linker. If specified, must be a substring of 'source_description_field'. If not specified, the value of `source_description_field` is used.
             entity_types (List[str], optional): entity types to extract from the spaCy model.
             entity_types_to_link (List[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`. Defaults to None.
             text_preprocess_func (Callable[[str], str], optional): function to preprocess descriptions before NER is run on them.
@@ -570,11 +571,14 @@ class NERLoader:
         self.source_index = source_es_index
         self.target_index = target_es_index
 
-        self.source_fields = {"description": source_description_field}
+        self.source_fields = {
+            "description": source_description_field,
+            "context": source_context_field or source_description_field,
+        }
 
         self.target_fields = {
             "title": target_title_field,
-            "description": target_description_field,
+            "description": target_context_field,
             "type": target_type_field,
         }
 
@@ -889,10 +893,10 @@ class NERLoader:
 
         # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples
         entity_list = []
-        # list of (description, uri) tuples to give to nlp.pipe
-        descriptions_and_uris = [(item[1], item[0]) for item in doc_list]
+        # list of (description, (uri, context)) tuples to give to nlp.pipe
+        descriptions_and_uris = [(item[1], (item[0], item[2])) for item in doc_list]
 
-        for doc, uri in tqdm(
+        for doc, (uri, context) in tqdm(
             self.nlp.pipe(
                 descriptions_and_uris,
                 as_tuples=True,
@@ -901,8 +905,11 @@ class NERLoader:
             ),
             total=len(doc_list),
         ):
+            # Only context is stored in entity_list, which may be different from the description NER was run
+            # on. As a result, the entity marked in `item_description_with_ent` is only the first occurrence of the
+            # entity text span, which is not necessarily the same as the entity predicted by spaCy.
             entity_list += self._spacy_doc_to_ent_list(
-                uri, doc.text, doc, ignore_duplicated_ents
+                uri, context, doc, ignore_duplicated_ents
             )
 
         self._entity_list = entity_list
@@ -1255,23 +1262,25 @@ class NERLoader:
 
         for ent in doc.ents:
             if ent_is_suitable(ent):
+                # This split is used to get the original description (doc.text) from the augmented description
+                # (item_description) so that the entity boundaries can be used, then add the augmented parts
+                # back afterwards.
+                item_context_split = item_description.split(doc.text)
                 ent_text = ent._.alt_ent_text or ent.text
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
                         "item_description": item_description,
-                        "item_description_with_ent": item_description[
-                            : doc[ent.start].idx
-                        ]
+                        "item_description_with_ent": item_context_split[0]
+                        + doc.text[: doc[ent.start].idx]
                         + self.entity_markers[0]
                         + ent_text
                         + self.entity_markers[1]
-                        + item_description[doc[ent.start].idx + len(ent_text) :],
+                        + doc.text[doc[ent.start].idx + len(ent.text) :]
+                        + item_context_split[1],
                         "ent_label": ent.label_,
                         "ent_text": ent_text,
                         "ent_sentence": ent.sent.text,
-                        "ent_start_idx": doc[ent.start].idx,
-                        "ent_end_idx": doc[ent.start].idx + len(ent_text),
                     }
                 )
 
@@ -1344,6 +1353,11 @@ class NERLoader:
                 self.text_preprocess_func(
                     _get_dict_field_from_dot_notation(
                         doc, self.source_fields["description"]
+                    )
+                ),
+                self.text_preprocess_func(
+                    _get_dict_field_from_dot_notation(
+                        doc, self.source_fields["context"]
                     )
                 ),
             )

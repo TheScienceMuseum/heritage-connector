@@ -988,9 +988,10 @@ def load_ner_annotations(
         linking_confidence_threshold (float, optional): Threshold for linker. Defaults to 0.8.
     """
 
-    source_description_field = (
-        target_description_field
-    ) = "data.http://www.w3.org/2001/XMLSchema#description"  # "data.https://schema.org/disambiguatingDescription"
+    source_description_field = "data.http://www.w3.org/2001/XMLSchema#description"
+    target_context_field = (
+        source_context_field
+    ) = "data.https://schema.org/disambiguatingDescription"
     target_title_field = "graph.@rdfs:label.@value"
     target_alias_field = "graph.@skos:altLabel.@value"
     target_type_field = "graph.@skos:hasTopConcept.@value"
@@ -999,17 +1000,18 @@ def load_ner_annotations(
         record_loader,
         source_es_index=config.ELASTIC_SEARCH_INDEX,
         source_description_field=source_description_field,
+        source_context_field=source_context_field,
         target_es_index=config.ELASTIC_SEARCH_INDEX,
         target_title_field=target_title_field,
-        target_description_field=target_description_field,
+        target_context_field=target_context_field,
         target_type_field=target_type_field,
         target_alias_field=target_alias_field,
-        text_preprocess_func=preprocess_text_for_ner,
         entity_types_to_link={
             "PERSON",
             "OBJECT",
             "ORG",
         },
+        text_preprocess_func=preprocess_text_for_ner,
     )
 
     _ = ner_loader.get_list_of_entities_from_source_index(
