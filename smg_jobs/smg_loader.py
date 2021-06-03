@@ -1011,6 +1011,7 @@ def load_ner_annotations(
             "OBJECT",
             "ORG",
         },
+        target_record_types=("PERSON", "OBJECT", "ORGANISATION"),
         text_preprocess_func=preprocess_text_for_ner,
     )
 

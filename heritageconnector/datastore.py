@@ -539,6 +539,7 @@ class NERLoader:
             "ORG",
             "OBJECT",
         ],
+        target_record_types: Iterable[str] = None,
         text_preprocess_func: Optional[Callable[[str], str]] = None,
         entity_markers: Iterable[str] = ("[[", "]]"),
     ):
@@ -554,9 +555,10 @@ class NERLoader:
             target_context_field (str): dot notation for target description/context field used by the entity linker.
             target_type_field (str): dot notation for target type field (to be one-hot-encoded and compared with NER entity type).
             target_alias_field (str, optional): dot notation for target alias field. Only used when searching for link candidates; not in the features for the entity linker.
-            source_context_field (str, optional): dot notation for the source context field used by the entity linker. If specified, must be a substring of 'source_description_field'. If not specified, the value of `source_description_field` is used.
-            entity_types (List[str], optional): entity types to extract from the spaCy model.
-            entity_types_to_link (List[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`. Defaults to None.
+            source_context_field (str, optional): dot notation for the source context field used by the entity linker. If specified, must be a substring of 'source_description_field'. If not specified, the value of `source_description_field` is used. If `source_context_field` is not present for a document, the system will automatically fall back to using `source_description_field` as the context field.
+            entity_types (Iterable[str], optional): entity types to extract from the spaCy model.
+            entity_types_to_link (Iterable[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`. Defaults to None.
+            target_record_types (Iterable[str], optional): record types to link to, where types are determined by their value of `target_type_field`. Defaults to None, i.e. all types.
             text_preprocess_func (Callable[[str], str], optional): function to preprocess descriptions before NER is run on them.
             entity_markers (Iterable[str], optional): markers to use for the start and end of an entity. Defaults to ("[[", "]]"), i.e. "Lewis Carroll was born in [[Daresbury, Cheshire]]".
         """
@@ -581,6 +583,8 @@ class NERLoader:
             "description": target_context_field,
             "type": target_type_field,
         }
+
+        self.target_record_types = target_record_types
 
         if target_alias_field is not None:
             self.target_fields.update(
@@ -1199,6 +1203,15 @@ class NERLoader:
             }
         }
 
+        if self.target_record_types is not None:
+            query["query"]["bool"]["must"] = [
+                {
+                    "terms": {
+                        f"{self.target_fields['type']}.keyword": self.target_record_types
+                    }
+                }
+            ]
+
         search_results = (
             es.search(
                 index=self.target_index,
@@ -1355,9 +1368,14 @@ class NERLoader:
                         doc, self.source_fields["description"]
                     )
                 ),
+                # if the context field is not present in a document then an empty string will be returned
+                # by `_get_dict_field_from_dot_notation`, and the description field is used instead
                 self.text_preprocess_func(
                     _get_dict_field_from_dot_notation(
                         doc, self.source_fields["context"]
+                    )
+                    or _get_dict_field_from_dot_notation(
+                        doc, self.source_fields["description"]
                     )
                 ),
             )
