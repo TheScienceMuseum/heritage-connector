@@ -988,8 +988,9 @@ def load_ner_annotations(
         linking_confidence_threshold (float, optional): Threshold for linker. Defaults to 0.8.
     """
 
-    source_description_field = (
-        target_description_field
+    source_description_field = "data.http://www.w3.org/2001/XMLSchema#description"
+    target_context_field = (
+        source_context_field
     ) = "data.https://schema.org/disambiguatingDescription"
     target_title_field = "graph.@rdfs:label.@value"
     target_alias_field = "graph.@skos:altLabel.@value"
@@ -999,21 +1000,25 @@ def load_ner_annotations(
         record_loader,
         source_es_index=config.ELASTIC_SEARCH_INDEX,
         source_description_field=source_description_field,
+        source_context_field=source_context_field,
         target_es_index=config.ELASTIC_SEARCH_INDEX,
         target_title_field=target_title_field,
-        target_description_field=target_description_field,
+        target_context_field=target_context_field,
         target_type_field=target_type_field,
         target_alias_field=target_alias_field,
-        text_preprocess_func=preprocess_text_for_ner,
         entity_types_to_link={
             "PERSON",
             "OBJECT",
             "ORG",
         },
+        target_record_types=("PERSON", "OBJECT", "ORGANISATION"),
+        text_preprocess_func=preprocess_text_for_ner,
     )
 
-    _ = ner_loader.get_list_of_entities_from_es(model_type, spacy_batch_size=16)
-    ner_loader.get_link_candidates(candidates_per_entity_mention=10)
+    _ = ner_loader.get_list_of_entities_from_source_index(
+        model_type, spacy_batch_size=16
+    )
+    ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=10)
 
     if use_trained_linker:
         # load NEL training data
@@ -1032,7 +1037,9 @@ def load_ner_annotations(
         links_data.to_excel(nel_training_data_path)
         print(f"NEL training data exported to {nel_training_data_path}")
 
-    ner_loader.load_entities_into_es(linking_confidence_threshold, batch_size=32768)
+    ner_loader.load_entities_into_source_index(
+        linking_confidence_threshold, batch_size=32768
+    )
 
 
 if __name__ == "__main__":
