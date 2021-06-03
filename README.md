@@ -2,6 +2,8 @@
 
 Transforming text into data to extract meaning and make connections. In development.
 
+See also our paper, *Heritage connector: A machine learning framework for building linked open data from museum collections*, at [https://doi.org/10.1002/ail2.23](https://doi.org/10.1002/ail2.23).
+
 A set of tools to:
 
 - load tabular collection data to a knowledge graph
@@ -45,5 +47,14 @@ We use `pytest` for tests, and all tests are in *./test*.
 
 To run web app (in development): `python -m heritageconnector.web.app`
 
+## Citation
+
+Cite as:
+
+```
+Dutia, K, Stack, J. Heritage connector: A machine learning framework for building linked open data from museum collections. Applied AI Letters. 2021;e23. https://doi.org/10.1002/ail2.23
+```
+
 ## Deployment
 TODO
+
