@@ -131,7 +131,11 @@ class RecordLoader:
         create(self.collection_name, table_name, data, jsonld)
 
     def add_records(
-        self, table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef = None
+        self,
+        table_name: str,
+        records: pd.DataFrame,
+        add_type: rdflib.URIRef = None,
+        raise_on_error: bool = False,
     ):
         """
         Create and store multiple new records with a JSON-LD graph. Uses Elasticsearch's bulk import method (https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html)
@@ -142,10 +146,11 @@ class RecordLoader:
             records (pd.DataFrame): tabular data to import. Must contain column 'URI' specifying the URI which uniquely
                 identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
+            raise_on_error (bool, optional): whether to raise on errors with the bulk load process. Passed to `Elasticsearch.helpers.parallel_bulk` method. Defaults to False.
         """
 
         generator = self._record_create_generator(table_name, records, add_type)
-        es_bulk(generator, len(records))
+        es_bulk(generator, len(records), raise_on_error=raise_on_error)
 
     def _record_create_generator(
         self, table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef
@@ -191,6 +196,7 @@ class RecordLoader:
         object_col: str = "OBJECT",
         object_is_uri: bool = True,
         progress_bar: bool = True,
+        raise_on_error: bool = False,
     ):
         """
         Add triples with RDF predicate and dataframe containing subject and object columns.
@@ -207,13 +213,17 @@ class RecordLoader:
             object_col (str, optional): name of column containing object values. Defaults to "OBJECT".
             object_is_uri (bool, optional): whether the object column contains URIs. If False, will be loaded in as literals.
             progress_bar (bool, optional): whether to show a progress bar for loading into Elasticsearch. Defaults to True.
+            raise_on_error (bool, optional): whether to raise on errors with the bulk load process. Passed to `Elasticsearch.helpers.parallel_bulk` method. Defaults to False.
         """
 
         generator = self._record_update_generator(
             records, predicate, subject_col, object_col, object_is_uri
         )
         es_bulk(
-            generator, len(records[subject_col].unique()), progress_bar=progress_bar
+            generator,
+            len(records[subject_col].unique()),
+            progress_bar=progress_bar,
+            raise_on_error=raise_on_error,
         )
 
     def _record_update_generator(
@@ -377,7 +387,9 @@ def create_index():
     logger.info("..done ")
 
 
-def es_bulk(action_generator, total_iterations=None, progress_bar=True):
+def es_bulk(
+    action_generator, total_iterations=None, progress_bar=True, raise_on_error=False
+):
     """Batch load a set of new records into ElasticSearch"""
 
     successes = 0
@@ -389,7 +401,7 @@ def es_bulk(action_generator, total_iterations=None, progress_bar=True):
         actions=action_generator,
         chunk_size=es_config["chunk_size"],
         queue_size=es_config["queue_size"],
-        raise_on_error=False,
+        raise_on_error=raise_on_error,
     )
 
     if progress_bar:
