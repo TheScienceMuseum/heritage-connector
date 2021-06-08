@@ -266,7 +266,11 @@ class Disambiguator(Classifier):
         self.clf = load(path)
 
     def save_training_data_to_folder(
-        self, path: str, limit: int = None, page_size=100, search_limit=20,
+        self,
+        path: str,
+        limit: int = None,
+        page_size=100,
+        search_limit=20,
     ):
         """
         Make training data from the labelled records in the Heritage Connector and save it to a folder. The folder will contain:
@@ -289,7 +293,10 @@ class Disambiguator(Classifier):
             errors.raise_file_not_found_error(path, "folder")
 
         X, y, pid_labels, id_pairs = self.build_training_data(
-            True, page_size=page_size, limit=limit, search_limit=search_limit,
+            True,
+            page_size=page_size,
+            limit=limit,
+            search_limit=search_limit,
         )
 
         np.save(os.path.join(path, "X.npy"), X)
@@ -303,7 +310,11 @@ class Disambiguator(Classifier):
             wr.writerows(id_pairs)
 
     def save_test_data_to_folder(
-        self, path: str, limit: int = None, page_size=100, search_limit=20,
+        self,
+        path: str,
+        limit: int = None,
+        page_size=100,
+        search_limit=20,
     ):
         """
         Make test data from the unlabelled records in the Heritage Connector and save it to a folder. The folder will contain:
@@ -325,7 +336,10 @@ class Disambiguator(Classifier):
             errors.raise_file_not_found_error(path, "folder")
 
         X, pid_labels, id_pairs = self.build_training_data(
-            False, page_size=page_size, limit=limit, search_limit=search_limit,
+            False,
+            page_size=page_size,
+            limit=limit,
+            search_limit=search_limit,
         )
 
         np.save(os.path.join(path, "X.npy"), X)
@@ -632,7 +646,7 @@ class Disambiguator(Classifier):
         rdflib.Literal, rdflib.URIRef, List[rdflib.Literal], List[rdflib.URIRef]
     ]:
         """
-        Replaces internal URL with Wikidata sameAs link (if exists) or label, in that order of preference. 
+        Replaces internal URL with Wikidata sameAs link (if exists) or label, in that order of preference.
         If neither exist, returns an empty string.
         """
 
@@ -654,7 +668,11 @@ class Disambiguator(Classifier):
             return ""
 
     def build_training_data(
-        self, train: bool, page_size: int = 100, limit: int = None, search_limit=20,
+        self,
+        train: bool,
+        page_size: int = 100,
+        limit: int = None,
+        search_limit=20,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get training arrays X, y from all the records in the Heritage Connector index with an existing sameAs
@@ -757,7 +775,7 @@ class Disambiguator(Classifier):
                     # sparql store has crashed
                     sleep_time = 120
                     logger.debug(
-                        f"get_triples query failed. Retrying in {sleep_time} seconds"
+                        f"get_triples query failed for item {item['id']}. Retrying in {sleep_time} seconds"
                     )
                     time.sleep(sleep_time)
                     self._open_sparql_store()
