@@ -20,3 +20,4 @@ hc-nlp>=0.3.7
 sentence-transformers>=0.3.0
 textdistance>=4.2.1
 openpyxl
+pyparsing==2.4.7 # see https://github.com/G-Node/python-odml/issues/410
