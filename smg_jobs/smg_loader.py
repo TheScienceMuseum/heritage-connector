@@ -1075,7 +1075,11 @@ if __name__ == "__main__":
     )
     load_sameas_from_disambiguator(
         "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
-        "people",
+        "people (mimsy)",
+    )
+    load_sameas_from_disambiguator(
+        "s3://heritageconnector/disambiguation/disambiguation_preds_positive_adlib_people.csv",
+        "people (adlib)",
     )
     load_sameas_from_disambiguator(
         "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
