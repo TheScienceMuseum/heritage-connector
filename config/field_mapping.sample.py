@@ -13,6 +13,7 @@ from heritageconnector.namespace import (
     WD,
     WDT,
     SKOS,
+    HC,
 )
 
 
@@ -42,18 +43,7 @@ mapping = {
         "NATIONALITY": {"RDF": SDO.nationality},
         "BIOGRAPHY": {"RDF": XSD.description},
         "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
-    },
-    "PERSON_ADLIB": {
-        "PREFERRED_NAME": {"RDF": RDFS.label},
-        "FIRSTMID_NAME": {"RDF": FOAF.givenName},
-        "LASTSUFF_NAME": {"RDF": FOAF.familyName},
-        "GENDER": {"RDF": SDO.gender},
-        "BIRTH_DATE": {"RDF": SDO.birthDate},
-        "DEATH_DATE": {"RDF": SDO.deathDate},
-        "BIRTH_PLACE": {"RDF": SDO.birthPlace},
-        "DEATH_PLACE": {"RDF": SDO.deathPlace},
-        "NATIONALITY": {"RDF": SDO.nationality},
-        "DESCRIPTION": {"RDF": XSD.description},
+        "DATABASE": {"RDF": HC.database},
     },
     "ORGANISATION": {
         "PREFERRED_NAME": {"RDF": RDFS.label},
@@ -63,14 +53,7 @@ mapping = {
         "NATIONALITY": {"RDF": SDO.addressCountry},
         "BIRTH_DATE": {"RDF": SDO.foundingDate},
         "DEATH_DATE": {"RDF": SDO.dissolutionDate},
-    },
-    "ORGANISATION_ADLIB": {
-        "LABEL": {"RDF": RDFS.label},
-        "ALIAS": {"RDF": SKOS.altLabel},
-        "BIRTH_DATE": {"RDF": SDO.foundingDate},
-        "DEATH_DATE": {"RDF": SDO.dissolutionDate},
-        "NATIONALITY": {"RDF": SDO.addressCountry},
-        "DESCRIPTION": {"RDF": XSD.description},
+        "DATABASE": {"RDF": HC.database},
     },
     "OBJECT": {
         "TITLE": {"RDF": RDFS.label},
@@ -80,11 +63,14 @@ mapping = {
         "MATERIALS": {"RDF": SDO.material},
         "DATE_MADE": {"RDF": SDO.dateCreated},
         "CATEGORY1": {"RDF": SDO.isPartOf},
+        "DATABASE": {"RDF": HC.database},
     },
     "DOCUMENT": {
         "TITLE": {"RDF": RDFS.label},
         "DESCRIPTION": {"RDF": XSD.description},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
         "SUBJECT": {"RDF": XSD.additionalType},
         "DATE_MADE": {"RDF": SDO.dateCreated},
+        "DATABASE": {"RDF": HC.database},
     },
 }
