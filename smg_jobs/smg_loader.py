@@ -1083,7 +1083,7 @@ if __name__ == "__main__":
     object_data_path = (
         "../GITIGNORE_DATA/smg-datasets-private/mimsy-catalogue-export.csv"
     )
-    adlib_data_path = "s3://smg-datasets/adlib-document-dump-relevant-columns.csv"
+    adlib_data_path = "s3://heritageconnector/adlib-document-dump-relevant-columns.csv"
     adlib_people_data_path = "s3://heritageconnector/adlib-people-dump.csv"
     maker_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_makers.csv"
     user_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_users.csv"
