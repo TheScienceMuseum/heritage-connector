@@ -158,6 +158,7 @@ def load_object_data(catalogue_data_path):
     catalogue_df["CATEGORY1"] = catalogue_df["CATEGORY1"].apply(
         lambda x: x.split(" - ")[1].strip()
     )
+    catalogue_df["DATABASE"] = "mimsy"
 
     logger.info("loading object data")
     record_loader.add_records(table_name, catalogue_df)
@@ -202,6 +203,7 @@ def load_adlib_document_data(adlib_document_data_path):
         datastore_helpers.process_text
     )
     document_df["DATE_MADE"] = document_df["DATE_MADE"].apply(get_year_from_date_value)
+    document_df["DATABASE"] = "adlib"
 
     logger.info("loading adlib document data")
     record_loader.add_records(table_name, document_df)
@@ -254,7 +256,7 @@ def load_adlib_document_data(adlib_document_data_path):
 
 
 def load_adlib_people_data(adlib_people_data_path):
-    table_name = "PERSON_ADLIB"
+    table_name = "PERSON"
 
     people_df = pd.read_csv(adlib_people_data_path, low_memory=False, nrows=max_records)
 
@@ -278,21 +280,37 @@ def load_adlib_people_data(adlib_people_data_path):
         columns={"lifecycle.death.0.place.0.summary_title": "DEATH_PLACE"}
     )
     people_df = people_df.rename(columns={"nationality.0": "NATIONALITY"})
-    people_df = people_df.rename(columns={"description.0.value": "DESCRIPTION"})
+    people_df = people_df.rename(columns={"description.0.value": "BIOGRAPHY"})
     people_df = people_df.rename(columns={"gender": "GENDER"})
 
     people_df["URI"] = adlib_people_prefix + people_df["ID"].astype(str)
-    people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
-    people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
         datastore_helpers.split_list_string
     )
+
+    # remove newlines and tab chars
+    people_df.loc[:, "BIOGRAPHY"] = people_df.loc[:, "BIOGRAPHY"].apply(
+        datastore_helpers.process_text
+    )
+
+    people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
+        {"female": WD.Q6581072, "male": WD.Q6581097}
+    )
+
+    people_df["OCCUPATION"] = [["nan"] for _ in range(len(people_df))]
+    people_df["CAUSE_OF_DEATH"] = ["nan" for _ in range(len(people_df))]
+
+    people_df["DISAMBIGUATING_DESCRIPTION"] = people_df.apply(
+        create_people_disambiguating_description, axis=1
+    )
+
     people_df["NATIONALITY"] = people_df["NATIONALITY"].apply(
         lambda x: flatten_list_of_lists(
             [datastore_helpers.get_country_from_nationality(i) for i in x]
         )
     )
-
+    people_df["BIRTH_DATE"] = people_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    people_df["DEATH_DATE"] = people_df["DEATH_DATE"].apply(get_year_from_date_value)
     people_df["BIRTH_PLACE"] = people_df["BIRTH_PLACE"].apply(
         lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
     )
@@ -300,14 +318,7 @@ def load_adlib_people_data(adlib_people_data_path):
         lambda i: get_wikidata_uri_from_placename(i, False, adlib_placename_qid_mapping)
     )
 
-    # remove newlines and tab chars
-    people_df.loc[:, "DESCRIPTION"] = people_df.loc[:, "DESCRIPTION"].apply(
-        datastore_helpers.process_text
-    )
-
-    people_df.loc[:, "GENDER"] = people_df.loc[:, "GENDER"].replace(
-        {"female": WD.Q6581072, "male": WD.Q6581097}
-    )
+    people_df["DATABASE"] = "adlib"
 
     logger.info("loading adlib people data")
     record_loader.add_records(table_name, people_df, add_type=WD.Q5)
@@ -416,7 +427,7 @@ def create_people_disambiguating_description(row: pd.Series) -> str:
     dates_str = " ".join([founded_str, dissolved_str]).strip()
 
     # add space and full stop (if needed) to end of description
-    if row.BIOGRAPHY:
+    if row.BIOGRAPHY and str(row.BIOGRAPHY) != "nan":
         description = (
             row.BIOGRAPHY.strip()
             if row.BIOGRAPHY.strip()[-1] == "."
@@ -502,13 +513,15 @@ def load_people_data(people_data_path):
         {"F": WD.Q6581072, "M": WD.Q6581097}
     )
 
+    people_df["DATABASE"] = "mimsy"
+
     logger.info("loading people data")
     record_loader.add_records(table_name, people_df, add_type=WD.Q5)
 
 
 def load_adlib_orgs_data(adlib_people_data_path):
     # identifier in field_mapping
-    table_name = "ORGANISATION_ADLIB"
+    table_name = "ORGANISATION"
 
     org_df = pd.read_csv(adlib_people_data_path, low_memory=False, nrows=max_records)
 
@@ -520,7 +533,7 @@ def load_adlib_orgs_data(adlib_people_data_path):
     org_df = org_df.rename(columns={"lifecycle.birth.0.date.0.value": "BIRTH_DATE"})
     org_df = org_df.rename(columns={"lifecycle.death.0.date.0.value": "DEATH_DATE"})
     org_df = org_df.rename(columns={"nationality.0": "NATIONALITY"})
-    org_df = org_df.rename(columns={"description.0.value": "DESCRIPTION"})
+    org_df = org_df.rename(columns={"description.0.value": "BIOGRAPHY"})
 
     org_df["PREFIX"] = people_prefix
 
@@ -539,21 +552,33 @@ def load_adlib_orgs_data(adlib_people_data_path):
         axis=1,
     )
 
-    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
-    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
+    # remove newlines and tab chars
+    org_df.loc[:, "BIOGRAPHY"] = org_df.loc[:, "BIOGRAPHY"].apply(
+        datastore_helpers.process_text
+    )
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
         datastore_helpers.split_list_string
     )
+
+    # for disambiguating description to work
+    org_df["OCCUPATION"] = [["nan"] for _ in range(len(org_df))]
+    org_df["BIRTH_PLACE"] = ["nan" for _ in range(len(org_df))]
+    org_df["DEATH_PLACE"] = ["nan" for _ in range(len(org_df))]
+
+    org_df.loc[:, "DISAMBIGUATING_DESCRIPTION"] = org_df.apply(
+        create_org_disambiguating_description, axis=1
+    )
+
+    org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
+    org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
     org_df["NATIONALITY"] = org_df["NATIONALITY"].apply(
         lambda x: flatten_list_of_lists(
             [datastore_helpers.get_country_from_nationality(i) for i in x]
         )
     )
 
-    # remove newlines and tab chars
-    org_df.loc[:, "DESCRIPTION"] = org_df.loc[:, "DESCRIPTION"].apply(
-        datastore_helpers.process_text
-    )
+    org_df["DATABASE"] = "adlib"
+
     logger.info("loading adlib orgs data")
     record_loader.add_records(table_name, org_df, add_type=WD.Q43229)
 
@@ -699,6 +724,7 @@ def load_orgs_data(people_data_path):
 
     org_df["BIRTH_DATE"] = org_df["BIRTH_DATE"].apply(get_year_from_date_value)
     org_df["DEATH_DATE"] = org_df["DEATH_DATE"].apply(get_year_from_date_value)
+    org_df["DATABASE"] = "mimsy"
 
     logger.info("loading orgs data")
     record_loader.add_records(table_name, org_df)
