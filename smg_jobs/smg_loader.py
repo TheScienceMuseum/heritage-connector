@@ -1087,7 +1087,7 @@ if __name__ == "__main__":
     adlib_people_data_path = "s3://heritageconnector/adlib-people-dump.csv"
     maker_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_makers.csv"
     user_data_path = "../GITIGNORE_DATA/smg-datasets-private/items_users.csv"
-    mimsy_adlib_join_data_path = "../GITIGNORE_DATA/mimsy_adlib_link_table.csv"
+    mimsy_adlib_join_data_path = "s3://heritageconnector/mimsy_adlib_link_table.csv"
 
     # ---
 
