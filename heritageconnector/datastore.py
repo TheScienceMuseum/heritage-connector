@@ -932,6 +932,47 @@ class NERLoader:
 
         return self.entity_list
 
+    def export_entity_list_to_json(
+        self, output_path: str, include_link_candidates: bool
+    ):
+        """Export entity list to JSON
+
+        Args:
+            output_path (str): output path for JSON
+            include_link_candidates (str): whether to include link candidates fetched by `get_link_candidates_from_target_index`.
+        """
+
+        self.raise_if_missing_entity_list()
+
+        if output_path[-5:].lower() != ".json":
+            logger.warning(
+                "Output path provided to `NERLoader.entity_list_to_json` doesn't look like a JSON path. File will be saved in JSON format regardless."
+            )
+
+        if include_link_candidates and all(
+            ["link_candidates" not in self._entity_list[i].keys() for i in range(100)]
+        ):
+            logger.warning(
+                "There are no link candidates in the entity list. The list will be exported anyway."
+            )
+
+        with open(output_path, "w") as f:
+            json.dump(self._entity_list, f)
+
+        logger.info(f"Entity list saved to {output_path}")
+
+    def import_entity_list_from_json(self, input_path: str):
+        """Import entity list from JSON. Overwrites `NERLoader._entity_list`.
+
+        Args:
+            json_path (str): path for JSON to import
+        """
+
+        with open(input_path, "r") as f:
+            self._entity_list = json.load(f)
+
+        logger.info(f"Entity list loaded from {input_path}")
+
     def load_entities_into_es_no_links(self):
         logger.info(
             f"Loading {len(self._entity_list)} entities into {self.source_index}"
@@ -1130,6 +1171,12 @@ class NERLoader:
                 progress_bar=False,
             )
 
+    def raise_if_missing_entity_list(self):
+        if not self._entity_list:
+            raise ValueError(
+                "Entities have not yet been retrieved from the Elasticsearch index. Run `get_list_of_entities_from_es` first."
+            )
+
     def get_link_candidates_from_target_index(
         self, candidates_per_entity_mention: int
     ) -> List[dict]:
@@ -1146,10 +1193,7 @@ class NERLoader:
                 "description": _}, ...]}` (in types to link).
         """
 
-        if not self._entity_list:
-            raise ValueError(
-                "Entities have not yet been retrieved from the Elasticsearch index. Run `get_list_of_entities_from_es` first."
-            )
+        self.raise_if_missing_entity_list()
 
         entity_list_with_link_candidates = []
         logger.info(

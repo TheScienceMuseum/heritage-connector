@@ -178,10 +178,6 @@ def load_adlib_document_data(adlib_document_data_path):
     document_df = document_df.rename(
         columns={"content.description.0.value": "DESCRIPTION"}
     )
-    # We won't add any more context to documents here as we are not planning to link named entities
-    # to documents. This description will just be used to link entities found within it (which are not
-    # the document itself) to people, orgs, or objects.
-    document_df["DISAMBIGUATING_DESCRIPTION"] = document_df["DESCRIPTION"].copy()
     document_df = document_df.rename(
         columns={"lifecycle.creation.0.date.0.note.0.value": "DATE_MADE"}
     )
@@ -202,6 +198,10 @@ def load_adlib_document_data(adlib_document_data_path):
     document_df["DESCRIPTION"] = document_df["DESCRIPTION"].apply(
         datastore_helpers.process_text
     )
+    # We won't add any more context to documents here as we are not planning to link named entities
+    # to documents. This description will just be used to link entities found within it (which are not
+    # the document itself) to people, orgs, or objects.
+    document_df["DISAMBIGUATING_DESCRIPTION"] = document_df["DESCRIPTION"].copy()
     document_df["DATE_MADE"] = document_df["DATE_MADE"].apply(get_year_from_date_value)
     document_df["DATABASE"] = "adlib"
 
@@ -672,7 +672,7 @@ def create_org_disambiguating_description(row: pd.Series) -> str:
     dates_str = " ".join([founded_str, dissolved_str]).strip()
 
     # add space and full stop (if needed) to end of description
-    if row.BIOGRAPHY:
+    if row.BIOGRAPHY and str(row.BIOGRAPHY) != "nan":
         description = (
             row.BIOGRAPHY.strip()
             if row.BIOGRAPHY.strip()[-1] == "."
@@ -1002,7 +1002,8 @@ def preprocess_text_for_ner(text: str) -> str:
 def load_ner_annotations(
     model_type: str,
     use_trained_linker: bool,
-    nel_training_data_path: Optional[str] = None,
+    entity_list_save_path: str = None,
+    nel_training_data_path: str = None,
     linking_confidence_threshold: float = 0.8,
 ):
     """
@@ -1010,7 +1011,8 @@ def load_ner_annotations(
         model_type (str): spacy model type e.g. "en_core_web_trf"
         use_trained_linker (bool): whether to use trained entity linker to add links to graph (True), or
             export training data to train an entity linker (False)
-        nel_training_data_path (Optional[str], optional): Path to training data Excel file for linker, either to train it, or where it's exported. Defaults to None.
+        entity_list_save_path (str, optional): Path to save or load entity list to/from
+        nel_training_data_path (str, optional): Path to training data Excel file for linker, either to train it, or where it's exported. Defaults to None.
         linking_confidence_threshold (float, optional): Threshold for linker. Defaults to 0.8.
     """
 
@@ -1063,8 +1065,16 @@ def load_ner_annotations(
         links_data.to_excel(nel_training_data_path)
         print(f"NEL training data exported to {nel_training_data_path}")
 
+        # also optionally save list of entities
+        if entity_list_save_path:
+            ner_loader.export_entity_list_to_json(
+                entity_list_save_path, include_link_candidates=False
+            )
+
     ner_loader.load_entities_into_source_index(
-        linking_confidence_threshold, batch_size=32768
+        linking_confidence_threshold,
+        batch_size=32768,
+        force_load_without_linker=not (use_trained_linker),
     )
 
 
@@ -1123,15 +1133,16 @@ if __name__ == "__main__":
         "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
         "objects (locomotives & rolling stock)",
     )
-    # # for running using a trained linker
+    # for running using a trained linker
+    # load_ner_annotations(
+    #     "en_core_web_trf",
+    #     use_trained_linker=True,
+    #     nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+    # )
+    # for running to produce unlabelled training data at `nel_training_data_path`
     load_ner_annotations(
         "en_core_web_trf",
-        use_trained_linker=True,
-        nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+        use_trained_linker=False,
+        entity_list_save_path=f"../GITIGNORE_DATA/NEL/entity_list_{get_timestamp()}.json",
+        nel_training_data_path=f"../GITIGNORE_DATA/NEL/nel_train_data_{get_timestamp()}.xlsx",
     )
-    # # for running to produce unlabelled training data at `nel_training_data_path`
-    # # load_ner_annotations(
-    # #     "en_core_web_trf",
-    # #     use_trained_linker=False,
-    # #     nel_training_data_path=f"../GITIGNORE_DATA/NEL/nel_train_data_{get_timestamp()}.xlsx",
-    # # )
