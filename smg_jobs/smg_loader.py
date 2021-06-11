@@ -62,6 +62,15 @@ adlib_placename_qid_mapping = pd.read_csv(
 #  ======================================================
 
 
+def reverse_person_preferred_name_and_strip_brackets(name: str) -> str:
+    name_stripped = re.sub(r"\([^()]*\)", "", name)
+
+    if not pd.isnull(name_stripped) and len(name_stripped.split(",")) == 2:
+        return f"{name_stripped.split(',')[1].strip()} {name_stripped.split(',')[0].strip()}"
+    else:
+        return name_stripped
+
+
 def create_object_disambiguating_description(row: pd.Series) -> str:
     """
     Original description col = DESCRIPTION.
@@ -288,6 +297,10 @@ def load_adlib_people_data(adlib_people_data_path):
         datastore_helpers.split_list_string
     )
 
+    people_df["PREFERRED_NAME"] = people_df["PREFERRED_NAME"].apply(
+        reverse_person_preferred_name_and_strip_brackets
+    )
+
     # remove newlines and tab chars
     people_df.loc[:, "BIOGRAPHY"] = people_df.loc[:, "BIOGRAPHY"].apply(
         datastore_helpers.process_text
@@ -446,12 +459,6 @@ def create_people_disambiguating_description(row: pd.Series) -> str:
 def load_people_data(people_data_path):
     """Load data from CSV files """
 
-    def reverse_preferred_name(name: str) -> str:
-        if not pd.isnull(name) and len(name.split(",")) == 2:
-            return f"{name.split(',')[1].strip()} {name.split(',')[0].strip()}"
-        else:
-            return name
-
     # identifier in field_mapping
     table_name = "PERSON"
 
@@ -468,7 +475,7 @@ def load_people_data(people_data_path):
         .translate(str.maketrans("", "", string.punctuation))
     )
     people_df["PREFERRED_NAME"] = people_df["PREFERRED_NAME"].apply(
-        reverse_preferred_name
+        reverse_person_preferred_name_and_strip_brackets
     )
     people_df["OCCUPATION"] = people_df["OCCUPATION"].apply(
         datastore_helpers.split_list_string
