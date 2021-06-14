@@ -1010,6 +1010,7 @@ def load_ner_annotations(
     model_type: str,
     use_trained_linker: bool,
     entity_list_save_path: str = None,
+    entity_list_data_path: str = None,
     nel_training_data_path: str = None,
     linking_confidence_threshold: float = 0.75,
 ):
@@ -1018,7 +1019,8 @@ def load_ner_annotations(
         model_type (str): spacy model type e.g. "en_core_web_trf"
         use_trained_linker (bool): whether to use trained entity linker to add links to graph (True), or
             export training data to train an entity linker (False)
-        entity_list_save_path (str, optional): Path to save or load entity list to/from
+        entity_list_save_path (str, optional): Path to save entity list to.
+        entity_list_data_path (str, optional): Path to load entity list from. Means NER can be skipped.
         nel_training_data_path (str, optional): Path to training data Excel file for linker, either to train it, or where it's exported. Defaults to None.
         linking_confidence_threshold (float, optional): Threshold for linker. Defaults to 0.8.
     """
@@ -1050,9 +1052,15 @@ def load_ner_annotations(
         text_preprocess_func=preprocess_text_for_ner,
     )
 
-    _ = ner_loader.get_list_of_entities_from_source_index(
-        model_type, spacy_batch_size=16
-    )
+    if entity_list_data_path:
+        # we assume that the entity list JSON does not contain link candidates,
+        # i.e. that `include_link_candidates` was False in `export_entity_list_to_json`
+        ner_loader.import_entity_list_from_json(entity_list_data_path)
+    else:
+        ner_loader.get_list_of_entities_from_source_index(
+            model_type, spacy_batch_size=16
+        )
+
     ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=15)
 
     if use_trained_linker:
@@ -1141,15 +1149,17 @@ if __name__ == "__main__":
         "objects (locomotives & rolling stock)",
     )
     # for running using a trained linker
-    # load_ner_annotations(
-    #     "en_core_web_trf",
-    #     use_trained_linker=True,
-    #     nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
-    # )
-    # for running to produce unlabelled training data at `nel_training_data_path`
+    entity_list_data_path = "../GITIGNORE_DATA/NEL/entity_list_20210610-1035.json"
     load_ner_annotations(
         "en_core_web_trf",
-        use_trained_linker=False,
-        entity_list_save_path=f"../GITIGNORE_DATA/NEL/entity_list_{get_timestamp()}.json",
-        nel_training_data_path=f"../GITIGNORE_DATA/NEL/nel_train_data_{get_timestamp()}.xlsx",
+        use_trained_linker=True,
+        entity_list_data_path=entity_list_data_path,
+        nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
     )
+    # for running to produce unlabelled training data at `nel_training_data_path`
+    # load_ner_annotations(
+    #     "en_core_web_trf",
+    #     use_trained_linker=False,
+    #     entity_list_save_path=f"../GITIGNORE_DATA/NEL/entity_list_{get_timestamp()}.json",
+    #     nel_training_data_path=f"../GITIGNORE_DATA/NEL/nel_train_data_{get_timestamp()}.xlsx",
+    # )
