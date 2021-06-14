@@ -1011,7 +1011,7 @@ def load_ner_annotations(
     use_trained_linker: bool,
     entity_list_save_path: str = None,
     nel_training_data_path: str = None,
-    linking_confidence_threshold: float = 0.8,
+    linking_confidence_threshold: float = 0.75,
 ):
     """
     Args:
@@ -1053,7 +1053,7 @@ def load_ner_annotations(
     _ = ner_loader.get_list_of_entities_from_source_index(
         model_type, spacy_batch_size=16
     )
-    ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=10)
+    ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=15)
 
     if use_trained_linker:
         # load NEL training data
@@ -1144,7 +1144,7 @@ if __name__ == "__main__":
     # load_ner_annotations(
     #     "en_core_web_trf",
     #     use_trained_linker=True,
-    #     nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+    #     nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
     # )
     # for running to produce unlabelled training data at `nel_training_data_path`
     load_ner_annotations(
