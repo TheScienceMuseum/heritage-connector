@@ -1,8 +1,11 @@
 from configparser import ConfigParser
 import os
 import sys
+from heritageconnector import logging
 
 this_path = os.path.dirname(__file__)
+
+logger = logging.get_logger(__name__)
 
 
 class LoadConfig:
@@ -11,7 +14,7 @@ class LoadConfig:
         parser.optionxform = str  # make option names case sensitive
         found = parser.read(file_name)
         if not found:
-            raise ValueError("No config file found.")
+            logger.error("No config file found.")
         for section in parser.sections():
             # if in the LOCALPATH section of config, resolve path relative to config
             if section == "LOCALPATH":
