@@ -14,7 +14,9 @@ class LoadConfig:
         parser.optionxform = str  # make option names case sensitive
         found = parser.read(file_name)
         if not found:
-            logger.error("No config file found.")
+            logger.error(
+                "No config file found. Ensure there is a file called `config.ini` in the config folder in the root of this repo. See `config/config.sample.ini` for an example."
+            )
         for section in parser.sections():
             # if in the LOCALPATH section of config, resolve path relative to config
             if section == "LOCALPATH":
@@ -29,10 +31,15 @@ class LoadConfig:
 
 class LoadFieldMapping:
     def __init__(self):
-        sys.path.append(os.path.join(this_path, "../config"))
-        import field_mapping
+        if os.path.exists(os.path.join(this_path, "../config/field_mapping.py")):
+            sys.path.append(os.path.join(this_path, "../config"))
+            import field_mapping
 
-        self.__dict__.update(field_mapping.__dict__)
+            self.__dict__.update(field_mapping.__dict__)
+        else:
+            logger.error(
+                "Could not find field mapping. Ensure there is a file called `field_mapping.py` in the config folder in the root of this repo. See `config/field_mapping.sample.py` for an example."
+            )
 
 
 config = LoadConfig(os.path.join(this_path, "../config/config.ini"))
