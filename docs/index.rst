@@ -39,19 +39,16 @@ Useful links
    getting_started
    reconciling_fields
    
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Reference
    
-   api
-   tutorials
-
 .. toctree::
    :maxdepth: 2
    :hidden:
-   :caption: Appendix
-
+   :caption: Info
+   
    bibliography
    about
-
+   
+.. toctree::
+   :maxdepth: 4
+   :hidden:
+   :caption: Reference
