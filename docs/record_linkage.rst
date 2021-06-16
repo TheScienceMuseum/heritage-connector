@@ -1,14 +1,14 @@
 Record Linkage to Wikidata
 ===============================
 
-The :py:meth:`heritageconnector.disambiguation` module lets you train a classic machine learning classifier to predict connections between a record in the Heritage Connector graph, *a*, and a record in Wikidata, *b*, where *a* and *b* refer to the same real-world entity. These connections can then be loaded into the Heritage Connector graph as :code:`a-owl:sameAs-b` triples.
+The :py:meth:`heritageconnector.disambiguation` module lets you train a classic machine learning classifier to predict connections between a record in the Heritage Connector graph, *a*, and a record in Wikidata, *b*, where *a* and *b* refer to the same real-world entity. These connections can then be loaded into the HC graph as :code:`a-owl:sameAs-b` triples.
 
 The classifier is built to run separately for each value of :code:`skos:hasTopConcept` (e.g. 'person', 'object). It's also specifically designed for scenarios where:
 
 * there is *limited metadata*, both in the source database and on candidate Wikidata records to be connected; and
 * there is *limited training data*: a small number of existing (or created) :code:`owl:sameAs` links to Wikidata in the source database.
 
-For it to perform well in such scenarios, there is a feature extraction step which performs direct comparisons between values of a property in the graph and values of an equivalent property on Wikidata. To map Heritage Connector properties to Wikidata properties, the mapping created by the property *equivalent property (P1628)* is used.
+For it to perform well in such scenarios, there is a feature extraction step which performs direct comparisons between values of a property in the HC graph and values of an equivalent property on Wikidata. To map HC properties to Wikidata properties, the mapping created by the property *equivalent property (P1628)* is used.
 
 For more information on the model and its performance on Science Museum Group data see our publication [#paper]_.
 
@@ -46,7 +46,7 @@ Workflow
 
 Expand each of the code snippets in this section for working code examples.
 
-1. **Create training data** by loading :code:`owl:sameAs` links between Heritage Connector and Wikidata records into the graph. These may have been created through mining descriptions for IDs and URLs (see :py:meth:`heritageconnector.entity_matching.lookup.wikidata_id`), or manually, maybe through crowdsourcing.
+1. **Create training data** by loading :code:`owl:sameAs` links between records in your collection and Wikidata records into the HC graph. These may have been created through mining descriptions for IDs and URLs (see :py:meth:`heritageconnector.entity_matching.lookup.wikidata_id`), or manually, maybe through crowdsourcing.
 2. **Transform training and test data** for records with a specific :code:`skos:hasTopConcept` value to be used by the machine learning classifier. 
 
     .. raw:: html
