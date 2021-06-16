@@ -43,6 +43,19 @@ extensions = [
     "sphinx.ext.napoleon",
 ]
 
+extensions.append("autoapi.extension")
+autoapi_type = "python"
+# autoapi_add_toctree_entry = False
+# autoapi_keep_files = True
+autoapi_dirs = ["../heritageconnector"]
+
+
+def autoapi_skipper(app, what, name, obj, skip, options):
+    if name == "logger":
+        return True
+    return False
+
+
 [extensions]
 todo_include_todos = True
 
@@ -79,3 +92,7 @@ html_theme_options = {
     # "extra_nav_links": links,
     # "sidebar_includehidden": True,
 }
+
+
+def setup(sphinx):
+    sphinx.connect("autoapi-skip-member", autoapi_skipper)

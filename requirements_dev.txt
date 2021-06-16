@@ -5,6 +5,7 @@ black
 pytest
 pylint
 sphinx
+sphinx-autoapi
 recommonmark
 coverage
 pytest-cov

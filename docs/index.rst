@@ -32,26 +32,25 @@ Useful links
 
 .. toctree::
    :maxdepth: 2
-   :hidden:
    :caption: Getting Started
-
+   
    architecture
    getting_started
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: Tasks
+   
    reconciling_fields
+   record_linkage
    
 .. toctree::
    :maxdepth: 2
-   :hidden:
-   :caption: Reference
+   :caption: Info
    
-   api
-   tutorials
-
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Appendix
-
    bibliography
    about
-
+   
+.. toctree::
+   :maxdepth: 4
+   :caption: Reference

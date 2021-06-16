@@ -43,29 +43,35 @@ logger = logging.get_logger(__name__)
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
 
-if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
-    es = Elasticsearch(
-        [config.ELASTIC_SEARCH_CLUSTER],
-        http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
-        timeout=60,
-    )
-    logger.debug(
-        f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
-    )
-else:
-    # use localhost
-    es = Elasticsearch(
-        timeout=60,
-    )
-    logger.debug("Connected to Elasticsearch cluster on localhost")
+try:
+    if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
+        es = Elasticsearch(
+            [config.ELASTIC_SEARCH_CLUSTER],
+            http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
+            timeout=60,
+        )
+        logger.debug(
+            f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
+        )
+    else:
+        # use localhost
+        es = Elasticsearch(
+            timeout=60,
+        )
+        logger.debug("Connected to Elasticsearch cluster on localhost")
 
-index = config.ELASTIC_SEARCH_INDEX
-es_config = {
-    "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
-    "queue_size": int(config.ES_BULK_QUEUE_SIZE),
-}
+    index = config.ELASTIC_SEARCH_INDEX
+    es_config = {
+        "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
+        "queue_size": int(config.ES_BULK_QUEUE_SIZE),
+    }
 
-context = get_jsonld_context()
+    context = get_jsonld_context()
+
+except AttributeError as e:
+    logger.warn(
+        f"Autoloading the Elasticsearch connector from `heritageconnector.datastore` failed with error {e}. Try correcting this error and reloading."
+    )
 
 
 class RecordLoader:
