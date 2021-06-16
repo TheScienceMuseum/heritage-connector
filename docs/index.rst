@@ -34,11 +34,17 @@ Useful links
    :maxdepth: 2
    :hidden:
    :caption: Getting Started
-
+   
    architecture
    getting_started
-   reconciling_fields
    
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Tasks
+   
+   reconciling_fields
+   record_linkage
    
 .. toctree::
    :maxdepth: 2
