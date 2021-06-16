@@ -32,7 +32,6 @@ Useful links
 
 .. toctree::
    :maxdepth: 2
-   :hidden:
    :caption: Getting Started
    
    architecture
@@ -40,7 +39,6 @@ Useful links
    
 .. toctree::
    :maxdepth: 2
-   :hidden:
    :caption: Tasks
    
    reconciling_fields
@@ -48,7 +46,6 @@ Useful links
    
 .. toctree::
    :maxdepth: 2
-   :hidden:
    :caption: Info
    
    bibliography
@@ -56,5 +53,4 @@ Useful links
    
 .. toctree::
    :maxdepth: 4
-   :hidden:
    :caption: Reference
