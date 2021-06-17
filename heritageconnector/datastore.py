@@ -44,7 +44,7 @@ logger = logging.get_logger(__name__)
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
 
 try:
-    if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
+    if config.ELASTIC_SEARCH_CLUSTER:
         es = Elasticsearch(
             [config.ELASTIC_SEARCH_CLUSTER],
             http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
@@ -79,7 +79,7 @@ class RecordLoader:
     Contains functions for loading JSON-LD formatted data into an Elasticsearch index.
     """
 
-    def __init__(self, collection_name: str, field_mapping: dict):
+    def __init__(self, collection_name: str, field_mapping: dict, index: str = None):
         """
         Args:
             collection_name (str): name of collection to populate `doc['_source']['collection']` for all records.
@@ -87,6 +87,9 @@ class RecordLoader:
         """
         self.collection_name = collection_name
         self.field_mapping = field_mapping
+
+        self.index = index or config.ELASTIC_SEARCH_INDEX
+
         self.mapping = field_mapping.mapping
         self.non_graph_predicates = field_mapping.non_graph_predicates
 
@@ -156,7 +159,7 @@ class RecordLoader:
         """
 
         generator = self._record_create_generator(table_name, records, add_type)
-        es_bulk(generator, len(records), raise_on_error=raise_on_error)
+        es_bulk(self.index, generator, len(records), raise_on_error=raise_on_error)
 
     def _record_create_generator(
         self, table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef
@@ -379,8 +382,10 @@ class RecordLoader:
         return json_ld_dict
 
 
-def create_index():
+def create_index(index: str):
     """Delete the exiting ES index if it exists and create a new index and mappings"""
+
+    index = index or config.ELASTIC_SEARCH_INDEX
 
     logger.info("Wiping existing index: " + index)
     es.indices.delete(index=index, ignore=[400, 404])
@@ -394,7 +399,11 @@ def create_index():
 
 
 def es_bulk(
-    action_generator, total_iterations=None, progress_bar=True, raise_on_error=False
+    index,
+    action_generator,
+    total_iterations=None,
+    progress_bar=True,
+    raise_on_error=False,
 ):
     """Batch load a set of new records into ElasticSearch"""
 
@@ -421,7 +430,7 @@ def es_bulk(
     return successes, errs
 
 
-def create(collection, record_type, data, jsonld):
+def create(index, collection, record_type, data, jsonld):
     """Load a new record into ElasticSearch and return its id"""
 
     # create a ES doc
@@ -440,7 +449,7 @@ def create(collection, record_type, data, jsonld):
     return response
 
 
-def update_graph(s_uri, p, o_uri):
+def update_graph(index, s_uri, p, o_uri):
     """Add a new RDF relationship to an an existing record"""
 
     # create graph containing just the new triple
@@ -457,7 +466,7 @@ def update_graph(s_uri, p, o_uri):
     es.update(index=index, id=s_uri, body=body, ignore=404)
 
 
-def get_by_uri(uri: str) -> dict:
+def get_by_uri(index, uri: str) -> dict:
     """Return an existing ElasticSearch record. Raise ValueError if record with specified URI doesn't exist."""
 
     try:
@@ -467,7 +476,7 @@ def get_by_uri(uri: str) -> dict:
         raise ValueError(f"No record with uri {uri} exists.")
 
 
-def get_by_type(type, size=1000):
+def get_by_type(index, type, size=1000):
     """Return an list of matching ElasticSearch record"""
 
     res = es.search(index=index, body={"query": {"match": {"type": type}}}, size=size)
@@ -497,12 +506,14 @@ def get_graph_by_type(type):
     return g
 
 
-def es_to_rdflib_graph(g=None, return_format=None):
+def es_to_rdflib_graph(index: str, g=None, return_format=None):
     """
     Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
     format is specified, else an object with the specified format which could be written
     to a file.
     """
+
+    index = index or config.ELASTIC_SEARCH_INDEX
 
     # get dump
     res = helpers.scan(
