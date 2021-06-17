@@ -12,6 +12,7 @@ from heritageconnector.utils.generic import flatten_list_of_lists
 from heritageconnector import logging
 
 import pandas as pd
+import unicodedata
 
 logger = logging.get_logger(__name__)
 
@@ -25,6 +26,12 @@ blog_record_loader = datastore.RecordLoader("SMG", field_mapping, blog_index)
 journal_record_loader = datastore.RecordLoader("SMG", field_mapping, journal_index)
 
 
+def process_text(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text)
+
+    return text
+
+
 def load_blog_data(blog_data_path):
     blog_df = pd.read_json(blog_data_path)
     blog_df["links"] = blog_df["links"].apply(
@@ -32,6 +39,9 @@ def load_blog_data(blog_data_path):
     )
     blog_df = blog_df.rename(columns={"url": "URI"})
     blog_df["text_by_paragraph"] = blog_df["text_by_paragraph"].apply("\n".join)
+    blog_df[["caption", "text_by_paragraph"]] = blog_df[
+        ["caption", "text_by_paragraph"]
+    ].applymap(lambda i: process_text(i) if i else i)
     blog_df[["categories", "tags"]] = blog_df[["categories", "tags"]].applymap(
         lambda lst: [i.lower() for i in lst]
     )
@@ -43,7 +53,9 @@ def load_blog_data(blog_data_path):
 def load_journal_data(journal_data_path):
     journal_df = pd.read_json(journal_data_path)
     journal_df = journal_df.rename(columns={"url": "URI"})
-    journal_df["text_by_paragraph"] = journal_df["text_by_paragraph"].apply("\n".join)
+    journal_df["text_by_paragraph"] = (
+        journal_df["text_by_paragraph"].apply("\n".join).apply(process_text)
+    )
     journal_df[["keywords", "tags"]] = journal_df[["keywords", "tags"]].applymap(
         lambda lst: [i.lower() for i in lst]
     )
