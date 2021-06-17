@@ -3,7 +3,7 @@ Record Linkage to Wikidata
 
 The :py:meth:`heritageconnector.disambiguation` module lets you train a classic machine learning classifier to predict connections between a record in the Heritage Connector graph, *a*, and a record in Wikidata, *b*, where *a* and *b* refer to the same real-world entity. These connections can then be loaded into the HC graph as :code:`a-owl:sameAs-b` triples.
 
-The classifier is built to run separately for each value of :code:`skos:hasTopConcept` (e.g. 'person', 'object). It's also specifically designed for scenarios where:
+The classifier is designed to run separately for each value of :code:`skos:hasTopConcept` (e.g. 'person', 'object'; see :ref:`data-model`). It's also specifically designed for scenarios where:
 
 * there is *limited metadata*, both in the source database and on candidate Wikidata records to be connected; and
 * there is *limited training data*: a small number of existing (or created) :code:`owl:sameAs` links to Wikidata in the source database.
@@ -21,13 +21,15 @@ Process
 
 The steps in the record linkage process, as in the diagram above, are:
 
-1. **Data loading**: retrieving data from the HC graph for entities with a specific :code:`skos:hasTopConcept` value. Entities with an existing :code:`owl:sameAs` link to a Wikidata record are considered *training* samples, and those without are *test* samples, for which we are aiming to predict Wikidata links.
+1. **Data loading**: retrieving data from the HC graph for entities with a specific :code:`skos:hasTopConcept` value. Entities with an existing :code:`owl:sameAs` link to a Wikidata record are considered *training* samples, and those without are *unlabelled* samples, for which we are aiming to predict Wikidata links.
 2. **Feature creation**: transforming the data from graph format into features which can be used to train a machine learning classifier. 
+
    * An *X* matrix stores similarity scores between pairs of HC and Wikidata records (rows), for different properties (columns). 
    * A *y* vector stores true labels - whether a pair of records has been labelled as linking (there is an existing :code:`owl:sameAs` connection between them in the graph)/
    * An *ids.txt* file stores pairs of records, which are the rows of X.
    * A *pids.txt* file stores the properties which have been compared for the data, which are the columns of X.
-3. **Classification**: training a classifier on *X* created in the last step, to predict *y* values (whether there is an :code:`owl:sameAs` link) for the record pairs in the test set. The in-built Disambiguator wraps a scikit-learn `DecisionTreeClassifier <https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeClassifier.html>`_, but other classifiers could also be used.
+  
+3. **Classification**: training a classifier on *X* created in the last step, to predict *y* values (whether there is an :code:`owl:sameAs` link) for the record pairs in the unlabelled set. The in-built Disambiguator wraps a scikit-learn `DecisionTreeClassifier <https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeClassifier.html>`_, so any other scikit-learn classifier could also be used if preferred.
 4. **Postprocessing**: there are options to process the predicted new connections after the predictions have been made. For example, excluding predictions where there were many Wikidata connections predicted for one source record, or filtering predicted connections to only those where both records share the same type (:code:`rdf:type`/:code:`wdt:P31` value).
 
 Running the Record Linker
@@ -36,7 +38,7 @@ Running the Record Linker
 Prerequisites
 **************
 
-For the model to run successfully there are the following requirements of the data (or the subset of the data with a :code:`skos:hasTopConcept` value for which a classifier will be trained):
+For the model to run successfully there are the following requirements of the data, which apply to each subset of the data with a :code:`skos:hasTopConcept` value for which a classifier will be trained:
 
 * There are a number (ideally 50+) of :code:`owl:sameAs` links between HC records and Wikidata.
 * Every record :code:`s` has a triple :code:`s-rdf:type-o` which describes its type, where every :code:`o` is a URL to a Wikidata QID.
@@ -69,7 +71,7 @@ Expand each of the code snippets in this section for working code examples.
 
         </details>
 
-3. **Train a classifier and test its performance**. The :code:`Disambiguator` class contains :code:`fit()`, :code:`predict()`, :code:`predict_proba()` and :code:`score()` methods to train a classifier, use it to make predictions and measure its performance. These wrap scikit-learn's DecisionTreeClassifier, so if you're familiar with scikit-learn you may wish to directly use one of its classifiers instead.
+3. **Train a classifier and test its performance**. The :code:`Disambiguator` class contains :code:`fit()`, :code:`predict()`, :code:`predict_proba()` and :code:`score()` methods to train a classifier, use it to make predictions and measure its performance. These wrap scikit-learn's DecisionTreeClassifier.
 
     .. raw:: html
 
@@ -173,7 +175,7 @@ Expand each of the code snippets in this section for working code examples.
 Example notebooks
 ******************
 
-Notebooks to follow the record linkage process from when the data has been created are available in the demos folder of the `Heritage Connector repo <https://github.com/TheScienceMuseum/heritage-connector>`_.
+Notebooks to follow the record linkage process from when the data has been created are available in the *demos* folder of the `Heritage Connector repo <https://github.com/TheScienceMuseum/heritage-connector>`_.
 
 ---
 
