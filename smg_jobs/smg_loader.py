@@ -931,7 +931,7 @@ def load_crowdsourced_links(links_path):
     )
     # remove anything after c(o|d|p)(\d+)
     df["courl"] = df["courl"].apply(
-        lambda x: re.findall(r"https://(?:\w.+)/(?:co|cp|ap)(?:\d+)", x)[0]
+        lambda x: re.findall(r"https://(?:\w.+)/(?:co|cp|ap|aa)(?:\d+)", x)[0]
     )
     df["wikidataurl"] = df["wikidataurl"].str.replace("https", "http")
     df["wikidataurl"] = df["wikidataurl"].str.replace("/wiki/", "/entity/")

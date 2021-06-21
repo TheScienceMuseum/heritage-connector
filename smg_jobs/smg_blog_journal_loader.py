@@ -13,6 +13,7 @@ from heritageconnector import logging
 from smg_jobs.smg_loader import preprocess_text_for_ner, load_nel_training_data
 
 import pandas as pd
+import re
 import unicodedata
 
 logger = logging.get_logger(__name__)
@@ -34,10 +35,25 @@ def process_text(text: str) -> str:
     return text
 
 
+def normalise_collection_url(url: str) -> str:
+    """Remove anything after ID (e.g. `cp43213`) and change 'sciencemuseum.org.uk' to 'sciencemuseumgroup.org.uk'"""
+
+    url = url.replace(
+        "collection.sciencemuseum.org.uk", "collection.sciencemuseumgroup.org.uk"
+    )
+
+    if "collection.sciencemuseumgroup.org.uk" in url:
+        url = re.findall(r"https://(?:\w.+)/(?:co|cp|ap|aa)(?:\d+)", url)[0]
+
+    return url
+
+
 def load_blog_data(blog_data_path):
     blog_df = pd.read_json(blog_data_path)
-    blog_df["links"] = blog_df["links"].apply(
-        lambda i: flatten_list_of_lists(i.values())
+    blog_df["links"] = (
+        blog_df["links"]
+        .apply(lambda i: flatten_list_of_lists(i.values()))
+        .apply(lambda url_list: [normalise_collection_url(url) for url in url_list])
     )
     blog_df = blog_df.rename(columns={"url": "URI"})
     blog_df["text_by_paragraph"] = blog_df["text_by_paragraph"].apply("\n".join)
