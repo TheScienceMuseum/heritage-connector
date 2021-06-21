@@ -8,8 +8,9 @@ sys.path.append("..")
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore, datastore_helpers
 from heritageconnector.namespace import SDO, RDF
-from heritageconnector.utils.generic import flatten_list_of_lists
+from heritageconnector.utils.generic import flatten_list_of_lists, get_timestamp
 from heritageconnector import logging
+from heritageconnector.nlp.nel import BLINKServiceWrapper
 from smg_jobs.smg_loader import preprocess_text_for_ner, load_nel_training_data
 
 import pandas as pd
@@ -50,6 +51,7 @@ def normalise_collection_url(url: str) -> str:
 
 def load_blog_data(blog_data_path):
     blog_df = pd.read_json(blog_data_path)
+    blog_df = blog_df.head(100)  # for debugging
     blog_df["links"] = (
         blog_df["links"]
         .apply(lambda i: flatten_list_of_lists(i.values()))
@@ -70,6 +72,7 @@ def load_blog_data(blog_data_path):
 
 def load_journal_data(journal_data_path):
     journal_df = pd.read_json(journal_data_path)
+    journal_df = journal_df.head(100)  # for debugging
     journal_df = journal_df.rename(columns={"url": "URI"})
     journal_df["text_by_paragraph"] = (
         journal_df["text_by_paragraph"]
@@ -113,13 +116,54 @@ def load_ner_annotations(
     ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=15)
 
     # load NEL training data
-    print(f"Using NEL training data from {nel_training_data_path}")
+    logger.info(f"Using NEL training data from {nel_training_data_path}")
     nel_train_data = load_nel_training_data(nel_training_data_path)
     ner_loader.train_entity_linker(nel_train_data)
 
     ner_loader.load_entities_into_source_index(
         linking_confidence_threshold,
         batch_size=32768,
+    )
+
+
+def create_blink_json(
+    blog_or_journal: str,
+    output_path: str,
+    description_field: str = "data.https://schema.org/text",
+    blink_threshold=0.8,
+    blink_base_url="localhost",
+):
+    """Run BLINK on entities in the blog or journal and export the results to a JSON file."""
+    logger.info(f"Running BLINK for {blog_or_journal}")
+
+    endpoint = "http://" + blink_base_url + ":8000/blink/multiple"
+
+    entity_fields = [
+        "graph.@hc:entityPERSON.@value",
+        "graph.@hc:entityORG.@value",
+        "graph.@hc:entityLOC.@value",
+        "graph.@hc:entityFAC.@value",
+        "graph.@hc:entityOBJECT.@value",
+        "graph.@hc:entityLANGUAGE.@value",
+        "graph.@hc:entityNORP.@value",
+        "graph.@hc:entityEVENT.@value",
+        # "graph.@hc:entityDATE.@value",
+    ]
+
+    blink_threshold = 0.8
+
+    blink_service = BLINKServiceWrapper(
+        endpoint,
+        description_field=description_field,
+        entity_fields=entity_fields,
+        wiki_link_threshold=blink_threshold,
+    )
+
+    blink_service.process_unlinked_entity_mentions(
+        es_indices[blog_or_journal],
+        output_path,
+        page_size=12,
+        limit=None,
     )
 
 
@@ -139,7 +183,7 @@ if __name__ == "__main__":
     )
 
     # NER & NEL
-    model_type = "en_core_web_trf"
+    model_type = "en_core_web_sm"
     nel_training_data_path = "../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx"
     load_ner_annotations(
         "blog", model_type, nel_training_data_path=nel_training_data_path
@@ -148,4 +192,13 @@ if __name__ == "__main__":
         "journal", model_type, nel_training_data_path=nel_training_data_path
     )
 
-    # TODO: BLINK
+    # BLINK
+    blog_blink_output_path = (
+        f"../GITIGNORE_DATA/blink_output_blog_{get_timestamp()}.jsonl"
+    )
+    create_blink_json("blog", blog_blink_output_path)
+
+    journal_blink_output_path = (
+        f"../GITIGNORE_DATA/blink_output_journal_{get_timestamp()}.jsonl"
+    )
+    create_blink_json("journal", journal_blink_output_path)
