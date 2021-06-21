@@ -25,6 +25,9 @@ non_graph_predicates = [
     # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
     # WDT.P735, # first name
     # WDT.P734, # last name
+    # For blog/journal:
+    SDO.abstract,
+    SDO.text,
 ]
 
 mapping = {
@@ -72,5 +75,24 @@ mapping = {
         "SUBJECT": {"RDF": XSD.additionalType},
         "DATE_MADE": {"RDF": SDO.dateCreated},
         "DATABASE": {"RDF": HC.database},
+    },
+    "BLOG_POST": {
+        "author": {"RDF": SDO.author},
+        "date": {"RDF": SDO.dateCreated},
+        "title": {"RDF": RDFS.label},
+        "caption": {"RDF": SDO.abstract},
+        "categories": {"RDF": SDO.genre},
+        "tags": {"RDF": SDO.keywords},
+        "text_by_paragraph": {"RDF": SDO.text},
+        "links": {"RDF": SDO.mentions},
+    },
+    "JOURNAL_ARTICLE": {
+        "doi": {"RDF": SDO.identifier},
+        "author": {"RDF": SDO.author},
+        "title": {"RDF": RDFS.label},
+        "issue": {"RDF": SDO.isPartOf},
+        "keywords": {"RDF": SDO.genre},
+        "tags": {"RDF": SDO.keywords},
+        "text_by_paragraph": {"RDF": SDO.text},
     },
 }
