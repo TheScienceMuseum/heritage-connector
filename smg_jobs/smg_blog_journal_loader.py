@@ -150,6 +150,7 @@ def create_blink_json(
         # "graph.@hc:entityDATE.@value",
     ]
 
+    # NOTE: the final importing threshold is 0.9 by default
     blink_threshold = 0.8
 
     blink_service = BLINKServiceWrapper(
@@ -183,7 +184,7 @@ if __name__ == "__main__":
     )
 
     # NER & NEL
-    model_type = "en_core_web_sm"
+    model_type = "en_core_web_trf"
     nel_training_data_path = "../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx"
     load_ner_annotations(
         "blog", model_type, nel_training_data_path=nel_training_data_path
@@ -192,7 +193,7 @@ if __name__ == "__main__":
         "journal", model_type, nel_training_data_path=nel_training_data_path
     )
 
-    # BLINK
+    # BLINK - predict
     blog_blink_output_path = (
         f"../GITIGNORE_DATA/blink_output_blog_{get_timestamp()}.jsonl"
     )
@@ -202,3 +203,12 @@ if __name__ == "__main__":
         f"../GITIGNORE_DATA/blink_output_journal_{get_timestamp()}.jsonl"
     )
     create_blink_json("journal", journal_blink_output_path)
+
+    # BLINK - load
+    blink_loader = datastore.BLINKLoader()
+    blink_loader.load_blink_results_to_es_from_json(
+        blog_blink_output_path, es_indices["blog"]
+    )
+    blink_loader.load_blink_results_to_es_from_json(
+        journal_blink_output_path, es_indices["journal"]
+    )
