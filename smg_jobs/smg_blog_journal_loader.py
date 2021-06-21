@@ -51,7 +51,7 @@ def normalise_collection_url(url: str) -> str:
 
 def load_blog_data(blog_data_path):
     blog_df = pd.read_json(blog_data_path)
-    blog_df = blog_df.head(100)  # for debugging
+    # blog_df = blog_df.head(100)  # for debugging
     blog_df["links"] = (
         blog_df["links"]
         .apply(lambda i: flatten_list_of_lists(i.values()))
@@ -72,7 +72,7 @@ def load_blog_data(blog_data_path):
 
 def load_journal_data(journal_data_path):
     journal_df = pd.read_json(journal_data_path)
-    journal_df = journal_df.head(100)  # for debugging
+    # journal_df = journal_df.head(100)  # for debugging
     journal_df = journal_df.rename(columns={"url": "URI"})
     journal_df["text_by_paragraph"] = (
         journal_df["text_by_paragraph"]
