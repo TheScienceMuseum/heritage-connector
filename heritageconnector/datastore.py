@@ -229,6 +229,7 @@ class RecordLoader:
             records, predicate, subject_col, object_col, object_is_uri
         )
         es_bulk(
+            self.index,
             generator,
             len(records[subject_col].unique()),
             progress_bar=progress_bar,
@@ -383,7 +384,7 @@ class RecordLoader:
 
 
 def create_index(index: str):
-    """Delete the exiting ES index if it exists and create a new index and mappings"""
+    """Delete the existing ES index if it exists and create a new index and mappings"""
 
     index = index or config.ELASTIC_SEARCH_INDEX
 
