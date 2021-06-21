@@ -19,7 +19,7 @@ import time
 import math
 from itertools import islice
 from tqdm.auto import tqdm
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import retry, stop_after_attempt, wait_fixed, RetryError
 
 logger = logging.get_logger(__name__)
 
@@ -569,7 +569,9 @@ class BLINKServiceWrapper:
             client=datastore.es,
             index=config.ELASTIC_SEARCH_INDEX,
             query=es_query,
-            preserve_order=True,
+            scroll="5h",
+            size=500,
+            # preserve_order=True,
         )
 
         return doc_generator
@@ -587,7 +589,7 @@ class BLINKServiceWrapper:
         for field_name in entity_fields:
             field_val = datastore._get_dict_field_from_dot_notation(doc, field_name)
 
-            if isinstance(field_val, str):
+            if isinstance(field_val, str) and field_val != "":
                 ent_mentions.append((field_val, field_name))
             elif isinstance(field_val, list):
                 ent_mentions += [(v, field_name) for v in field_val]
@@ -595,15 +597,18 @@ class BLINKServiceWrapper:
         blink_request_items = []
 
         for mention, label in ent_mentions:
-            # only the first mention is highlighted, if the entity mention occurs more than once in the description
-            mod_desc = description.replace(mention, f"[[{mention}]]", 1)
-            blink_request_items.append(
-                {
-                    "id": uri,
-                    "text": mod_desc,
-                    "metadata": {"mention": mention, "label": label},
-                }
-            )
+            # there are edge cases in which the mention may not be in the description, because NER was run on a cleaned 
+            # version of the description
+            if mention in description:
+                # only the first mention is highlighted, if the entity mention occurs more than once in the description
+                mod_desc = description.replace(mention, f"[ENT_START]{mention}[ENT_END]", 1)
+                blink_request_items.append(
+                    {
+                        "id": uri,
+                        "text": mod_desc,
+                        "metadata": {"mention": mention, "label": label},
+                    }
+                )
 
         return blink_request_items
 
@@ -637,19 +642,31 @@ class BLINKServiceWrapper:
 
         doc_generator_paginated = paginate_generator(doc_generator, page_size)
 
-        no_pages = math.ceil(limit / page_size) if limit is not None else None
+        # no_pages = math.ceil(limit / page_size) if limit is not None else None
 
-        for page in tqdm(doc_generator_paginated, total=no_pages):
-            # convert these to a format that can be used in the BLINK query
-            body = {
-                "items": self._convert_page_of_docs_to_blink_query_format(
-                    page, self.description_field, self.entity_fields
-                ),
-                "threshold": self.link_threshold,
-            }
+        bar = tqdm(total=None)
 
-            # stream through BLINK
-            response_items = self.make_blink_request(body, silent=True).get("items")
+        for idx, page in enumerate(doc_generator_paginated):
+            try:
+                items = self._convert_page_of_docs_to_blink_query_format(
+                        page, self.description_field, self.entity_fields
+                    )
 
-            # save to JSON
-            self._write_items_to_jsonl_file(response_items, output_path)
+                # convert these to a format that can be used in the BLINK query
+                body = {
+                    "items": items,
+                    "threshold": self.link_threshold,
+                }
+
+                # stream through BLINK
+                response_items = self.make_blink_request(body, silent=True).get("items")
+
+                # save to JSON
+                self._write_items_to_jsonl_file(response_items, output_path)
+
+                # increment progress bar with number of entity mentions
+                bar.update(len(items))
+            
+            except RetryError:
+                logger.warn(f"page {idx} failed")
+                pass

@@ -13,6 +13,7 @@ from heritageconnector.namespace import (
     WD,
     WDT,
     SKOS,
+    HC,
 )
 
 
@@ -20,6 +21,7 @@ from heritageconnector.namespace import (
 # whilst keeping some useful information in the Elasticsearch index.
 non_graph_predicates = [
     XSD.description,
+    SDO.disambiguatingDescription,
     # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
     # WDT.P735, # first name
     # WDT.P734, # last name
@@ -40,25 +42,35 @@ mapping = {
         "OCCUPATION": {"RDF": SDO.hasOccupation},
         "NATIONALITY": {"RDF": SDO.nationality},
         "BIOGRAPHY": {"RDF": XSD.description},
-        "adlib_id": {"RDF": FOAF.page},
-        "adlib_ALIAS": {"RDF": SKOS.altLabel},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
+        "DATABASE": {"RDF": HC.database},
     },
     "ORGANISATION": {
         "PREFERRED_NAME": {"RDF": RDFS.label},
         "BIOGRAPHY": {"RDF": XSD.description},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
         "OCCUPATION": {"RDF": XSD.additionalType},
         "NATIONALITY": {"RDF": SDO.addressCountry},
         "BIRTH_DATE": {"RDF": SDO.foundingDate},
         "DEATH_DATE": {"RDF": SDO.dissolutionDate},
-        "adlib_id": {"RDF": FOAF.page},
-        "adlib_ALIAS": {"RDF": SKOS.altLabel},
+        "DATABASE": {"RDF": HC.database},
     },
     "OBJECT": {
         "TITLE": {"RDF": RDFS.label},
         "DESCRIPTION": {"RDF": XSD.description},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
         "ITEM_NAME": {"RDF": XSD.additionalType},
         "MATERIALS": {"RDF": SDO.material},
         "DATE_MADE": {"RDF": SDO.dateCreated},
         "CATEGORY1": {"RDF": SDO.isPartOf},
+        "DATABASE": {"RDF": HC.database},
+    },
+    "DOCUMENT": {
+        "TITLE": {"RDF": RDFS.label},
+        "DESCRIPTION": {"RDF": XSD.description},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
+        "SUBJECT": {"RDF": XSD.additionalType},
+        "DATE_MADE": {"RDF": SDO.dateCreated},
+        "DATABASE": {"RDF": HC.database},
     },
 }

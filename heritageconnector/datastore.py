@@ -43,29 +43,35 @@ logger = logging.get_logger(__name__)
 # Should we implement this as a persistance class esp. for connection pooling?
 # https://elasticsearch-dsl.readthedocs.io/en/latest/persistence.html
 
-if hasattr(config, "ELASTIC_SEARCH_CLUSTER"):
-    es = Elasticsearch(
-        [config.ELASTIC_SEARCH_CLUSTER],
-        http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
-        timeout=60,
-    )
-    logger.debug(
-        f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
-    )
-else:
-    # use localhost
-    es = Elasticsearch(
-        timeout=60,
-    )
-    logger.debug("Connected to Elasticsearch cluster on localhost")
+try:
+    if config.ELASTIC_SEARCH_CLUSTER:
+        es = Elasticsearch(
+            [config.ELASTIC_SEARCH_CLUSTER],
+            http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
+            timeout=60,
+        )
+        logger.debug(
+            f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
+        )
+    else:
+        # use localhost
+        es = Elasticsearch(
+            timeout=60,
+        )
+        logger.debug("Connected to Elasticsearch cluster on localhost")
 
-index = config.ELASTIC_SEARCH_INDEX
-es_config = {
-    "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
-    "queue_size": int(config.ES_BULK_QUEUE_SIZE),
-}
+    index = config.ELASTIC_SEARCH_INDEX
+    es_config = {
+        "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
+        "queue_size": int(config.ES_BULK_QUEUE_SIZE),
+    }
 
-context = get_jsonld_context()
+    context = get_jsonld_context()
+
+except AttributeError as e:
+    logger.warn(
+        f"Autoloading the Elasticsearch connector from `heritageconnector.datastore` failed with error {e}. Try correcting this error and reloading."
+    )
 
 
 class RecordLoader:
@@ -73,7 +79,7 @@ class RecordLoader:
     Contains functions for loading JSON-LD formatted data into an Elasticsearch index.
     """
 
-    def __init__(self, collection_name: str, field_mapping: dict):
+    def __init__(self, collection_name: str, field_mapping: dict, index: str = None):
         """
         Args:
             collection_name (str): name of collection to populate `doc['_source']['collection']` for all records.
@@ -81,6 +87,9 @@ class RecordLoader:
         """
         self.collection_name = collection_name
         self.field_mapping = field_mapping
+
+        self.index = index or config.ELASTIC_SEARCH_INDEX
+
         self.mapping = field_mapping.mapping
         self.non_graph_predicates = field_mapping.non_graph_predicates
 
@@ -131,7 +140,11 @@ class RecordLoader:
         create(self.collection_name, table_name, data, jsonld)
 
     def add_records(
-        self, table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef = None
+        self,
+        table_name: str,
+        records: pd.DataFrame,
+        add_type: rdflib.URIRef = None,
+        raise_on_error: bool = False,
     ):
         """
         Create and store multiple new records with a JSON-LD graph. Uses Elasticsearch's bulk import method (https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html)
@@ -142,10 +155,11 @@ class RecordLoader:
             records (pd.DataFrame): tabular data to import. Must contain column 'URI' specifying the URI which uniquely
                 identifies each record, and column names must match up to keys in `field_mapping.mapping[table_name]`.
             add_type (rdflib.URIRef, optional): URIRef to add as a value for RDF.type in the record. Defaults to None.
+            raise_on_error (bool, optional): whether to raise on errors with the bulk load process. Passed to `Elasticsearch.helpers.parallel_bulk` method. Defaults to False.
         """
 
         generator = self._record_create_generator(table_name, records, add_type)
-        es_bulk(generator, len(records))
+        es_bulk(self.index, generator, len(records), raise_on_error=raise_on_error)
 
     def _record_create_generator(
         self, table_name: str, records: pd.DataFrame, add_type: rdflib.URIRef
@@ -191,6 +205,7 @@ class RecordLoader:
         object_col: str = "OBJECT",
         object_is_uri: bool = True,
         progress_bar: bool = True,
+        raise_on_error: bool = False,
     ):
         """
         Add triples with RDF predicate and dataframe containing subject and object columns.
@@ -207,13 +222,17 @@ class RecordLoader:
             object_col (str, optional): name of column containing object values. Defaults to "OBJECT".
             object_is_uri (bool, optional): whether the object column contains URIs. If False, will be loaded in as literals.
             progress_bar (bool, optional): whether to show a progress bar for loading into Elasticsearch. Defaults to True.
+            raise_on_error (bool, optional): whether to raise on errors with the bulk load process. Passed to `Elasticsearch.helpers.parallel_bulk` method. Defaults to False.
         """
 
         generator = self._record_update_generator(
             records, predicate, subject_col, object_col, object_is_uri
         )
         es_bulk(
-            generator, len(records[subject_col].unique()), progress_bar=progress_bar
+            generator,
+            len(records[subject_col].unique()),
+            progress_bar=progress_bar,
+            raise_on_error=raise_on_error,
         )
 
     def _record_update_generator(
@@ -363,8 +382,10 @@ class RecordLoader:
         return json_ld_dict
 
 
-def create_index():
+def create_index(index: str):
     """Delete the exiting ES index if it exists and create a new index and mappings"""
+
+    index = index or config.ELASTIC_SEARCH_INDEX
 
     logger.info("Wiping existing index: " + index)
     es.indices.delete(index=index, ignore=[400, 404])
@@ -377,7 +398,13 @@ def create_index():
     logger.info("..done ")
 
 
-def es_bulk(action_generator, total_iterations=None, progress_bar=True):
+def es_bulk(
+    index,
+    action_generator,
+    total_iterations=None,
+    progress_bar=True,
+    raise_on_error=False,
+):
     """Batch load a set of new records into ElasticSearch"""
 
     successes = 0
@@ -389,7 +416,7 @@ def es_bulk(action_generator, total_iterations=None, progress_bar=True):
         actions=action_generator,
         chunk_size=es_config["chunk_size"],
         queue_size=es_config["queue_size"],
-        raise_on_error=False,
+        raise_on_error=raise_on_error,
     )
 
     if progress_bar:
@@ -403,7 +430,7 @@ def es_bulk(action_generator, total_iterations=None, progress_bar=True):
     return successes, errs
 
 
-def create(collection, record_type, data, jsonld):
+def create(index, collection, record_type, data, jsonld):
     """Load a new record into ElasticSearch and return its id"""
 
     # create a ES doc
@@ -422,7 +449,7 @@ def create(collection, record_type, data, jsonld):
     return response
 
 
-def update_graph(s_uri, p, o_uri):
+def update_graph(index, s_uri, p, o_uri):
     """Add a new RDF relationship to an an existing record"""
 
     # create graph containing just the new triple
@@ -439,7 +466,7 @@ def update_graph(s_uri, p, o_uri):
     es.update(index=index, id=s_uri, body=body, ignore=404)
 
 
-def get_by_uri(uri: str) -> dict:
+def get_by_uri(index, uri: str) -> dict:
     """Return an existing ElasticSearch record. Raise ValueError if record with specified URI doesn't exist."""
 
     try:
@@ -449,7 +476,7 @@ def get_by_uri(uri: str) -> dict:
         raise ValueError(f"No record with uri {uri} exists.")
 
 
-def get_by_type(type, size=1000):
+def get_by_type(index, type, size=1000):
     """Return an list of matching ElasticSearch record"""
 
     res = es.search(index=index, body={"query": {"match": {"type": type}}}, size=size)
@@ -479,12 +506,14 @@ def get_graph_by_type(type):
     return g
 
 
-def es_to_rdflib_graph(g=None, return_format=None):
+def es_to_rdflib_graph(index: str, g=None, return_format=None):
     """
     Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
     format is specified, else an object with the specified format which could be written
     to a file.
     """
+
+    index = index or config.ELASTIC_SEARCH_INDEX
 
     # get dump
     res = helpers.scan(
@@ -519,10 +548,10 @@ class NERLoader:
         source_description_field: str,
         target_es_index: str,
         target_title_field: str,
-        target_description_field: str,
+        target_context_field: str,
         target_type_field: str,
         target_alias_field: str = None,
-        # batch_size: Optional[int] = 1024,
+        source_context_field: str = None,
         entity_types: Iterable[str] = [
             "PERSON",
             "ORG",
@@ -539,6 +568,7 @@ class NERLoader:
             "ORG",
             "OBJECT",
         ],
+        target_record_types: Iterable[str] = None,
         text_preprocess_func: Optional[Callable[[str], str]] = None,
         entity_markers: Iterable[str] = ("[[", "]]"),
     ):
@@ -547,8 +577,19 @@ class NERLoader:
 
         Args:
             record_loader (RecordLoader): instance of RecordLoader, with parameters suitable for the current Heritage Connector index.
-            entity_types (List[str], optional): entity types to extract from the spaCy model.
-            entity_types_to_link (List[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`.
+            source_es_index (str): name of source index.
+            source_description_field (str): dot notation for source description field.
+            target_es_index (str): name of target index.
+            target_title_field (str): dot notation for target title/label field.
+            target_context_field (str): dot notation for target description/context field used by the entity linker.
+            target_type_field (str): dot notation for target type field (to be one-hot-encoded and compared with NER entity type).
+            target_alias_field (str, optional): dot notation for target alias field. Only used when searching for link candidates; not in the features for the entity linker.
+            source_context_field (str, optional): dot notation for the source context field used by the entity linker. If specified, must be a substring of 'source_description_field'. If not specified, the value of `source_description_field` is used. If `source_context_field` is not present for a document, the system will automatically fall back to using `source_description_field` as the context field.
+            entity_types (Iterable[str], optional): entity types to extract from the spaCy model.
+            entity_types_to_link (Iterable[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`. Defaults to None.
+            target_record_types (Iterable[str], optional): record types to link to, where types are determined by their value of `target_type_field`. Defaults to None, i.e. all types.
+            text_preprocess_func (Callable[[str], str], optional): function to preprocess descriptions before NER is run on them.
+            entity_markers (Iterable[str], optional): markers to use for the start and end of an entity. Defaults to ("[[", "]]"), i.e. "Lewis Carroll was born in [[Daresbury, Cheshire]]".
         """
 
         self.record_loader = record_loader
@@ -561,13 +602,18 @@ class NERLoader:
         self.source_index = source_es_index
         self.target_index = target_es_index
 
-        self.source_fields = {"description": source_description_field}
+        self.source_fields = {
+            "description": source_description_field,
+            "context": source_context_field or source_description_field,
+        }
 
         self.target_fields = {
             "title": target_title_field,
-            "description": target_description_field,
+            "description": target_context_field,
             "type": target_type_field,
         }
+
+        self.target_record_types = target_record_types
 
         if target_alias_field is not None:
             self.target_fields.update(
@@ -659,7 +705,6 @@ class NERLoader:
             "candidate_type",
             "candidate_uri",
             "link_correct",
-            "candidate_alias",
             "candidate_description",
             "item_description",
         ]
@@ -713,7 +758,6 @@ class NERLoader:
             "candidate_type",
             "candidate_uri",
             "link_correct",
-            "candidate_alias",
             "candidate_description",
             "item_description",
         } - set(train_df.columns)
@@ -835,7 +879,7 @@ class NERLoader:
         """Get best spacy NER model"""
         return best_spacy_pipeline.load_model(model_type)
 
-    def get_list_of_entities_from_es(
+    def get_list_of_entities_from_source_index(
         self,
         model_type: str,
         limit: int = None,
@@ -846,8 +890,7 @@ class NERLoader:
         ignore_duplicated_ents: bool = True,
     ) -> List[dict]:
         """
-        Run NER on entities in the source (Heritage Connector) index and add the results back to the index using the
-        HC namespace.
+        Run NER to get entities from descriptions in the source index, and store the results.
 
         Args:
             model_type (str): spaCy model type
@@ -865,7 +908,7 @@ class NERLoader:
         logger.info(f"Fetching docs and running NER.")
 
         doc_list = list(
-            self._get_doc_generator(
+            self._get_source_doc_generator(
                 self.source_index, limit, random_sample, random_seed
             )
         )
@@ -883,27 +926,69 @@ class NERLoader:
 
         # list of {"item_uri": _, "ent_label": _, "ent_text": _} triples
         entity_list = []
-        uris = [item[0] for item in doc_list]
-        descriptions = [item[1] for item in doc_list]
+        # list of (description, (uri, context)) tuples to give to nlp.pipe
+        descriptions_and_uris = [(item[1], (item[0], item[2])) for item in doc_list]
 
-        spacy_docs = list(
-            tqdm(
-                self.nlp.pipe(
-                    descriptions,
-                    batch_size=spacy_batch_size,
-                    n_process=spacy_no_processes,
-                )
-            )
-        )
-
-        for idx, doc in enumerate(spacy_docs):
+        for doc, (uri, context) in tqdm(
+            self.nlp.pipe(
+                descriptions_and_uris,
+                as_tuples=True,
+                batch_size=spacy_batch_size,
+                n_process=spacy_no_processes,
+            ),
+            total=len(doc_list),
+        ):
+            # Only context is stored in entity_list, which may be different from the description NER was run
+            # on. As a result, the entity marked in `item_description_with_ent` is only the first occurrence of the
+            # entity text span, which is not necessarily the same as the entity predicted by spaCy.
             entity_list += self._spacy_doc_to_ent_list(
-                uris[idx], descriptions[idx], doc, ignore_duplicated_ents
+                uri, context, doc, ignore_duplicated_ents
             )
 
         self._entity_list = entity_list
 
         return self.entity_list
+
+    def export_entity_list_to_json(
+        self, output_path: str, include_link_candidates: bool
+    ):
+        """Export entity list to JSON
+
+        Args:
+            output_path (str): output path for JSON
+            include_link_candidates (str): whether to include link candidates fetched by `get_link_candidates_from_target_index`.
+        """
+
+        self.raise_if_missing_entity_list()
+
+        if output_path[-5:].lower() != ".json":
+            logger.warning(
+                "Output path provided to `NERLoader.entity_list_to_json` doesn't look like a JSON path. File will be saved in JSON format regardless."
+            )
+
+        if include_link_candidates and all(
+            ["link_candidates" not in self._entity_list[i].keys() for i in range(100)]
+        ):
+            logger.warning(
+                "There are no link candidates in the entity list. The list will be exported anyway."
+            )
+
+        with open(output_path, "w") as f:
+            json.dump(self._entity_list, f)
+
+        logger.info(f"Entity list saved to {output_path}")
+
+    def import_entity_list_from_json(self, input_path: str):
+        """Import entity list from JSON. Overwrites `NERLoader._entity_list`.
+
+        Args:
+            json_path (str): path for JSON to import
+        """
+
+        with open(input_path, "r") as f:
+            self._entity_list = json.load(f)
+
+        logger.info(f"Entity list loaded from {input_path}")
 
     def load_entities_into_es_no_links(self):
         logger.info(
@@ -929,14 +1014,14 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def load_entities_into_es(
+    def load_entities_into_source_index(
         self,
         linking_confidence_threshold: float = 0.5,
         batch_size: float = 32768,
         force_load_without_linker: bool = False,
     ):
         """
-        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates`),
+        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates_from_target`),
         they are loaded in as triples with the entity text as the object. If some entities have link candidates, then for these
         entities the positive candidates are predicted using the entity linking classifier (which has been trained using
         `NERLoader.train_entity_linker`), and the detected entities with predicted candidates are loaded in with the candidate
@@ -1103,7 +1188,15 @@ class NERLoader:
                 progress_bar=False,
             )
 
-    def get_link_candidates(self, candidates_per_entity_mention: int) -> List[dict]:
+    def raise_if_missing_entity_list(self):
+        if not self._entity_list:
+            raise ValueError(
+                "Entities have not yet been retrieved from the Elasticsearch index. Run `get_list_of_entities_from_es` first."
+            )
+
+    def get_link_candidates_from_target_index(
+        self, candidates_per_entity_mention: int
+    ) -> List[dict]:
         """Get link candidates for each of the items in `entity_list` by searching the entity mention in
         the target Elasticsearch index. Only searches for link candidates for entities with types specified in `entity_types_to_link`,
         and excludes any candidates with a URI which is the same as the URI of the source entity.
@@ -1117,10 +1210,7 @@ class NERLoader:
                 "description": _}, ...]}` (in types to link).
         """
 
-        if not self._entity_list:
-            raise ValueError(
-                "Entities have not yet been retrieved from the Elasticsearch index. Run `get_list_of_entities_from_es` first."
-            )
+        self.raise_if_missing_entity_list()
 
         entity_list_with_link_candidates = []
         logger.info(
@@ -1128,7 +1218,7 @@ class NERLoader:
         )
         for item in tqdm(self._entity_list):
             if item["ent_label"] in self.entity_types_to_link:
-                link_candidates = self._search_es_for_entity_mention(
+                link_candidates = self._search_es_target_for_entity_mention(
                     item["ent_text"],
                     n=candidates_per_entity_mention * 2,
                     reduce_to_key_fields=True,
@@ -1146,7 +1236,7 @@ class NERLoader:
 
         return self._entity_list
 
-    def _search_es_for_entity_mention(
+    def _search_es_target_for_entity_mention(
         self, mention: str, n: int, reduce_to_key_fields: bool = True
     ) -> List[dict]:
         """
@@ -1186,6 +1276,15 @@ class NERLoader:
             }
         }
 
+        if self.target_record_types is not None:
+            query["query"]["bool"]["must"] = [
+                {
+                    "terms": {
+                        f"{self.target_fields['type']}.keyword": self.target_record_types
+                    }
+                }
+            ]
+
         search_results = (
             es.search(
                 index=self.target_index,
@@ -1197,14 +1296,14 @@ class NERLoader:
         )
 
         if reduce_to_key_fields:
-            return [self._reduce_doc_to_key_fields(i) for i in search_results]
+            return [self._reduce_target_doc_to_key_fields(i) for i in search_results]
 
         return search_results
 
-    def _reduce_doc_to_key_fields(self, doc: dict) -> dict:
-        """Reduce doc to target_uri, target_title_field, target_description_field, target_alias_field"""
-
-        # key_fields = set(["uri"] + list(self.target_fields.values()))
+    def _reduce_target_doc_to_key_fields(self, doc: dict) -> dict:
+        """
+        Reduce doc to target uri, title, description and alias fields. Run preprocessing function on description field.
+        """
 
         reduced_doc = {"uri": _get_dict_field_from_dot_notation(doc, "uri")}
 
@@ -1230,42 +1329,50 @@ class NERLoader:
         ignore_duplicated_ents: bool,
     ) -> List[dict]:
         """
-        Convert a spaCy doc with entities found into a list of dictionaries.
+        Convert a spaCy doc with entities found into List[Dict].
         """
 
         ent_data_list = []
 
         if ignore_duplicated_ents:
-            ent_is_suitable = lambda ent: (ent.label_ in self.entity_types) and (
-                ent._.entity_duplicate is False
-            )
+
+            def ent_is_suitable(ent):
+                return (ent.label_ in self.entity_types) and (
+                    ent._.entity_duplicate is False
+                )
+
         else:
-            ent_is_suitable = lambda ent: ent.label_ in self.entity_types
+
+            def ent_is_suitable(ent):
+                return ent.label_ in self.entity_types
 
         for ent in doc.ents:
             if ent_is_suitable(ent):
+                # This split is used to get the original description (doc.text) from the augmented description
+                # (item_description) so that the entity boundaries can be used, then add the augmented parts
+                # back afterwards.
+                item_context_split = item_description.split(doc.text)
+                ent_text = ent._.alt_ent_text or ent.text
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
                         "item_description": item_description,
-                        "item_description_with_ent": item_description[
-                            : doc[ent.start].idx
-                        ]
+                        "item_description_with_ent": item_context_split[0]
+                        + doc.text[: doc[ent.start].idx]
                         + self.entity_markers[0]
-                        + ent.text
+                        + ent_text
                         + self.entity_markers[1]
-                        + item_description[doc[ent.start].idx + len(ent.text) :],
+                        + doc.text[doc[ent.start].idx + len(ent.text) :]
+                        + item_context_split[1],
                         "ent_label": ent.label_,
-                        "ent_text": ent.text,
+                        "ent_text": ent_text,
                         "ent_sentence": ent.sent.text,
-                        "ent_start_idx": doc[ent.start].idx,
-                        "ent_end_idx": doc[ent.start].idx + len(ent.text),
                     }
                 )
 
         return ent_data_list
 
-    def _get_doc_generator(
+    def _get_source_doc_generator(
         self,
         index: str,
         limit: Optional[int] = None,
@@ -1275,7 +1382,7 @@ class NERLoader:
         """
         Returns a generator of document IDs and descriptions from the Elasticsearch index, batched according to
             `self.batch_size` and limited according to `limit`. Only documents with an XSD.description value are
-            returned.
+            returned, and these are processed by the function specified in class instance creation.
 
         Args:
             limit (Optional[int], optional): limit the number of documents to get and therefore load. Defaults to None.
@@ -1295,7 +1402,7 @@ class NERLoader:
                                 "must": [
                                     {
                                         "exists": {
-                                            "field": self.target_fields["description"]
+                                            "field": self.source_fields["description"]
                                         }
                                     },
                                 ]
@@ -1310,7 +1417,7 @@ class NERLoader:
                 "query": {
                     "bool": {
                         "must": [
-                            {"exists": {"field": self.target_fields["description"]}},
+                            {"exists": {"field": self.source_fields["description"]}},
                         ]
                     }
                 }
@@ -1331,7 +1438,17 @@ class NERLoader:
                 doc["_id"],
                 self.text_preprocess_func(
                     _get_dict_field_from_dot_notation(
-                        doc, self.target_fields["description"]
+                        doc, self.source_fields["description"]
+                    )
+                ),
+                # if the context field is not present in a document then an empty string will be returned
+                # by `_get_dict_field_from_dot_notation`, and the description field is used instead
+                self.text_preprocess_func(
+                    _get_dict_field_from_dot_notation(
+                        doc, self.source_fields["context"]
+                    )
+                    or _get_dict_field_from_dot_notation(
+                        doc, self.source_fields["description"]
                     )
                 ),
             )

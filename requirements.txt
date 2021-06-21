@@ -1,6 +1,6 @@
 scikit-learn
 lxml
-pandas
+pandas>=1.2.0
 sparqlwrapper
 fuzzywuzzy
 python-levenshtein
@@ -16,7 +16,8 @@ click
 elastic-wikidata>=0.3.6
 tenacity
 s3fs
-hc-nlp>=0.3.4
+hc-nlp>=0.3.7
 sentence-transformers>=0.3.0
 textdistance>=4.2.1
 openpyxl
+pyparsing==2.4.7 # see https://github.com/G-Node/python-odml/issues/410

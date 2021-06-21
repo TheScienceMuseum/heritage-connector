@@ -1,1 +1,0 @@
-nice -n+19 pigz -d < wikidata-dump.json.gz | nice -n+19 load-balance-lines wikibase-dump-filter --claim P31:Q5 --languages en > humans_en.ndjson

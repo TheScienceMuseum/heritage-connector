@@ -1,3 +1,6 @@
+# smg-specific
+smg_jobs/credentials.mk
+
 # local data folder and config
 GITIGNORE_DATA
 config.ini

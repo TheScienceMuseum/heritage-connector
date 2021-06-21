@@ -31,7 +31,7 @@ def compare(
     depending on the type of `internal_val` and trying to coerce literal values to different python
     types.
 
-    If a list passed to `internal_val` the method uses the first truthy element of the list to determine 
+    If a list passed to `internal_val` the method uses the first truthy element of the list to determine
     which similarity measure to use, then passes the whole list to the similarity function.
 
     Args:
@@ -68,7 +68,11 @@ def compare(
         val_as_qid = (
             url_to_qid(str(internal_val))
             if not list_input
-            else [url_to_qid(str(item)) for item in internal_val]
+            else [
+                url_to_qid(str(item))
+                for item in internal_val
+                if type(item) == type(internal_val_test)
+            ]
         )
 
         return similarity_categorical(
@@ -108,7 +112,7 @@ def similarity_string(
     Args:
         val1 (Union[str, list])
         val2 (Union[str, list])
-        scorer (optional): Takes two strings and outputs an integer between 1 and 100. 
+        scorer (optional): Takes two strings and outputs an integer between 1 and 100.
             Defaults to fuzz.token_set_ratio.
 
     Returns:
@@ -142,12 +146,12 @@ def similarity_numeric(
     aggregation_func=np.mean,
 ) -> float:
     """
-    Calculate numeric similarity as positive difference between the values divided by their average. If lists are 
-        passed, uses `aggregation_func` (default np.mean) to convert the list of numbers into a single number. 
+    Calculate numeric similarity as positive difference between the values divided by their average. If lists are
+        passed, uses `aggregation_func` (default np.mean) to convert the list of numbers into a single number.
 
     Args:
         val1 (Union[int, float, list])
-        val2 (Union[int, float, list]) 
+        val2 (Union[int, float, list])
         aggregation_func (optional): function to convert list into numeric values if list is passed to either `val1`
             or `val2`.
 
@@ -196,7 +200,7 @@ def similarity_categorical(
 ) -> float:
     """
     Returns binary score of whether two items match. If lists are passed, returns positive (=1) if any item in List1
-        is the same as any item in List2. 
+        is the same as any item in List2.
 
     Args:
         val1 (Union[list, tuple, int, float, str]): item or list of items

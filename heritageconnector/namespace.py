@@ -24,6 +24,7 @@ HC = ClosedNamespace(
         "entityLANGUAGE",
         "entityDATE",
         "entityEVENT",
+        "database",
     ],
 )
 

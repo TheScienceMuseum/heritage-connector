@@ -19,12 +19,14 @@ Data Format
 
 Any data can be imported into Heritage Connector as long as it can be processed into a Pandas DataFrame, and an RDF predicate is specified for each column in :code:`field_mapping.py`.
 
+.. _data-model:
+
 Data Model/Ontology
 ----------------------
 
 There are no enforced restrictions on data models or RDF ontologies to use Heritage Connector. However, we recommend that:
 
-* the :code:`table_name` parameter is used during import (see `Getting Started <getting_started.html>`_) to split data into sensible subsets. For the Science Museum Group collection we use *people*, *organisations*, *objects* and *documents* (archival documents).
+* the :code:`table_name` parameter is used during import (see `Getting Started <getting_started.html>`_) to split data into sensible subsets, which sets a value for the predicate :code:`skos:hasTopConcept` for each record. For the Science Museum Group collection we use *people*, *organisations*, *objects* and *documents* (archival documents).
 * RDF predicates are chosen based on whether they can be resolved to Wikidata properties using `equivalent property (P1628) <https://www.wikidata.org/wiki/Property:P1628>`_. The entity matcher uses this property to compare values in the Heritage Connector graph to values of candidate matching Wikidata entities.
 
 Dependencies
