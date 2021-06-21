@@ -174,13 +174,11 @@ if __name__ == "__main__":
 
     # CORE DATA
     datastore.create_index(es_indices["blog"])
-    load_blog_data(
-        blog_data_path="/Users/kalyan/Documents/SMG/journal-blog-scraper/output_data/blog.json"
-    )
+    load_blog_data(blog_data_path="../../journal-blog-scraper/output_data/blog.json")
 
     datastore.create_index(es_indices["journal"])
     load_journal_data(
-        journal_data_path="/Users/kalyan/Documents/SMG/journal-blog-scraper/output_data/journal.json"
+        journal_data_path="../../journal-blog-scraper/output_data/journal.json"
     )
 
     # NER & NEL
