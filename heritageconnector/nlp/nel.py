@@ -545,11 +545,12 @@ class BLINKServiceWrapper:
         return response_json
 
     def _get_unlinked_entities_generator(
-        self, entity_fields: List[str]
+        self, es_index: str, entity_fields: List[str]
     ) -> Generator[dict, None, None]:
-        """Get generator which yields documents from the Elasticsearch index with at least one of the fields in `entity_fields`.
+        """Get generator which yields documents from an Elasticsearch index with at least one of the fields in `entity_fields`.
 
         Args:
+            es_index (str): elasticsearch index
             entity_fields (List[str]): e.g. ["graph.@hc:entityPERSON.@value", "graph.@hc:entityORG.@value"]
 
         Yields:
@@ -567,7 +568,7 @@ class BLINKServiceWrapper:
 
         doc_generator = helpers.scan(
             client=datastore.es,
-            index=config.ELASTIC_SEARCH_INDEX,
+            index=es_index,
             query=es_query,
             scroll="5h",
             size=500,
@@ -597,11 +598,13 @@ class BLINKServiceWrapper:
         blink_request_items = []
 
         for mention, label in ent_mentions:
-            # there are edge cases in which the mention may not be in the description, because NER was run on a cleaned 
+            # there are edge cases in which the mention may not be in the description, because NER was run on a cleaned
             # version of the description
             if mention in description:
                 # only the first mention is highlighted, if the entity mention occurs more than once in the description
-                mod_desc = description.replace(mention, f"[ENT_START]{mention}[ENT_END]", 1)
+                mod_desc = description.replace(
+                    mention, f"[ENT_START]{mention}[ENT_END]", 1
+                )
                 blink_request_items.append(
                     {
                         "id": uri,
@@ -633,10 +636,16 @@ class BLINKServiceWrapper:
                     f.write("\n")
 
     def process_unlinked_entity_mentions(
-        self, output_path: str, page_size: int, limit: Optional[int] = None
+        self,
+        es_index: str,
+        output_path: str,
+        page_size: int,
+        limit: Optional[int] = None,
     ):
         # get generator for unlinked mentions
-        doc_generator = self._get_unlinked_entities_generator(self.entity_fields)
+        doc_generator = self._get_unlinked_entities_generator(
+            es_index, self.entity_fields
+        )
         if limit is not None:
             doc_generator = islice(doc_generator, limit)
 
@@ -649,8 +658,8 @@ class BLINKServiceWrapper:
         for idx, page in enumerate(doc_generator_paginated):
             try:
                 items = self._convert_page_of_docs_to_blink_query_format(
-                        page, self.description_field, self.entity_fields
-                    )
+                    page, self.description_field, self.entity_fields
+                )
 
                 # convert these to a format that can be used in the BLINK query
                 body = {
@@ -666,7 +675,7 @@ class BLINKServiceWrapper:
 
                 # increment progress bar with number of entity mentions
                 bar.update(len(items))
-            
+
             except RetryError:
                 logger.warn(f"page {idx} failed")
                 pass

@@ -2,9 +2,8 @@ from elasticsearch import helpers, Elasticsearch
 from elasticsearch import exceptions as es_exceptions
 import rdflib
 from rdflib import Graph, Literal, URIRef
-from rdflib.serializer import Serializer
 import json
-import os
+import re
 from typing import Generator, List, Tuple, Optional, Union, Iterable, Callable
 from tqdm.auto import tqdm
 from itertools import islice
@@ -23,20 +22,17 @@ from heritageconnector.namespace import (
     get_jsonld_context,
 )
 from heritageconnector.utils.generic import (
-    paginate_generator,
     paginate_dataframe,
     flatten_list_of_lists,
 )
 from heritageconnector.config import config
 from heritageconnector.nlp import nel
-from heritageconnector import logging, errors, best_spacy_pipeline
+from heritageconnector import logging, best_spacy_pipeline
 import pandas as pd
-import numpy as np
 import spacy
 from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
 from sklearn.neural_network import MLPClassifier
-from sklearn.model_selection import cross_validate
 
 logger = logging.get_logger(__name__)
 
@@ -229,6 +225,7 @@ class RecordLoader:
             records, predicate, subject_col, object_col, object_is_uri
         )
         es_bulk(
+            self.index,
             generator,
             len(records[subject_col].unique()),
             progress_bar=progress_bar,
@@ -383,7 +380,7 @@ class RecordLoader:
 
 
 def create_index(index: str):
-    """Delete the exiting ES index if it exists and create a new index and mappings"""
+    """Delete the existing ES index if it exists and create a new index and mappings"""
 
     index = index or config.ELASTIC_SEARCH_INDEX
 
@@ -1456,6 +1453,112 @@ class NERLoader:
         )
 
         return doc_generator
+
+
+class BLINKLoader:
+    def __init__(self):
+        self.blink_data = None
+        self.new_es_docs = []
+
+    def _import_blink_json(self, json_path: str):
+        """Import BLINK JSON created by `heritageconnector.nlp.nel.BLINKServiceWrapper.process_unlinked_entity_mentions`. Stores data in `self.blink_data` as a DataFrame."""
+
+        with open(json_path, "r") as f:
+            blink_json = [json.loads(jline) for jline in f.read().splitlines()]
+            self.blink_data = pd.DataFrame.from_records(blink_json)
+
+    @staticmethod
+    def _get_ent_predicate_from_dot_notation(dot_notation: str) -> str:
+        """e.g. graph.@hc.entityPERSON -> PERSON"""
+        patterns = re.findall(r"(entity\w+)", dot_notation)
+
+        if len(patterns) == 1:
+            return patterns[0]
+        else:
+            raise ValueError(
+                f"Warning: {dot_notation} doesn't look like valid entity predicate"
+            )
+
+    def _create_new_docs_from_blink_data(self, es_index: str, blink_threshold: float):
+        """Get the original doc, try to swap text entities for Wikidata. If the doc has changed,
+        append the new doc['_source'] to the list new_docs."""
+
+        for uri, group in tqdm(self.blink_data.groupby("id")):
+            changed_flag = (
+                False  # flag to say whether any changes have been made to the doc
+            )
+            original_es_doc = get_by_uri(es_index, uri)
+            rdf_subject = URIRef(uri)
+            g = Graph()
+            g.parse(
+                data=json.dumps(original_es_doc["_source"]["graph"]), format="json-ld"
+            )
+
+            for _, row in group.iterrows():
+                rdf_predicate = HC[
+                    self._get_ent_predicate_from_dot_notation(row["metadata"]["label"])
+                ]
+                entity_text = Literal(row["metadata"]["mention"])
+
+                # Only do the replacement if the object text exists in the subgraph.
+                # No need to filter by entity type as BLINK is blind to entity types.
+                if (rdf_subject, None, entity_text) in g:
+                    new_entities = [
+                        URIRef(WD[v["qid"]])
+                        for v in row["links"]
+                        if v["score"] > blink_threshold
+                    ]
+
+                    # Remove old text entity and replace with new entities if there is more than
+                    # one predicted link above the threshold.
+                    if len(new_entities) > 0:
+                        changed_flag = True
+                        g.remove((rdf_subject, rdf_predicate, entity_text))
+
+                        for new_ent in new_entities:
+                            g.add((rdf_subject, rdf_predicate, new_ent))
+
+            if changed_flag:
+                new_graph = json.loads(
+                    g.serialize(format="json-ld", context=context, indent=4).decode(
+                        "utf-8"
+                    )
+                )
+                new_doc = original_es_doc.copy()
+                new_doc["_source"]["graph"] = new_graph
+
+                self.new_es_docs.append(new_doc["_source"])
+
+    def _load_new_docs_list_into_es(self, es_index: str, raise_on_error: bool):
+        if not self.new_es_docs:
+            raise ValueError("There are no new docs to load.")
+
+        es_bulk(
+            es_index,
+            self.new_es_docs,
+            len(self.new_es_docs),
+            raise_on_error=raise_on_error,
+        )
+
+    def load_blink_results_to_es_from_json(
+        self,
+        json_path: str,
+        es_index: str,
+        blink_threshold: float = 0.9,
+        raise_on_error: bool = True,
+    ):
+        logger.info(f"Importing BLINK JSON from {json_path}")
+        self._import_blink_json(json_path)
+        logger.info(f"Applying BLINK predictions to documents from index {es_index}")
+        self._create_new_docs_from_blink_data(es_index, blink_threshold)
+        ### temp ###
+        with open("./tempdocs.jsonl", "a") as f:
+            for doc in self.new_es_docs:
+                f.write(json.dumps(doc))
+                f.write("\n")
+        ###
+        logger.info(f"Loading new docs into Elasticsearch")
+        self._load_new_docs_list_into_es(es_index, raise_on_error)
 
 
 def _get_dict_field_from_dot_notation(

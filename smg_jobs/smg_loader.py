@@ -931,7 +931,7 @@ def load_crowdsourced_links(links_path):
     )
     # remove anything after c(o|d|p)(\d+)
     df["courl"] = df["courl"].apply(
-        lambda x: re.findall(r"https://(?:\w.+)/(?:co|cp|ap)(?:\d+)", x)[0]
+        lambda x: re.findall(r"https://(?:\w.+)/(?:co|cp|ap|aa)(?:\d+)", x)[0]
     )
     df["wikidataurl"] = df["wikidataurl"].str.replace("https", "http")
     df["wikidataurl"] = df["wikidataurl"].str.replace("/wiki/", "/entity/")
@@ -1006,6 +1006,17 @@ def preprocess_text_for_ner(text: str) -> str:
     return text
 
 
+def load_nel_training_data(nel_training_data_path: str) -> pd.DataFrame:
+    """Load NEL training data from Excel file and return dataframe."""
+    df = pd.read_excel(nel_training_data_path, index_col=0)
+    df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
+        ~df["link_correct"].isnull(), "link_correct"
+    ].apply(int)
+    nel_train_data = df[(~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)]
+
+    return nel_train_data
+
+
 def load_ner_annotations(
     model_type: str,
     use_trained_linker: bool,
@@ -1066,13 +1077,7 @@ def load_ner_annotations(
     if use_trained_linker:
         # load NEL training data
         print(f"Using NEL training data from {nel_training_data_path}")
-        df = pd.read_excel(nel_training_data_path, index_col=0)
-        df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
-            ~df["link_correct"].isnull(), "link_correct"
-        ].apply(int)
-        nel_train_data = df[
-            (~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)
-        ]
+        nel_train_data = load_nel_training_data(nel_training_data_path)
         ner_loader.train_entity_linker(nel_train_data)
     else:
         # get NEL training data to annotate
@@ -1106,7 +1111,7 @@ if __name__ == "__main__":
 
     # ---
 
-    datastore.create_index()
+    datastore.create_index(config.ELASTIC_SEARCH_INDEX)
     load_people_data(people_data_path)
     load_adlib_people_data(adlib_people_data_path)
     load_orgs_data(people_data_path)
@@ -1149,13 +1154,13 @@ if __name__ == "__main__":
         "objects (locomotives & rolling stock)",
     )
     # for running using a trained linker
-    entity_list_data_path = "../GITIGNORE_DATA/NEL/entity_list_20210610-1035.json"
-    load_ner_annotations(
-        "en_core_web_trf",
-        use_trained_linker=True,
-        entity_list_data_path=entity_list_data_path,
-        nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
-    )
+    # entity_list_data_path = "../GITIGNORE_DATA/NEL/entity_list_20210610-1035.json"
+    # load_ner_annotations(
+    #     "en_core_web_trf",
+    #     use_trained_linker=True,
+    #     entity_list_data_path=entity_list_data_path,
+    #     nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
+    # )
     # for running to produce unlabelled training data at `nel_training_data_path`
     # load_ner_annotations(
     #     "en_core_web_trf",
