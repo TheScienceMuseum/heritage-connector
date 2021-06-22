@@ -1526,6 +1526,8 @@ class BLINKLoader:
                 )
                 new_doc = original_es_doc.copy()
                 new_doc["_source"]["graph"] = new_graph
+                # Copy the ID to the _id field so that the bulk indexer replaces the old documents
+                new_doc["_source"]["_id"] = new_doc["_source"]["uri"]
 
                 self.new_es_docs.append(new_doc["_source"])
 
