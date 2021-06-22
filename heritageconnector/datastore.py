@@ -1553,12 +1553,6 @@ class BLINKLoader:
         self._import_blink_json(json_path)
         logger.info(f"Applying BLINK predictions to documents from index {es_index}")
         self._create_new_docs_from_blink_data(es_index, blink_threshold)
-        ### temp ###
-        with open("./tempdocs.jsonl", "a") as f:
-            for doc in self.new_es_docs:
-                f.write(json.dumps(doc))
-                f.write("\n")
-        ###
         logger.info(f"Loading new docs into Elasticsearch")
         self._load_new_docs_list_into_es(es_index, raise_on_error)
 
