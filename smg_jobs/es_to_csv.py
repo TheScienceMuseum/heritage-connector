@@ -16,7 +16,10 @@ if len(sys.argv) == 2:
 method = sys.argv[1]
 file_path = sys.argv[2]
 
-g = es_to_rdflib_graph()
+g_collection = es_to_rdflib_graph(index="heritageconnector")
+g_blog = es_to_rdflib_graph(index="heritageconnector_blog")
+g_journal = es_to_rdflib_graph(index="heritageconnector_journal")
+g = g_collection + g_blog + g_journal
 
 if method == "csv":
     res = g.query(
