@@ -2,11 +2,13 @@ from elasticsearch import helpers, Elasticsearch
 from elasticsearch import exceptions as es_exceptions
 import rdflib
 from rdflib import Graph, Literal, URIRef
+from rdflib.term import _is_valid_uri
 import json
 import re
-from typing import Generator, List, Tuple, Optional, Union, Iterable, Callable
+import urllib
+from typing import Generator, List, Set, Tuple, Optional, Union, Iterable, Callable
 from tqdm.auto import tqdm
-from itertools import islice
+from itertools import islice, chain
 from heritageconnector.namespace import (
     XSD,
     FOAF,
@@ -24,9 +26,11 @@ from heritageconnector.namespace import (
 from heritageconnector.utils.generic import (
     paginate_dataframe,
     flatten_list_of_lists,
+    paginate_list,
 )
 from heritageconnector.config import config
 from heritageconnector.nlp import nel
+from heritageconnector.utils.wikidata import is_qid
 from heritageconnector import logging, best_spacy_pipeline
 import pandas as pd
 import spacy
@@ -503,9 +507,11 @@ def get_graph_by_type(type):
     return g
 
 
-def es_to_rdflib_graph(index: str, g=None, return_format=None):
+def es_to_rdflib_graph(
+    index: str, g=None, return_format=None
+) -> Union[rdflib.Graph, bytes]:
     """
-    Turns a dump of ES index into an RDF format. Returns an RDFlib graph object if no
+    Convert a dump of ES JSON-LD index into an RDF format. Returns an RDFlib graph object if no
     format is specified, else an object with the specified format which could be written
     to a file.
     """
@@ -530,6 +536,107 @@ def es_to_rdflib_graph(index: str, g=None, return_format=None):
         logger.debug("Using existing graph")
         for item in tqdm(res, total=total):
             g.parse(data=json.dumps(item["_source"]["graph"]), format="json-ld")
+
+    if return_format is None:
+        return g
+    else:
+        return g.serialize(format=return_format)
+
+
+def wikidump_to_rdflib_graph(
+    index: str,
+    g=None,
+    return_format=None,
+    qids: Set[str] = None,
+    pids: Set[str] = None,
+    es_index_max_terms_count: int = 65536,
+) -> Union[rdflib.Graph, bytes]:
+    """
+    Convert a Wikidata dump created using `elastic_wikidata` into RDF format.
+    Returns an RDFlib graph object if no format is specified, else an object with the specified format which could be written to a file.
+
+    Args:
+        index (str): [description]
+        g ([type], optional): [description]. Defaults to None.
+        return_format ([type], optional): [description]. Defaults to None.
+        qids (Set[str], optional):
+        pids (Set[str], optional):
+        es_index_max_terms_count (int, optional): Defaults to 65,536, the Elasticsearch default.
+    """
+
+    g = g or Graph()
+
+    if qids:
+        # There is an Elasticsearch limit for the number of items that can go in a terms query
+        # (see https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-terms-query.html).
+        # So, here we split the list of QIDs into pages, each of which produces a separate generator,
+        # and we use itertools.chain to combine the generators into `res`.
+        qids_paginated = paginate_list(list(qids), es_index_max_terms_count)
+        res_generators = []
+        for qid_page in qids_paginated:
+            res_generators.append(
+                helpers.scan(
+                    client=es,
+                    index=index,
+                    query={
+                        "query": {
+                            "bool": {"must": [{"terms": {"id.keyword": qid_page}}]}
+                        }
+                    },
+                )
+            )
+
+        res = chain(*res_generators)
+        total_docs = len(qids)
+
+    else:
+        res = helpers.scan(client=es, index=index, query={"query": {"match_all": {}}})
+        total_docs = None
+
+    for doc in tqdm(res, total=total_docs):
+        head = WD[doc["_source"]["id"]]
+
+        if ((not pids) or ("label" in pids)) and ("labels" in doc["_source"].keys()):
+            g.add((head, RDFS.label, Literal(doc["_source"]["labels"])))
+
+        if ((not pids) or ("description" in pids)) and (
+            "descriptions" in doc["_source"].keys()
+        ):
+            g.add((head, XSD.description, Literal(doc["_source"]["descriptions"])))
+
+        for _prop, _vals in doc["_source"]["claims"].items():
+            if pids and (_prop not in pids):
+                continue
+
+            prop = WDT[_prop]
+            if _prop == "P18":
+                # image
+                for val in _vals:
+                    g.add(
+                        (
+                            head,
+                            prop,
+                            URIRef(
+                                "https://commons.wikimedia.org/wiki/File:"
+                                + urllib.parse.quote("_".join(val.split(" ")))
+                            ),
+                        )
+                    )
+
+                continue
+
+            for val in _vals:
+                if is_qid(val):
+                    g.add((head, prop, WD[val]))
+                elif val.startswith("http"):
+                    if _is_valid_uri(val):
+                        g.add((head, prop, URIRef(val)))
+                    else:
+                        logger.warning(
+                            f"{val} doesn't look like valid URI, so triple {head}-{prop}-{val} not added."
+                        )
+                else:
+                    g.add((head, prop, Literal(val)))
 
     if return_format is None:
         return g
