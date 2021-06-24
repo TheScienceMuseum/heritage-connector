@@ -185,32 +185,32 @@ if __name__ == "__main__":
         journal_data_path="../../journal-blog-scraper/output_data/journal.json"
     )
 
-    # NER & NEL
-    model_type = "en_core_web_trf"
-    nel_training_data_path = "../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx"
-    load_ner_annotations(
-        "blog", model_type, nel_training_data_path=nel_training_data_path
-    )
-    load_ner_annotations(
-        "journal", model_type, nel_training_data_path=nel_training_data_path
-    )
+    # # NER & NEL
+    # model_type = "en_core_web_trf"
+    # nel_training_data_path = "../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx"
+    # load_ner_annotations(
+    #     "blog", model_type, nel_training_data_path=nel_training_data_path
+    # )
+    # load_ner_annotations(
+    #     "journal", model_type, nel_training_data_path=nel_training_data_path
+    # )
 
-    # BLINK - predict
-    blog_blink_output_path = (
-        f"../GITIGNORE_DATA/blink_output_blog_{get_timestamp()}.jsonl"
-    )
-    create_blink_json("blog", blog_blink_output_path)
+    # # BLINK - predict
+    # blog_blink_output_path = (
+    #     f"../GITIGNORE_DATA/blink_output_blog_{get_timestamp()}.jsonl"
+    # )
+    # create_blink_json("blog", blog_blink_output_path)
 
-    journal_blink_output_path = (
-        f"../GITIGNORE_DATA/blink_output_journal_{get_timestamp()}.jsonl"
-    )
-    create_blink_json("journal", journal_blink_output_path)
+    # journal_blink_output_path = (
+    #     f"../GITIGNORE_DATA/blink_output_journal_{get_timestamp()}.jsonl"
+    # )
+    # create_blink_json("journal", journal_blink_output_path)
 
-    # BLINK - load
-    blink_loader = datastore.BLINKLoader()
-    blink_loader.load_blink_results_to_es_from_json(
-        blog_blink_output_path, es_indices["blog"]
-    )
-    blink_loader.load_blink_results_to_es_from_json(
-        journal_blink_output_path, es_indices["journal"]
-    )
+    # # BLINK - load
+    # blink_loader = datastore.BLINKLoader()
+    # blink_loader.load_blink_results_to_es_from_json(
+    #     blog_blink_output_path, es_indices["blog"]
+    # )
+    # blink_loader.load_blink_results_to_es_from_json(
+    #     journal_blink_output_path, es_indices["journal"]
+    # )
