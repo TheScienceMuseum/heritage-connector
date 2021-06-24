@@ -75,6 +75,9 @@ def load_journal_data(journal_data_path):
     # journal_df = journal_df.head(100)  # for debugging
     journal_df = journal_df.rename(columns={"url": "URI"})
     journal_df["abstract"] = journal_df["abstract"].fillna("")
+    journal_df["figure_captions"].apply(
+        lambda x: x.insert(0, "Figure captions:") if x else []
+    )
     journal_df["text_by_paragraph"] = journal_df.apply(
         lambda row: [row["abstract"]] + row["text_by_paragraph"], axis=1
     )
@@ -82,6 +85,10 @@ def load_journal_data(journal_data_path):
         journal_df["text_by_paragraph"]
         .apply(lambda i: "\n".join(i[:JOURNAL_NO_PARAGRAPHS]))
         .apply(process_text)
+    )
+    journal_df["text_by_paragraph"] = journal_df.apply(
+        lambda row: row["text_by_paragraph"] + "\n" + "\n".join(row["figure_captions"]),
+        axis=1,
     )
     journal_df[["keywords", "tags"]] = journal_df[["keywords", "tags"]].applymap(
         lambda lst: [i.lower() for i in lst]
