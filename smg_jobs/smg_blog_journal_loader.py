@@ -74,6 +74,10 @@ def load_journal_data(journal_data_path):
     journal_df = pd.read_json(journal_data_path)
     # journal_df = journal_df.head(100)  # for debugging
     journal_df = journal_df.rename(columns={"url": "URI"})
+    journal_df["abstract"] = journal_df["abstract"].fillna("")
+    journal_df["text_by_paragraph"] = journal_df.apply(
+        lambda row: [row["abstract"]] + row["text_by_paragraph"], axis=1
+    )
     journal_df["text_by_paragraph"] = (
         journal_df["text_by_paragraph"]
         .apply(lambda i: "\n".join(i[:JOURNAL_NO_PARAGRAPHS]))
@@ -170,7 +174,7 @@ def create_blink_json(
 
 if __name__ == "__main__":
     # PARAMETERS
-    JOURNAL_NO_PARAGRAPHS = 2
+    JOURNAL_NO_PARAGRAPHS = 3
 
     # CORE DATA
     datastore.create_index(es_indices["blog"])
