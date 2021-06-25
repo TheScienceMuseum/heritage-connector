@@ -281,12 +281,18 @@ class RecordLoader:
             _ = jsonld_dict.pop("@id")
             _ = jsonld_dict.pop("@context")
 
-            body = {"graph": jsonld_dict}
-
-            doc = {"_id": row[subject_col], "_op_type": "update", "doc": body}
-
-            yield doc
-
+            for field, values in jsonld_dict.items():
+                yield {
+                    "_id": row[subject_col],
+                    "_op_type": "update",
+                    "script": {
+                        "source": f"if (ctx._source.graph.containsKey(\"{field}\")) {{if (!(ctx._source.graph[\"{field}\"] instanceof Collection)) {{ctx._source.graph[\"{field}\"]=[ctx._source.graph[\"{field}\"]];}} ctx._source.graph[\"{field}\"].addAll(params.values)}} else {{ctx._source.graph[\"{field}\"]=params.values}}",
+                        "params": {
+                            "values": values,
+                        }
+                    }
+                }
+            
     def _serialize_to_json(
         self, table_name: str, record: pd.Series, columns: list
     ) -> dict:
@@ -1255,6 +1261,7 @@ class NERLoader:
                     object_col="linked_value",
                     object_is_uri=True,
                     progress_bar=False,
+                    raise_on_error=True
                 )
 
         if len(entity_triples_unlinked) > 0:
@@ -1268,6 +1275,7 @@ class NERLoader:
                     object_col="entity_text",
                     object_is_uri=False,
                     progress_bar=False,
+                    raise_on_error=True
                 )
 
     def _load_entities_into_es_no_link_candidates(
