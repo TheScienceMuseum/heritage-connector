@@ -280,15 +280,15 @@ class RecordLoader:
             )
             _ = jsonld_dict.pop("@id")
             _ = jsonld_dict.pop("@context")
-
+            
             for field, values in jsonld_dict.items():
                 yield {
                     "_id": row[subject_col],
                     "_op_type": "update",
                     "script": {
-                        "source": f"if (ctx._source.graph.containsKey(\"{field}\")) {{if (!(ctx._source.graph[\"{field}\"] instanceof Collection)) {{ctx._source.graph[\"{field}\"]=[ctx._source.graph[\"{field}\"]];}} ctx._source.graph[\"{field}\"].addAll(params.values)}} else {{ctx._source.graph[\"{field}\"]=params.values}}",
+                        "source": f"if (ctx._source.graph.containsKey(\"{field}\")) {{if (!(ctx._source.graph[\"{field}\"] instanceof List)) {{ctx._source.graph[\"{field}\"]=[ctx._source.graph[\"{field}\"]];}} ctx._source.graph[\"{field}\"].addAll(params.values)}} else {{ctx._source.graph[\"{field}\"]=params.values}}",
                         "params": {
-                            "values": values,
+                            "values": values if isinstance(values, list) else [values],
                         }
                     }
                 }
