@@ -9,7 +9,7 @@ PATH_TO_PROPERTIES_CONFIG=./wikidump_pids.cfg
 DUMP_INDEX=wikidump
 OUTPUT_PATH_WIKISTREAM=/Volumes/Kalyan_SSD/SMG/wikidata/wikidata_all_no_articles_170521.ndjson
 
-.PHONY: wikistream wikidump dictionary_exhibitions
+.PHONY: wikistream wikidump dictionary_exhibitions triples
 
 # --- Wikidata dump ---
 # - `wikistream` creates an ndjson file from a Wikidata dump using Maxlath's Wikibase dump filter
@@ -38,3 +38,11 @@ dictionary_collection:
 	python scripts/make_collection_dictionary.py -o ../GITIGNORE_DATA/make_data/output/dictionary_matcher_collection.jsonl
 
 dictionaries: dictionary_exhibitions dictionary_collection
+
+# --- triples ---
+TRIPLESFILE_NT := ../GITIGNORE_DATA/triples/hc_dump_$(shell date +%d%m%y).nt
+TRIPLESFILE_CSV := ../GITIGNORE_DATA/triples/hc_dump_$(shell date +%d%m%y).csv
+
+triples:
+	python es_to_csv.py nt $(TRIPLESFILE_NT)
+	mv TRIPLESFILE_NT ../GITIGNORE_DATA/triples/hc_dump_latest.nt

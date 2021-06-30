@@ -286,13 +286,13 @@ class RecordLoader:
                     "_id": row[subject_col],
                     "_op_type": "update",
                     "script": {
-                        "source": f"if (ctx._source.graph.containsKey(\"{field}\")) {{if (!(ctx._source.graph[\"{field}\"] instanceof Collection)) {{ctx._source.graph[\"{field}\"]=[ctx._source.graph[\"{field}\"]];}} ctx._source.graph[\"{field}\"].addAll(params.values)}} else {{ctx._source.graph[\"{field}\"]=params.values}}",
+                        "source": f'if (ctx._source.graph.containsKey("{field}")) {{if (!(ctx._source.graph["{field}"] instanceof Collection)) {{ctx._source.graph["{field}"]=[ctx._source.graph["{field}"]];}} ctx._source.graph["{field}"].addAll(params.values)}} else {{ctx._source.graph["{field}"]=params.values}}',
                         "params": {
                             "values": values,
-                        }
-                    }
+                        },
+                    },
                 }
-            
+
     def _serialize_to_json(
         self, table_name: str, record: pd.Series, columns: list
     ) -> dict:
@@ -514,7 +514,7 @@ def get_graph_by_type(type):
 
 
 def es_to_rdflib_graph(
-    index: str, g=None, return_format=None
+    index: str, g=None, return_format: str = None
 ) -> Union[rdflib.Graph, bytes]:
     """
     Convert a dump of ES JSON-LD index into an RDF format. Returns an RDFlib graph object if no
@@ -551,23 +551,25 @@ def es_to_rdflib_graph(
 
 def wikidump_to_rdflib_graph(
     index: str,
-    g=None,
-    return_format=None,
+    g: rdflib.Graph = None,
+    return_format: str = None,
     qids: Set[str] = None,
     pids: Set[str] = None,
     es_index_max_terms_count: int = 65536,
+    filter_exclude_lowercase_labels: bool = True,
 ) -> Union[rdflib.Graph, bytes]:
     """
     Convert a Wikidata dump created using `elastic_wikidata` into RDF format.
     Returns an RDFlib graph object if no format is specified, else an object with the specified format which could be written to a file.
 
     Args:
-        index (str): [description]
-        g ([type], optional): [description]. Defaults to None.
-        return_format ([type], optional): [description]. Defaults to None.
-        qids (Set[str], optional):
-        pids (Set[str], optional):
-        es_index_max_terms_count (int, optional): Defaults to 65,536, the Elasticsearch default.
+        index (str): Elasticsearch index where Wikidata dump is stored.
+        g (rdflib.Graph, optional): existing RDFlib graph to add data to. Defaults to None, meaning a new `rdflib.Graph` is created and returned.
+        return_format (str, optional): format to serialize the graph to. Defaults to None, meaning that an `rdflib.Graph` object rather than a serialized graph is returned.
+        qids (Set[str], optional): a set of QIDs to retrieve.
+        pids (Set[str], optional): a set of PIDs to retrieve (use "label" or "description" for label and description).
+        es_index_max_terms_count (int, optional): the maximum number of QIDs that can be provided in one 'terms' query to Elasticsearch. Defaults to 65,536, which is the Elasticsearch default.
+        filter_exclude_lowercase_labels (bool, optional): whether to exclude Wikidata entities with lowercase labels (i.e. those that are not proper nouns) from the export. Defaults to True.
     """
 
     g = g or Graph()
@@ -601,6 +603,10 @@ def wikidump_to_rdflib_graph(
 
     for doc in tqdm(res, total=total_docs):
         head = WD[doc["_source"]["id"]]
+
+        if filter_exclude_lowercase_labels and ("labels" in doc["_source"].keys()):
+            if doc["_source"]["labels"] == doc["_source"]["labels"].lower():
+                continue
 
         if ((not pids) or ("label" in pids)) and ("labels" in doc["_source"].keys()):
             g.add((head, RDFS.label, Literal(doc["_source"]["labels"])))
@@ -1261,7 +1267,7 @@ class NERLoader:
                     object_col="linked_value",
                     object_is_uri=True,
                     progress_bar=False,
-                    raise_on_error=True
+                    raise_on_error=True,
                 )
 
         if len(entity_triples_unlinked) > 0:
@@ -1275,7 +1281,7 @@ class NERLoader:
                     object_col="entity_text",
                     object_is_uri=False,
                     progress_bar=False,
-                    raise_on_error=True
+                    raise_on_error=True,
                 )
 
     def _load_entities_into_es_no_link_candidates(
