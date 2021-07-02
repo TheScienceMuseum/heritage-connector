@@ -45,4 +45,8 @@ TRIPLESFILE_CSV := ../GITIGNORE_DATA/triples/hc_dump_$(shell date +%d%m%y).csv
 
 triples:
 	python es_to_csv.py nt $(TRIPLESFILE_NT)
-	mv TRIPLESFILE_NT ../GITIGNORE_DATA/triples/hc_dump_latest.nt
+	cp $(TRIPLESFILE_NT) ../GITIGNORE_DATA/triples/hc_dump_latest.nt
+
+triples_csv:
+	python es_to_csv.py csv $(TRIPLESFILE_CSV)
+	cp $(TRIPLESFILE_CSV) ../GITIGNORE_DATA/triples/hc_dump_latest.csv
