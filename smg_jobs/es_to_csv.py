@@ -1,13 +1,37 @@
 import sys
 
+import rdflib
+
 sys.path.append("..")
 
 from heritageconnector.config import config
 from heritageconnector.datastore import es_to_rdflib_graph, wikidump_to_rdflib_graph
 from heritageconnector.logging import get_logger
+from heritageconnector.namespace import SMGD, SMGO, SMGP
 import csv
 
 logger = get_logger(__name__)
+
+
+def postprocess_heritageconnector_graph(g: rdflib.Graph) -> rdflib.Graph:
+    """Fixing issues in the graph after they've happened. All things on here should also exist as TODOs in the loader or elsewhere in the code,
+    and should be taken out of this function when they're fixed.
+
+    Args:
+        g (rdflib.Graph): original graph
+
+    Returns:
+        rdflib.Graph: fixed graph
+    """
+
+    # Issue 1: caused by documents loading in NaN makers (people) as SMGP:nan.
+    # Although this only applies to people, we remove NaN objects and documents just to be sure.
+    g.remove((None, None, SMGP["nan"]))
+    g.remove((None, None, SMGO["nan"]))
+    g.remove((None, None, SMGD["nan"]))
+
+    return g
+
 
 if len(sys.argv) == 1:
     raise ValueError(
@@ -45,6 +69,8 @@ wiki_g = wikidump_to_rdflib_graph(
 )
 
 g = g + wiki_g
+logger.info("Postprocessing graph")
+g = postprocess_heritageconnector_graph(g)
 
 if method == "csv":
     res = g.query(
