@@ -389,7 +389,7 @@ class RecordLoader:
         return json_ld_dict
 
 
-def create_index(index: str):
+def create_index(index: str = None):
     """Delete the existing ES index if it exists and create a new index and mappings"""
 
     index = index or config.ELASTIC_SEARCH_INDEX
