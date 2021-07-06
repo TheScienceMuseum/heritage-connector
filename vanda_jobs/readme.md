@@ -9,15 +9,16 @@ Currently taking a short extract from objects, person, organisations
 
 Run from the root of repo:
 
-- `python3 vanda_jobs/scripts/content-table-generations.py -i objects -j ./GITIGNORE_DATA/elastic_export/objects/all -o ./GITIGNORE_DATA/hc_import/content`
-- `python3 vanda_jobs/scripts/content-table-generations.py -i persons -j ./GITIGNORE_DATA/elastic_export/persons/all -o ./GITIGNORE_DATA/hc_import/content`
-- `python3 vanda_jobs/scripts/content-table-generations.py -i organisations -j ./GITIGNORE_DATA/elastic_export/organisations/all -o ./GITIGNORE_DATA/hc_import/content`
+- `python3 vanda_jobs/scripts/content-table-generations.py -i objects -b -j ./GITIGNORE_DATA/elastic_export/objects/all -o ./GITIGNORE_DATA/hc_import/content`
+- `python3 vanda_jobs/scripts/content-table-generations.py -i persons -b -j ./GITIGNORE_DATA/elastic_export/persons/all -o ./GITIGNORE_DATA/hc_import/content`
+- `python3 vanda_jobs/scripts/content-table-generations.py -i organisations -b -j ./GITIGNORE_DATA/elastic_export/organisations/all -o ./GITIGNORE_DATA/hc_import/content`
+- `python3 vanda_jobs/scripts/content-table-generations.py -i events -b -j ./GITIGNORE_DATA/elastic_export/events/all -o ./GITIGNORE_DATA/hc_import/content`
 
 ## Generate join tables
 
 Run from the root of repo:
 
-- `python3 vanda_jobs/scripts/join-table-generations.py -j ./GITIGNORE_DATA/elastic_export/objects/all -o ./GITIGNORE_DATA/hc_import/join`
+- `python3 vanda_jobs/scripts/join-table-generations.py -b -j ./GITIGNORE_DATA/elastic_export/objects/all -o ./GITIGNORE_DATA/hc_import/join`
 
 ## Load tables into Elastic
 

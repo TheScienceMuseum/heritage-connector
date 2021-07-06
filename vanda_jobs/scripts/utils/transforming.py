@@ -24,7 +24,7 @@ def events_transforming(doc):
   if doc['name']:
     hc_record['NAME'] = doc['name']
   else:
-    hc_record['NAME'] = None
+    hc_record['NAME'] = ""
 
   if doc['date']['earliest']:
     hc_record['DATE_EARLIEST'] = doc['date']['earliest']
@@ -52,22 +52,22 @@ def persons_transforming(doc):
   if doc['title']:
     hc_record['TITLE_NAME'] = doc['title']
   else:
-    hc_record['TITLE_NAME'] = None
+    hc_record['TITLE_NAME'] = ""
 
   if doc['foreNames']:
     hc_record['FORENAME'] = doc['foreNames']
   else:
-    hc_record['FORENAME'] = None
+    hc_record['FORENAME'] = ""
 
   if doc['surNames']:
     hc_record['SURNAME'] = doc['surNames']
   else:
-    hc_record['SURNAME'] = None
+    hc_record['SURNAME'] = ""
 
   if doc['naturalName']:
     hc_record['NATURAL_NAME'] = doc['naturalName']
   else:
-    hc_record['NATURAL_NAME'] = None
+    hc_record['NATURAL_NAME'] = ""
 
   if doc['birthDate']['earliest']:
     hc_record['BIRTHDATE_EARLIEST'] = doc['birthDate']['earliest']
@@ -79,10 +79,25 @@ def persons_transforming(doc):
   else:
     hc_record['BIRTHDATE_LATEST'] = None
 
+  if doc['birthPlace']['text']:
+    hc_record['BIRTHPLACE'] = doc['birthPlace']['text']
+  else:
+    hc_record['BIRTHPLACE'] = ""
+
+  if doc['deathPlace']['text']:
+    hc_record['DEATHPLACE'] = doc['deathPlace']['text']
+  else:
+    hc_record['DEATHPLACE'] = ""
+
   if doc['nationality']:
     hc_record['NATIONALITY'] = doc['nationality']
   else:
-    hc_record['NATIONALITY'] = None
+    hc_record['NATIONALITY'] = ""
+
+  if doc['biography']:
+    hc_record['BIOGRAPHY'] = doc['biography']
+  else:
+    hc_record['BIOGRAPHY'] = ""
 
   return hc_record
 
@@ -99,7 +114,7 @@ def objects_transforming(doc):
   if doc['_primaryTitle']:
     hc_record['PRIMARY_TITLE'] = doc['_primaryTitle']
   else:
-    hc_record['PRIMARY_TITLE'] = None
+    hc_record['PRIMARY_TITLE'] = ""
 
   if doc['_primaryPlace']:
     hc_record['PRIMARY_PLACE'] = doc['_primaryPlace']
@@ -114,17 +129,17 @@ def objects_transforming(doc):
   if doc['objectType']:
     hc_record['OBJECT_TYPE'] = doc['objectType']
   else:
-    hc_record['OBJECT_TYPE'] = None
+    hc_record['OBJECT_TYPE'] = ""
   
   if doc['summaryDescription']:
     hc_record['DESCRIPTION'] = doc['summaryDescription']
   else:
-    hc_record['DESCRIPTION'] = None
+    hc_record['DESCRIPTION'] = ""
 
   if doc['physicalDescription']:
     hc_record['PHYS_DESCRIPTION'] = doc['physicalDescription']
   else:
-    hc_record['PHYS_DESCRIPTION'] = None
+    hc_record['PHYS_DESCRIPTION'] = ""
 
   hc_record['ACCESSION_NUMBER'] = doc['accessionNumber']
 
@@ -133,7 +148,7 @@ def objects_transforming(doc):
   if doc['_flatProductionTypesTextId']:
     hc_record['PRODUCTION_TYPE'] = doc['_flatProductionTypesTextId']
   else:
-    hc_record['PRODUCTION_TYPE'] = None
+    hc_record['PRODUCTION_TYPE'] = ""
     
 
   return hc_record
@@ -151,7 +166,7 @@ def organisations_transforming(doc):
   if doc['displayName']:
     hc_record['DISPLAY_NAME'] = doc['displayName']
   else:
-    hc_record['DISPLAY_NAME'] = None
+    hc_record['DISPLAY_NAME'] = ""
 
   if doc['foundationDate']['earliest']:
     hc_record['FOUNDATION_DATE_EARLIEST'] = doc['foundationDate']['earliest']
@@ -166,12 +181,17 @@ def organisations_transforming(doc):
   if doc['foundationPlace']['place']['text']:
     hc_record['FOUNDATION_PLACE_NAME'] = doc['foundationPlace']['place']['text']
   else:
-    hc_record['FOUNDATION_PLACE_NAME'] = None
+    hc_record['FOUNDATION_PLACE_NAME'] = ""
 
   if doc['foundationPlace']['place']['id']:
     hc_record['FOUNDATION_PLACE_ID'] = doc['foundationPlace']['place']['id']
   else:
-    hc_record['FOUNDATION_PLACE_ID'] = None
+    hc_record['FOUNDATION_PLACE_ID'] = ""
+
+  if doc['history']:
+    hc_record['HISTORY'] = doc['history']
+  else:
+    hc_record['HISTORY'] = ""
 
   return hc_record
 
