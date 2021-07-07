@@ -7,7 +7,7 @@ sys.path.append("..")
 from heritageconnector.config import config
 from heritageconnector.datastore import es_to_rdflib_graph, wikidump_to_rdflib_graph
 from heritageconnector.logging import get_logger
-from heritageconnector.namespace import SMGD, SMGO, SMGP
+from heritageconnector.namespace import SMGD, SMGO, SMGP, FOAF, OWL, HC
 import csv
 
 logger = get_logger(__name__)
@@ -29,6 +29,33 @@ def postprocess_heritageconnector_graph(g: rdflib.Graph) -> rdflib.Graph:
     g.remove((None, None, SMGP["nan"]))
     g.remove((None, None, SMGO["nan"]))
     g.remove((None, None, SMGD["nan"]))
+
+    # Issue 2: `foaf:page` is used to represent identity relationships between Mimsy and
+    # Adlib records, as the disambiguator relies on `owl:sameAs` only being between SMG
+    # and Wikidata records.
+    # Here we replace `foaf:page` with `owl:sameAs`.
+    for s, p, o in g.triples((None, FOAF.page, None)):
+        g.remove((s, p, o))
+        g.add((s, OWL.sameAs, o))
+
+    # Issue 3: literal objects for triples with `hc:entityTYPE` predicates have not been normalised
+    # in any way. Here we convert them to lowercase.
+    # TODO: in future, it may also be useful to lemmatize them too.
+    for term in [
+        "entityPERSON",
+        "entityORG",
+        "entityNORP",
+        "entityFAC",
+        "entityLOC",
+        "entityOBJECT",
+        "entityLANGUAGE",
+        "entityDATE",
+        "entityEVENT",
+    ]:
+        for s, p, o in g.triples((None, HC[term], None)):
+            if isinstance(o, rdflib.Literal):
+                g.remove((s, p, o))
+                g.add((s, p, rdflib.Literal(o.lower())))
 
     return g
 
