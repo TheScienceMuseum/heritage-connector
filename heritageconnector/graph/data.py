@@ -1,3 +1,5 @@
+"""NOTE: This is deprecated. See tools to create graph and sentence embeddings for the collection at https://github.com/TheScienceMuseum/heritage-connector-vectors/"""
+
 import pandas as pd
 import numpy as np
 import os
@@ -32,7 +34,7 @@ def load_from_csv(path: str, sep: str = "\t", header: int = None) -> np.ndarray:
     Args:
         path (str): path to a CSV (.csv/.tsv) file
         sep (str, optional): Separator for the CSV file. Defaults to "\t".
-        header (int, optional): Number of the header row (same as the pandas argument). Default to None. 
+        header (int, optional): Number of the header row (same as the pandas argument). Default to None.
 
     Returns:
         np.ndarray
@@ -51,8 +53,8 @@ def train_test_split(
     test_predicates: list = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Generate train-test split from an array of triples X. Test set is generated so that there are no unseen entities or relations, i.e. every entity 
-    and relation in the test set exists in training. 
+    Generate train-test split from an array of triples X. Test set is generated so that there are no unseen entities or relations, i.e. every entity
+    and relation in the test set exists in training.
 
     Fork of `ampligraph.evaluation.train_test_split_no_unseen` to avoid a tensorflow dependency.
 
@@ -61,7 +63,7 @@ def train_test_split(
         test_size (int or float): number of triples in test set. If integer >= 1 is passed this is the length of the test set. If float < 1 is passed this is a
             proportion of X, e.g. 0.1 -> 10% of X.
         seed (int, optional): random seed. Defaults to 42.
-        test_predicates (list, optional): A specific list of predicates to include in the test set. Useful for targeting model performance towards a 
+        test_predicates (list, optional): A specific list of predicates to include in the test set. Useful for targeting model performance towards a
             certain 'type' of triple. Defaults to None.
 
     Returns:
