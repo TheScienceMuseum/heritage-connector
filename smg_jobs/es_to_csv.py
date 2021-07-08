@@ -12,6 +12,18 @@ import csv
 
 logger = get_logger(__name__)
 
+entity_terms = [
+    "entityPERSON",
+    "entityORG",
+    "entityNORP",
+    "entityFAC",
+    "entityLOC",
+    "entityOBJECT",
+    "entityLANGUAGE",
+    "entityDATE",
+    "entityEVENT",
+]
+
 
 def postprocess_heritageconnector_graph(g: rdflib.Graph) -> rdflib.Graph:
     """Fixing issues in the graph after they've happened. All things on here should also exist as TODOs in the loader or elsewhere in the code,
@@ -41,21 +53,27 @@ def postprocess_heritageconnector_graph(g: rdflib.Graph) -> rdflib.Graph:
     # Issue 3: literal objects for triples with `hc:entityTYPE` predicates have not been normalised
     # in any way. Here we convert them to lowercase.
     # TODO: in future, it may also be useful to lemmatize them too.
-    for term in [
-        "entityPERSON",
-        "entityORG",
-        "entityNORP",
-        "entityFAC",
-        "entityLOC",
-        "entityOBJECT",
-        "entityLANGUAGE",
-        "entityDATE",
-        "entityEVENT",
-    ]:
+    for term in entity_terms:
         for s, p, o in g.triples((None, HC[term], None)):
             if isinstance(o, rdflib.Literal):
                 g.remove((s, p, o))
                 g.add((s, p, rdflib.Literal(o.lower())))
+
+    # Issue 4: CSV encoding doesn't work as some descriptions contain newline characters, which are then
+    # added to the entity spans.
+    # Here we replace "\n" with " " for all objects in the graph, where the predicate is entityTYPE.
+    # TODO: replace newline characters with spaces in loader.
+    for term in entity_terms:
+        for s, p, o in g.triples((None, HC[term], None)):
+            if isinstance(o, rdflib.Literal) and ("\n" in o or "\r" in o):
+                g.remove((s, p, o))
+                g.add(
+                    (
+                        s,
+                        p,
+                        rdflib.Literal(o.replace("\r", " ").replace("\n", " ").strip()),
+                    )
+                )
 
     return g
 
@@ -75,6 +93,9 @@ g_collection = es_to_rdflib_graph(index="heritageconnector")
 g_blog = es_to_rdflib_graph(index="heritageconnector_blog")
 g_journal = es_to_rdflib_graph(index="heritageconnector_journal")
 g = g_collection + g_blog + g_journal
+
+logger.info("Postprocessing graph")
+g = postprocess_heritageconnector_graph(g)
 
 logger.info("Creating Wikidata cache")
 unique_wikidata_qids = [
@@ -96,8 +117,6 @@ wiki_g = wikidump_to_rdflib_graph(
 )
 
 g = g + wiki_g
-logger.info("Postprocessing graph")
-g = postprocess_heritageconnector_graph(g)
 
 if method == "csv":
     res = g.query(
