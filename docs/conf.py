@@ -38,7 +38,6 @@ links = {
 # ones.
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx_rtd_theme",
     # "sphinxcontrib.bibtex",
     "sphinx.ext.todo",
     "sphinx.ext.napoleon",
