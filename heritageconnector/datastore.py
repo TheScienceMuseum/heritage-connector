@@ -880,7 +880,7 @@ class NERLoader:
 
         if len(missing_cols) > 0:
             raise ValueError(
-                f"Columns {missing_cols} are missing from the data. Are you using an Excel sheet exported from `NERLoader.get_links_data_for_review`"
+                f"Columns {missing_cols} are missing from the data. Are you using an Excel sheet exported from `NERLoader.get_links_data_for_review`?"
             )
 
         # return only the part of the data with populated values for the link_correct column,
