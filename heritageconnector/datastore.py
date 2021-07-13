@@ -700,7 +700,7 @@ class NERLoader:
             target_context_field (str): dot notation for target description/context field used by the entity linker.
             target_type_field (str): dot notation for target type field (to be one-hot-encoded and compared with NER entity type).
             target_alias_field (str, optional): dot notation for target alias field. Only used when searching for link candidates; not in the features for the entity linker.
-            source_context_field (str, optional): dot notation for the source context field used by the entity linker. If specified, must be a substring of 'source_description_field'. If not specified, the value of `source_description_field` is used. If `source_context_field` is not present for a document, the system will automatically fall back to using `source_description_field` as the context field.
+            source_context_field (str, optional): dot notation for the source context field used by the entity linker, used to provide additional context on top of a description for entity linking. If specified, must contain of 'source_description_field'. If not specified, the value of `source_description_field` is used. If `source_context_field` is not present for a document, the system will automatically fall back to using `source_description_field` as the context field.
             entity_types (Iterable[str], optional): entity types to extract from the spaCy model.
             entity_types_to_link (Iterable[str], optional): entity types to try to link to records. Filtered to only types that appear in `entity_types`. Defaults to None.
             target_record_types (Iterable[str], optional): record types to link to, where types are determined by their value of `target_type_field`. Defaults to None, i.e. all types.
@@ -1137,7 +1137,7 @@ class NERLoader:
         force_load_without_linker: bool = False,
     ):
         """
-        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates_from_target`),
+        Load entities into Elasticsearch. If no entities have link candidates (retrieved using `NERLoader.get_link_candidates_from_target_index`),
         they are loaded in as triples with the entity text as the object. If some entities have link candidates, then for these
         entities the positive candidates are predicted using the entity linking classifier (which has been trained using
         `NERLoader.train_entity_linker`), and the detected entities with predicted candidates are loaded in with the candidate
