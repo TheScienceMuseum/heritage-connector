@@ -1,20 +1,20 @@
 Named Entity Recognition and Entity Linking
 ============================================
 
-Named Entity Recognition (NER) and Entity Linking (EL) are two different machine learning approaches that Heritage Connector uses to create knowledge graph connections from text. The pipeline to do this is as follows (see our blog post [#nelblogpost]_ for more details):
+Named Entity Recognition (NER) and Entity Linking (EL) are two different machine learning approaches that Heritage Connector uses to create knowledge graph connections from text. The pipeline to do this is as follows (see our `blog post <https://thesciencemuseum.github.io/heritageconnector/post/2021/03/17/history-ai/>`_ for more details):
 
 1. NER is run on all the *description* fields in the Elasticsearch index, and the extracted entities are saved back into the index, or into a local JSON file.
-2. EL is run on these extracted entities to convert entity mentions into references to collection records, i.e. a connection between two entities in the KG. For example, the mention :code:`Colne Robotics` would be converted into https://collection.sciencemuseumgroup.org.uk/people/cp43944/colne-robotics-company-limited.
+2. EL is run on these extracted entities to convert entity mentions into references to collection records, i.e. a connection between two entities in the KG. For example, the mention :code:`Colne Robotics` would be replaced by a link to `this SMG collection page <https://collection.sciencemuseumgroup.org.uk/people/cp43944/colne-robotics-company-limited>`_ in the KG.
 
-In the second step, any text mentions that can't be resolved to items in your collection will be left as text mentions, leaving some ambiguity. If this is an issue for your collection, you could add a third step to link to an external knowledge base such as Wikipedia or Wikidata. For Heritage Connector, we've adapted Facebook Research's `BLINK <https://github.com/facebookresearch/BLINK>`_ to provide an easy to use REST API which can be used to resolve an entity mention to either a Wikipedia page or a Wikidata record. [#smg_blink]_
+In the second step, any text mentions that can't be resolved to items in a collection will be left as text mentions, leaving some ambiguity. If this is an issue for your collection, you could a second entity linker which links to an external knowledge base, such as Wikipedia or Wikidata. For Heritage Connector, we've `adapted BLINK <https://github.com/TheScienceMuseum/BLINK>`_ to provide an easy to use REST API which can be used to resolve an entity mention to either a Wikipedia page or a Wikidata record.
 
 
 Background Reading
 -------------------
 
-Heritage Connector's NER functionality uses `spaCy <https://spacy.io>`_, with some extensions for museum data and low-data environments provided by `heritage-connector-nlp <https://github.com/TheScienceMuseum/heritage-connector-nlp>`_. If you're not familiar with spaCy, check out its `NER implementation <https://spacy.io/usage/linguistic-features#named-entities>`_ and `models <https://spacy.io/models/en>`_ [#spacy_english]_. For more details on the extensions made to the models, see our paper [#paper]_.
+Heritage Connector's NER functionality uses `spaCy <https://spacy.io>`_, with some extensions to allow the NER model to adapt to museum data and new collections provided by `heritage-connector-nlp <https://github.com/TheScienceMuseum/heritage-connector-nlp>`_. If you're not familiar with spaCy, check out its `NER implementation <https://spacy.io/usage/linguistic-features#named-entities>`_ and `models <https://spacy.io/models/en>`_ [#spacy_english]_. For more details on the extensions made to the models, see our paper [#paper]_.
 
-The EL model is built directly into Heritage Connector's code, but is based strongly on *Klie et al.* [#klie_et_al]_. It's optimised for low training data (hundreds of labelled examples) rather than absolute performance. We recommend that you read the paper to understand the advantages and disadvantages of such a model.
+The EL model is a re-implementation based on *Klie et al.* [#klie_et_al]_. It's optimised for low training data (hundreds of labelled examples) rather than absolute performance. We recommend that you read *Klie et al.* to understand the advantages and disadvantages of such a model.
 
 The features we use for the EL model are below (slightly different to [#klie_et_al]_).
 
@@ -38,7 +38,7 @@ The features we use for the EL model are below (slightly different to [#klie_et_
 Process
 --------
 
-Methods to run NER and EL are all contained within the :py:meth:`heritageconnector.datastore.NERLoader` class, which persists data on predicted entities in :py:meth:`heritageconnector.datastore.NERLoader.entity_list` until this data is exported to JSON or loaded into Elasticsearch.
+Methods to run NER and EL are all in the :py:meth:`heritageconnector.datastore.NERLoader` class, which persists data on predicted entities in :py:meth:`heritageconnector.datastore.NERLoader.entity_list` until this data is exported to JSON or loaded into Elasticsearch.
 
 The steps to set up and run these processes are as follows.
 
@@ -91,7 +91,7 @@ NER
 
         </details>
 
-2. **Run NER.** The :py:meth:`heritageconnector.datastore.NERLoader.get_list_of_entities_from_source_index` method produces a JSON of record IDs and their named entities, which can then be used for entity linking or to load into the Heritage Connector Elasticsearch index. To perform this step you'll need to have selected a model type from the `spaCy models <https://spacy.io/models/en>`_. We recommend experimenting with batch_size - if running on a smaller model and CPU, you should be able to increase it to greater than the *16* below.
+2. **Run NER.** The :py:meth:`heritageconnector.datastore.NERLoader.get_list_of_entities_from_source_index` method produces a JSON of record IDs and their named entities, which can then be used for entity linking or to load into the Heritage Connector Elasticsearch index. To perform this step you'll need to have selected a model type from the `spaCy models <https://spacy.io/models/en>`_. We recommend experimenting with the :code:`spacy_batch_size` parameter - if running on a smaller model and CPU, you should be able to increase it to greater than the *16* below.
 
    .. raw:: html
 
@@ -108,7 +108,7 @@ NER
         
         </details>
 
-3. **Save the results to JSON or load them into the Elasticsearch index.** :code:`NERLoader.load_entities_into_source_index` loads the retrieved entities into the JSON-LD Elasticsearch index with the predicates :code:`hc:entityTYPE`, where type is the spaCy entity type. You can also export the entity list to a JSON file, so that in future the retrieved entities can be loaded into the Elasticsearch index without rerunning the NER model.
+3. **Save the results to JSON or load them into the Elasticsearch index.** :code:`NERLoader.load_entities_into_source_index` loads the retrieved entities into the JSON-LD Elasticsearch index with the predicates :code:`hc:entityTYPE`, where TYPE is the spaCy entity type. You can also export the entity list to a JSON file, so that in future the retrieved entities can be loaded into the Elasticsearch index without rerunning the NER model.
 
    .. raw:: html
         
@@ -136,9 +136,9 @@ NER
 EL
 ***
 
-The entity linker, similarity to the record linker, works in two steps. First, a **search step** searches an entity mention in the target Elasticsearch index and retrieves a list of *link candidates*: possible records that represent the same real-world entity as the entity mention. Second, a **classification (or ranking) step** uses a machine learning classifier to compare the entity mention, its type and the text it was mentioned in to each link candidate, its type, and its description.
+The entity linker, similarly to the record linker, works in two steps. First, a **search step** searches an entity mention in the target Elasticsearch index and retrieves a list of *link candidates*: possible records that represent the same real-world entity as the entity mention. Second, a **classification (or ranking) step** uses a machine learning classifier to predict the probability that the entity mention and each link candidate form a true link.
 
-1. **Get link candidates (search).** Link candidates are retrieved by searching the entity mention against the title field (and an optional alias field specified using :code:`target_alias_field`), and retrieving the top *N* results. *N* should be selected so that it's high enough that the correct link appears in the top *N* results the majority of the time, but not too high that the computation overhead of the classifier becomes large. A good value to start with is 10 or 15.
+1. **Get link candidates (search).** Link candidates are retrieved by searching the entity mention against the title field and an optional alias field, and retrieving the top *N* results. *N* should be selected so that it's high enough that the correct link appears in the top *N* results the majority of the time, but not too high that the computation overhead of the classifier becomes large. A good value to start with is 10-15.
 
    .. raw:: html
 
@@ -199,10 +199,6 @@ The entity linker, similarity to the record linker, works in two steps. First, a
 
     
 ---
-
-.. [#nelblogpost] *History, AI and Knowledge Graphs* - https://thesciencemuseum.github.io/heritageconnector/post/2021/03/17/history-ai/
-
-.. [#smg_blink] https://github.com/TheScienceMuseum/BLINK
 
 .. [#spacy_english] Note that the Heritage Connector is designed around the English language, so we can't guarantee the extensions in *heritage-connector-nlp* will work well for other languages.
 
