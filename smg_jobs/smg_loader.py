@@ -1007,12 +1007,10 @@ def preprocess_text_for_ner(text: str) -> str:
 
 
 def load_nel_training_data(nel_training_data_path: str) -> pd.DataFrame:
-    """Load NEL training data from Excel file and return dataframe."""
+    """Load NEL training data from Excel file and return dataframe.
+    We remove anything with a candidate_rank==-1 as these rows were added manually for analysis."""
     df = pd.read_excel(nel_training_data_path, index_col=0)
-    df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
-        ~df["link_correct"].isnull(), "link_correct"
-    ].apply(int)
-    nel_train_data = df[(~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)]
+    nel_train_data = df[df["candidate_rank"] != -1]
 
     return nel_train_data
 

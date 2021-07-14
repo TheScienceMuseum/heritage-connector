@@ -43,6 +43,7 @@ Useful links
    
    reconciling_fields
    record_linkage
+   ner_nel
    
 .. toctree::
    :maxdepth: 2
