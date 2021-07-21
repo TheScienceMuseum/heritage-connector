@@ -23,10 +23,10 @@ def load_model(
         os.path.dirname(__file__),
         "../GITIGNORE_DATA/make_data/output/dictionary_matcher_collection.jsonl",
     )
-    _events_thesaurus_path = events_thesaurus_path or os.path.join(
-        os.path.dirname(__file__),
-        "../GITIGNORE_DATA/make_data/output/dictionary_matcher_events.jsonl",
-    )
+    # _events_thesaurus_path = events_thesaurus_path or os.path.join(
+    #     os.path.dirname(__file__),
+    #     "../GITIGNORE_DATA/make_data/output/dictionary_matcher_events.jsonl",
+    # )
 
     if model_type == "en_core_web_trf":
         activated = spacy.prefer_gpu()
