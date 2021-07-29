@@ -51,7 +51,7 @@ pd.options.mode.chained_assignment = None
 # optional limit of number of records to import to test loader. no limit -> None
 # passed as an argument into `pd.read_csv`. You might want to use your own implementation
 # depending on your source data format
-max_records = None
+max_records = 5000
 
 # create instance of RecordLoader from datastore
 record_loader = datastore.RecordLoader(
@@ -384,15 +384,15 @@ def load_ner_annotations(
     # To save the retrieved entities to JSON.
     # For now there are no link candidates (see next step) so we set `include_link_candidates=False`.
     
-    # ner_loader.export_entity_list_to_json(
-    #     output_path=ner_data_path, include_link_candidates=False
-    # )
+    ner_loader.export_entity_list_to_json(
+        output_path=ner_data_path, include_link_candidates=False
+    )
 
     # To load the retrieved entities into the JSON-LD Elasticsearch index.
     # Because we have no trained linker, we set `force_load_without_linker=True`.
-    # ner_loader.load_entities_into_source_index(
-    #     force_load_without_linker=True,
-    # )
+    ner_loader.load_entities_into_source_index(
+        force_load_without_linker=True,
+    )
 
     ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=15)
 
@@ -427,11 +427,11 @@ if __name__ == "__main__":
     event_data_path = "../GITIGNORE_DATA/hc_import/content/20210705/events.ndjson"
     join_data_path = "../GITIGNORE_DATA/hc_import/join/20210705/joins.ndjson"
 
-    ner_data_path = "../GITIGNORE_DATA/NER/entity_json_2021_07_23.json"
+    ner_data_path = "../GITIGNORE_DATA/NER/entity_json_2021_07_29.json"
 
-    # datastore.create_index()
+    datastore.create_index()
 
-    # load_object_data(object_data_path)
+    load_object_data(object_data_path)
     # load_person_data(person_data_path)
     # load_org_data(org_data_path)
     # load_event_data(event_data_path)
@@ -454,5 +454,5 @@ if __name__ == "__main__":
     # )
 
     load_ner_annotations("en_core_web_sm",use_trained_linker=False,
-                        entity_list_data_path='../GITIGNORE_DATA/NER/entity_json_2021_07_23.json',
-                        nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_2021_07_28.xlsx")
+                        # entity_list_data_path='../GITIGNORE_DATA/NER/entity_json_2021_07_23.json',
+                        nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_2021_07_29.xlsx")
