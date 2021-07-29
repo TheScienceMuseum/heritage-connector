@@ -53,16 +53,16 @@ def load_model(
         after="ner",
     )
     nlp.rename_pipe("thesaurus_matcher", "thesaurus_matcher_collection")
-    nlp.add_pipe(
-        "thesaurus_matcher",
-        config={
-            "case_sensitive": True,
-            "overwrite_ents": False,
-            "thesaurus_path": _events_thesaurus_path,
-        },
-        before="ner",
-    )
-    nlp.rename_pipe("thesaurus_matcher", "thesaurus_matcher_events")
+    # nlp.add_pipe(
+    #     "thesaurus_matcher",
+    #     config={
+    #         "case_sensitive": True,
+    #         "overwrite_ents": False,
+    #         "thesaurus_path": _events_thesaurus_path,
+    #     },
+    #     before="ner",
+    # )
+    # nlp.rename_pipe("thesaurus_matcher", "thesaurus_matcher_events")
     nlp.add_pipe("entity_filter", config={"ent_labels_ignore": ["DATE"]}, last=True)
     nlp.add_pipe("map_entity_types", last=True)
     nlp.add_pipe("entity_joiner", last=True)

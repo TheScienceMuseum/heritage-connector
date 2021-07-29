@@ -13,6 +13,7 @@ click==7.1.2
 cymem==2.0.5
 elastic-wikidata==0.3.7
 elasticsearch==7.12.1
+en-core-web-sm==3.0.0
 et-xmlfile==1.1.0
 fastapi==0.65.1
 filelock==3.0.12

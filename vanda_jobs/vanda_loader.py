@@ -13,17 +13,35 @@ import sys
 
 sys.path.append("..")
 
-import os
-import random
-import re
-import string
-
+import en_core_web_sm
 import pandas as pd
-import rdflib
-from heritageconnector import datastore, datastore_helpers, logging
+import random
+import string
+import re
+import os
+from typing import Optional
 from heritageconnector.config import config, field_mapping
-from heritageconnector.namespace import (FOAF, OWL, PROV, RDF, SDO, SKOS, WD,
-                                         WDT, XSD)
+from heritageconnector import datastore, datastore_helpers
+from heritageconnector.namespace import (
+    XSD,
+    FOAF,
+    OWL,
+    RDF,
+    PROV,
+    SDO,
+    SKOS,
+    WD,
+    WDT,
+)
+from heritageconnector.utils.data_transformation import get_year_from_date_value
+from heritageconnector.entity_matching.lookup import (
+    get_internal_urls_from_wikidata,
+    get_sameas_links_from_external_id,
+    get_wikidata_uri_from_placename,
+)
+from heritageconnector.utils.generic import flatten_list_of_lists, get_timestamp
+from heritageconnector.utils.wikidata import qid_to_url
+from heritageconnector import logging
 
 logger = logging.get_logger(__name__)
 
@@ -256,6 +274,152 @@ def load_join_data(data_path):
 
     return
 
+def preprocess_text_for_ner(text: str) -> str:
+    # remove URLs
+    text = re.sub(
+        r"((?:https?://|www\.|https?://|www\.)[a-z0-9\.:].*?(?=[\s;,!:\[\]]|$))",
+        "",
+        text,
+    )
+
+    # remove dois, e.g. doi:10.1093/ref:odnb/9153
+    text = re.sub(r"doi:[\w.:/\\;]*\b", "", text)
+
+    # remove any text in normal brackets
+    #     text = re.sub(r"\([^()]*\)", "", text)
+
+    #     # remove any text in square brackets
+    #     text = re.sub(r"\[[^\[\]]*\]", "", text)
+
+    # replace newline characters with spaces
+    text = text.replace("\n", " ")
+
+    # remove strings in `strings_to_remove`
+    strings_to_remove = [
+        "WIKI:",
+        "WIKI",
+        "REF:",
+        "VIAF:",
+        "Oxford Dictionary of National Biography",
+        "Oxford University Press",
+        "Oxford Dictionary of National Biography, Oxford University Press",
+        "Library of Congress Authorities:",
+    ]
+    strings_to_remove.sort(key=len, reverse=True)
+    for s in strings_to_remove:
+        text = text.replace(s, "")
+
+    # finally, remove any leading or trailing whitespace
+    text = text.strip()
+
+    return text
+
+
+def load_nel_training_data(nel_training_data_path: str) -> pd.DataFrame:
+    """Load NEL training data from Excel file and return dataframe."""
+    df = pd.read_excel(nel_training_data_path, index_col=0)
+    df.loc[~df["link_correct"].isnull(), "link_correct"] = df.loc[
+        ~df["link_correct"].isnull(), "link_correct"
+    ].apply(int)
+    nel_train_data = df[(~df["link_correct"].isnull()) & (df["candidate_rank"] != -1)]
+
+    return nel_train_data
+
+
+def load_ner_annotations(
+    model_type: str,
+    use_trained_linker: bool,
+    entity_list_save_path: str = None,
+    entity_list_data_path: str = None,
+    nel_training_data_path: str = None,
+    linking_confidence_threshold: float = 0.75,
+):
+    """
+    Args:
+        model_type (str): spacy model type e.g. "en_core_web_trf"
+        use_trained_linker (bool): whether to use trained entity linker to add links to graph (True), or
+            export training data to train an entity linker (False)
+        entity_list_save_path (str, optional): Path to save entity list to.
+        entity_list_data_path (str, optional): Path to load entity list from. Means NER can be skipped.
+        nel_training_data_path (str, optional): Path to training data Excel file for linker, either to train it, or where it's exported. Defaults to None.
+        linking_confidence_threshold (float, optional): Threshold for linker. Defaults to 0.8.
+    """
+
+    source_description_field = "data.http://www.w3.org/2001/XMLSchema#description"
+    target_context_field = (
+        source_context_field
+    ) = "data.https://schema.org/disambiguatingDescription"
+    target_title_field = "graph.@rdfs:label.@value"
+    target_alias_field = "graph.@skos:altLabel.@value"
+    target_type_field = "graph.@skos:hasTopConcept.@value"
+
+    ner_loader = datastore.NERLoader(
+        record_loader,
+        source_es_index=config.ELASTIC_SEARCH_INDEX,
+        source_description_field=source_description_field,
+        source_context_field=source_context_field,
+        target_es_index=config.ELASTIC_SEARCH_INDEX,
+        target_title_field=target_title_field,
+        target_context_field=target_context_field,
+        target_type_field=target_type_field,
+        target_alias_field=target_alias_field,
+        entity_types_to_link={
+            "PERSON",
+            "OBJECT",
+            "ORG",
+        },
+        target_record_types=("PERSON", "OBJECT", "ORGANISATION"),
+        text_preprocess_func=preprocess_text_for_ner,
+    )
+
+    if entity_list_data_path:
+        # we assume that the entity list JSON does not contain link candidates,
+        # i.e. that `include_link_candidates` was False in `export_entity_list_to_json`
+        ner_loader.import_entity_list_from_json(entity_list_data_path)
+    else:
+        ner_loader.get_list_of_entities_from_source_index(
+            model_type, spacy_batch_size=16
+        )
+
+    # To save the retrieved entities to JSON.
+    # For now there are no link candidates (see next step) so we set `include_link_candidates=False`.
+    
+    # ner_loader.export_entity_list_to_json(
+    #     output_path=ner_data_path, include_link_candidates=False
+    # )
+
+    # To load the retrieved entities into the JSON-LD Elasticsearch index.
+    # Because we have no trained linker, we set `force_load_without_linker=True`.
+    # ner_loader.load_entities_into_source_index(
+    #     force_load_without_linker=True,
+    # )
+
+    ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=15)
+
+    if use_trained_linker:
+        # load NEL training data
+        print(f"Using NEL training data from {nel_training_data_path}")
+        nel_train_data = load_nel_training_data(nel_training_data_path)
+        ner_loader.train_entity_linker(nel_train_data)
+    else:
+        # get NEL training data to annotate
+        links_data = ner_loader.get_links_data_for_review()
+        links_data.head(200000).to_excel(nel_training_data_path)
+        print(f"NEL training data exported to {nel_training_data_path}")
+
+        # also optionally save list of entities
+        if entity_list_save_path:
+            ner_loader.export_entity_list_to_json(
+                entity_list_save_path, include_link_candidates=False
+            )
+
+    # ner_loader.load_entities_into_source_index(
+    #     linking_confidence_threshold,
+    #     batch_size=32768,
+    #     force_load_without_linker=not (use_trained_linker),
+    # )
+
+
 if __name__ == "__main__":
     object_data_path = ("../GITIGNORE_DATA/hc_import/content/20210705/objects.ndjson")
     person_data_path = "../GITIGNORE_DATA/hc_import/content/20210705/persons.ndjson"
@@ -263,44 +427,32 @@ if __name__ == "__main__":
     event_data_path = "../GITIGNORE_DATA/hc_import/content/20210705/events.ndjson"
     join_data_path = "../GITIGNORE_DATA/hc_import/join/20210705/joins.ndjson"
 
-    datastore.create_index()
+    ner_data_path = "../GITIGNORE_DATA/NER/entity_json_2021_07_23.json"
 
-    load_object_data(object_data_path)
-    load_person_data(person_data_path)
-    load_org_data(org_data_path)
-    load_event_data(event_data_path)
-    load_join_data(join_data_path)
-    
+    # datastore.create_index()
 
-    # load_related_from_wikidata()
-    # load_sameas_from_wikidata_smg_people_id()
-    # load_sameas_people_orgs("../GITIGNORE_DATA/filtering_people_orgs_result.pkl")
-    # load_organisation_types("../GITIGNORE_DATA/organisations_with_types.pkl")
-    # load_object_types("../GITIGNORE_DATA/objects_with_types.pkl")
-    # load_crowdsourced_links(
-    #     "../GITIGNORE_DATA/smg-datasets-private/wikidatacapture_plus_kd_links_121120.csv"
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/people_281020/people_preds_positive.csv",
-    #     "people",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/organisations_021120/orgs_preds_positive.csv",
-    #     "organisations",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_photographic_aeronautics/preds_positive.csv",
-    #     "objects (photographic technology & aeronautics)",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_computing_space/preds_positive.csv",
-    #     "objects (computing & space)",
-    # )
-    # load_sameas_from_disambiguator(
-    #     "s3://heritageconnector/disambiguation/objects_131120/test_locomotives_and_rolling_stock/preds_positive.csv",
-    #     "objects (locomotives & rolling stock)",
-    # )
+    # load_object_data(object_data_path)
+    # load_person_data(person_data_path)
+    # load_org_data(org_data_path)
+    # load_event_data(event_data_path)
+    # load_join_data(join_data_path)
+
+    # for running using a trained linker
+    # entity_list_data_path = "../GITIGNORE_DATA/NEL/entity_list_20210610-1035.json"
     # load_ner_annotations(
-    #     "en_core_web_lg",
-    #     nel_training_data_path="../GITIGNORE_DATA/NEL/review_data_1103.xlsx",
+    #     "en_core_web_trf",
+    #     use_trained_linker=True,
+    #     entity_list_data_path=entity_list_data_path,
+    #     nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
     # )
+    # for running to produce unlabelled training data at `nel_training_data_path`
+    # load_ner_annotations(
+    #     "en_core_web_trf",
+    #     use_trained_linker=False,
+    #     entity_list_save_path=f"../GITIGNORE_DATA/NEL/entity_list_{get_timestamp()}.json",
+    #     nel_training_data_path=f"../GITIGNORE_DATA/NEL/nel_train_data_{get_timestamp()}.xlsx",
+    # )
+
+    load_ner_annotations("en_core_web_sm",use_trained_linker=False,
+                        entity_list_data_path='../GITIGNORE_DATA/NER/entity_json_2021_07_23.json',
+                        nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_2021_07_28.xlsx")
