@@ -20,6 +20,7 @@ from heritageconnector.namespace import (
 # whilst keeping some useful information in the Elasticsearch index.
 non_graph_predicates = [
     XSD.description,
+    SDO.disambiguatingDescription,
     # NOTE: enable the next two lines for KG embedding training (exclude first & last names)
     # WDT.P735, # first name
     # WDT.P734, # last name
@@ -36,7 +37,7 @@ mapping = {
         "BIRTHPLACE": {"RDF": SDO.birthPlace},
         "DEATHPLACE": {"RDF": SDO.deathPlace},
         "NATIONALITY": {"RDF": SDO.nationality},
-        "BIOGRAPHY": {"RDF": XSD.description}
+        "BIOGRAPHY": {"RDF": XSD.description},
     },
     "ORGANISATION": {
         "DISPLAY_NAME": {"RDF": RDFS.label},
@@ -54,9 +55,10 @@ mapping = {
         # "DESCRIPTION": {"RDF": XSD.description},
         # "PHYS_DESCRIPTION": {"RDF": XSD.description},
         # "PRODUCTION_TYPE": {"RDF": XSD.description},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
         "OBJECT_TYPE": {"RDF": XSD.additionalType},
         "ACCESSION_NUMBER": {"WDT": WDT.P217},
-        "COLLECTION": {"WDT": WDT.P195}
+        "COLLECTION": {"WDT": WDT.P195},
     },
     "EVENT": {
         "NAME": {"RDF": SDO.event},
