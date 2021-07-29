@@ -38,6 +38,7 @@ mapping = {
         "DEATHPLACE": {"RDF": SDO.deathPlace},
         "NATIONALITY": {"RDF": SDO.nationality},
         "BIOGRAPHY": {"RDF": XSD.description},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
     },
     "ORGANISATION": {
         "DISPLAY_NAME": {"RDF": RDFS.label},
@@ -46,6 +47,7 @@ mapping = {
         "FOUNDATION_PLACE_ID": {"RDF": RDFS.label},
         "FOUNDATION_DATE_EARLIEST": {"RDF": SDO.foundingDate},
         # "FOUNDATION_DATE_LATEST": {"RDF": SDO.foundingDate},
+        "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
     },
     "OBJECT": {
         "PRIMARY_TITLE": {"RDF": RDFS.label},

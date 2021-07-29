@@ -192,6 +192,7 @@ def load_person_data(data_path):
 
     table_name = "PERSON"
     person_df = pd.read_json(data_path, lines=True, nrows=max_records)
+    person_df["DISAMBIGUATING_DESCRIPTION"] = person_df["BIOGRAPHY"].copy()
 
     logger.info("loading person data")
     record_loader.add_records(table_name, person_df, add_type=WD.Q5)
@@ -204,6 +205,7 @@ def load_org_data(data_path):
 
     table_name = "ORGANISATION"
     org_df = pd.read_json(data_path, lines=True, nrows=max_records)
+    org_df["DISAMBIGUATING_DESCRIPTION"] = org_df["HISTORY"].copy()
 
     logger.info("loading org data")
     record_loader.add_records(table_name, org_df, add_type=WD.Q43229)
@@ -474,10 +476,10 @@ if __name__ == "__main__":
     datastore.create_index()
 
     load_object_data(object_data_path)
-    # load_person_data(person_data_path)
-    # load_org_data(org_data_path)
-    # load_event_data(event_data_path)
-    # load_join_data(join_data_path)
+    load_person_data(person_data_path)
+    load_org_data(org_data_path)
+    load_event_data(event_data_path)
+    load_join_data(join_data_path)
 
     # for running using a trained linker
     # entity_list_data_path = "../GITIGNORE_DATA/NEL/entity_list_20210610-1035.json"
