@@ -30,6 +30,7 @@ from heritageconnector.namespace import (
     WDT,
 )
 from heritageconnector.utils.data_transformation import get_year_from_date_value
+from heritageconnector.utils.generic import get_timestamp
 from heritageconnector import logging
 
 logger = logging.get_logger(__name__)
@@ -499,16 +500,9 @@ if __name__ == "__main__":
     #     nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
     # )
     # for running to produce unlabelled training data at `nel_training_data_path`
-    # load_ner_annotations(
-    #     "en_core_web_trf",
-    #     use_trained_linker=False,
-    #     entity_list_save_path=f"../GITIGNORE_DATA/NEL/entity_list_{get_timestamp()}.json",
-    #     nel_training_data_path=f"../GITIGNORE_DATA/NEL/nel_train_data_{get_timestamp()}.xlsx",
-    # )
-
     load_ner_annotations(
-        "en_core_web_sm",
+        "en_core_web_trf",
         use_trained_linker=False,
-        # entity_list_data_path='../GITIGNORE_DATA/NER/entity_json_2021_07_23.json',
-        nel_training_data_path="../GITIGNORE_DATA/vanda_hc_data/NEL/nel_train_data_2021_07_29.xlsx",
+        entity_list_save_path=f"../GITIGNORE_DATA/vanda_hc_data/NEL/entity_list_{get_timestamp()}.json",
+        nel_training_data_path=f"../GITIGNORE_DATA/vanda_hc_data/NEL/nel_train_data_{get_timestamp()}.xlsx",
     )
