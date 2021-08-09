@@ -257,7 +257,7 @@ def load_join_data(data_path):
         depicts_df, predicate=FOAF.depiction, subject_col="SUBJECT", object_col="OBJECT"
     )
 
-    logger.info("loading associated data (significant_person and )")
+    logger.info("loading associated data (significant_person and significant_to)")
     associate_df = join_df[join_df["relationship"] == "associated_with"]
     # significant_person - person linked to the item in any possible way
     record_loader.add_triples(
