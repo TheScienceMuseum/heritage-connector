@@ -13,13 +13,9 @@ import sys
 
 sys.path.append("..")
 
-import en_core_web_sm
 import pandas as pd
 import random
-import string
 import re
-import os
-from typing import Optional
 from heritageconnector.config import config, field_mapping
 from heritageconnector import datastore, datastore_helpers
 from heritageconnector.namespace import (
@@ -34,13 +30,6 @@ from heritageconnector.namespace import (
     WDT,
 )
 from heritageconnector.utils.data_transformation import get_year_from_date_value
-from heritageconnector.entity_matching.lookup import (
-    get_internal_urls_from_wikidata,
-    get_sameas_links_from_external_id,
-    get_wikidata_uri_from_placename,
-)
-from heritageconnector.utils.generic import flatten_list_of_lists, get_timestamp
-from heritageconnector.utils.wikidata import qid_to_url
 from heritageconnector import logging
 
 logger = logging.get_logger(__name__)
@@ -51,7 +40,7 @@ pd.options.mode.chained_assignment = None
 # optional limit of number of records to import to test loader. no limit -> None
 # passed as an argument into `pd.read_csv`. You might want to use your own implementation
 # depending on your source data format
-max_records = 3000
+max_records = None
 
 
 # create instance of RecordLoader from datastore
@@ -181,6 +170,11 @@ def load_object_data(data_path):
         create_object_disambiguating_description, axis=1
     )
 
+    #  convert date created to year
+    object_df["PRIMARY_DATE"] = object_df["PRIMARY_DATE"].apply(
+        get_year_from_date_value
+    )
+
     logger.info("loading object data")
     record_loader.add_records(table_name, object_df, add_type=WD.Q488383)
 
@@ -193,6 +187,11 @@ def load_person_data(data_path):
     table_name = "PERSON"
     person_df = pd.read_json(data_path, lines=True, nrows=max_records)
     person_df["DISAMBIGUATING_DESCRIPTION"] = person_df["BIOGRAPHY"].copy()
+
+    #  convert birthdate to year
+    person_df["BIRTHDATE_EARLIEST"] = person_df["BIRTHDATE_EARLIEST"].apply(
+        lambda x: int(x[0:4]) if x is not None else x
+    )
 
     logger.info("loading person data")
     record_loader.add_records(table_name, person_df, add_type=WD.Q5)
@@ -207,6 +206,11 @@ def load_org_data(data_path):
     org_df = pd.read_json(data_path, lines=True, nrows=max_records)
     org_df["DISAMBIGUATING_DESCRIPTION"] = org_df["HISTORY"].copy()
 
+    #  convert founding date to year
+    org_df["FOUNDATION_DATE_EARLIEST"] = org_df["FOUNDATION_DATE_EARLIEST"].apply(
+        lambda x: int(x[0:4]) if x is not None else x
+    )
+
     logger.info("loading org data")
     record_loader.add_records(table_name, org_df, add_type=WD.Q43229)
 
@@ -218,6 +222,11 @@ def load_event_data(data_path):
 
     table_name = "EVENT"
     event_df = pd.read_json(data_path, lines=True, nrows=max_records)
+
+    #  convert date created to year
+    event_df[["DATE_EARLIEST", "DATE_LATEST"]] = event_df[
+        ["DATE_EARLIEST", "DATE_LATEST"]
+    ].applymap(get_year_from_date_value)
 
     logger.info("loading event data")
     record_loader.add_records(table_name, event_df, add_type=WD.P793)
