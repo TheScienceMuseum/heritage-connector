@@ -23,10 +23,10 @@ def load_model(
         os.path.dirname(__file__),
         "../GITIGNORE_DATA/make_data/output/dictionary_matcher_collection.jsonl",
     )
-    _events_thesaurus_path = events_thesaurus_path or os.path.join(
-        os.path.dirname(__file__),
-        "../GITIGNORE_DATA/make_data/output/dictionary_matcher_events.jsonl",
-    )
+    # _events_thesaurus_path = events_thesaurus_path or os.path.join(
+    #     os.path.dirname(__file__),
+    #     "../GITIGNORE_DATA/make_data/output/dictionary_matcher_events.jsonl",
+    # )
 
     if model_type == "en_core_web_trf":
         activated = spacy.prefer_gpu()
@@ -53,16 +53,16 @@ def load_model(
         after="ner",
     )
     nlp.rename_pipe("thesaurus_matcher", "thesaurus_matcher_collection")
-    nlp.add_pipe(
-        "thesaurus_matcher",
-        config={
-            "case_sensitive": True,
-            "overwrite_ents": False,
-            "thesaurus_path": _events_thesaurus_path,
-        },
-        before="ner",
-    )
-    nlp.rename_pipe("thesaurus_matcher", "thesaurus_matcher_events")
+    # nlp.add_pipe(
+    #     "thesaurus_matcher",
+    #     config={
+    #         "case_sensitive": True,
+    #         "overwrite_ents": False,
+    #         "thesaurus_path": _events_thesaurus_path,
+    #     },
+    #     before="ner",
+    # )
+    # nlp.rename_pipe("thesaurus_matcher", "thesaurus_matcher_events")
     nlp.add_pipe("entity_filter", config={"ent_labels_ignore": ["DATE"]}, last=True)
     nlp.add_pipe("map_entity_types", last=True)
     nlp.add_pipe("entity_joiner", last=True)

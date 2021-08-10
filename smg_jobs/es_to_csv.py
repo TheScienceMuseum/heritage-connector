@@ -24,7 +24,6 @@ entity_terms = [
     "entityEVENT",
 ]
 
-
 def postprocess_heritageconnector_graph(g: rdflib.Graph) -> rdflib.Graph:
     """Fixing issues in the graph after they've happened. All things on here should also exist as TODOs in the loader or elsewhere in the code,
     and should be taken out of this function when they're fixed.
