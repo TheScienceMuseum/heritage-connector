@@ -241,7 +241,7 @@ def load_event_data(data_path):
 def load_join_data(data_path):
     """Load subject-object-predicate triple from ndjson files and add to existing records"""
     join_df = pd.read_json(data_path, lines=True, nrows=max_records)
-    join_df = join_df.rename(columns={"URI_1": "OBJECT", "URI_2": "SUBJECT"})
+    join_df = join_df.rename(columns={"URI_1": "SUBJECT", "URI_2": "OBJECT"})
 
     logger.info("loading maker data (made by & made)")
     maker_df = join_df[join_df["relationship"] == "made_by"]
@@ -249,72 +249,67 @@ def load_join_data(data_path):
     made_df = pd.concat([maker_df, manufactured_df])
     # made
     record_loader.add_triples(
-        made_df, predicate=FOAF.maker, subject_col="OBJECT", object_col="SUBJECT"
+        made_df, predicate=FOAF.maker, subject_col="SUBJECT", object_col="OBJECT"
     )
     # made by
     record_loader.add_triples(
-        made_df, predicate=FOAF.made, subject_col="SUBJECT", object_col="OBJECT"
+        made_df, predicate=FOAF.made, subject_col="OBJECT", object_col="SUBJECT"
     )
 
     logger.info("loading depicts data (depicts and depicted)")
     depicts_df = join_df[join_df["relationship"] == "depicts"]
     # depicts - A thing depicted in this representation
     record_loader.add_triples(
-        depicts_df, predicate=FOAF.depicts, subject_col="OBJECT", object_col="SUBJECT"
+        depicts_df, predicate=FOAF.depicts, subject_col="SUBJECT", object_col="OBJECT"
     )
     # depiction - A depiction of some thing
     record_loader.add_triples(
-        depicts_df, predicate=FOAF.depiction, subject_col="SUBJECT", object_col="OBJECT"
+        depicts_df, predicate=FOAF.depiction, subject_col="OBJECT", object_col="SUBJECT"
     )
 
     logger.info("loading associated data (significant_person and significant_to)")
     associate_df = join_df[join_df["relationship"] == "associated_with"]
     # significant_person - person linked to the item in any possible way
     record_loader.add_triples(
-        associate_df, predicate=WDT.P3342, subject_col="OBJECT", object_col="SUBJECT"
-    )
-    # significant_to
-    record_loader.add_triples(
-        associate_df,
-        predicate=WDT.Q67185741,
-        subject_col="SUBJECT",
-        object_col="OBJECT",
+        associate_df, predicate=WDT.P3342, subject_col="SUBJECT", object_col="OBJECT"
     )
 
     logger.info("loading materials data (made from material and uses_this_material)")
     materials_df = join_df[join_df["relationship"] == "made_from_material"]
     # made_from_material
     record_loader.add_triples(
-        materials_df, predicate=WDT.P186, subject_col="OBJECT", object_col="SUBJECT"
-    )
-    # uses_this_material
-    record_loader.add_triples(
-        materials_df,
-        predicate=WDT.Q104626285,
-        subject_col="SUBJECT",
-        object_col="OBJECT",
+        materials_df, predicate=SDO.material, subject_col="SUBJECT", object_col="OBJECT"
     )
 
     logger.info("loading techniques data (fabrication_method)")
     technique_df = join_df[join_df["relationship"] == "fabrication_method"]
     # fabrication_method
-    record_loader.add_triples(
-        technique_df, predicate=WDT.P2079, subject_col="OBJECT", object_col="SUBJECT"
-    )
+    # NOTE: these triples don't load in as fabrication methods don't have associated documents.
+    # These are the only triples we have this issue for, as all the rest are loaded between entities whose
+    # types are documents (PERSON, ORGANISATION, OBJECT, EVENT). To load these triples in, we'd need to
+    # make documents for each fabrication method.
+    # record_loader.add_triples(
+    #     # predicate = product or material produced (method -> object)
+    #     technique_df, predicate=WDT.P1056, subject_col="OBJECT", object_col="SUBJECT"
+    # )
 
     record_loader.add_triples(
-        technique_df, predicate=WDT.P2079, subject_col="SUBJECT", object_col="OBJECT"
+        # predicate = fabrication method (object -> method)
+        technique_df,
+        predicate=WDT.P2079,
+        subject_col="SUBJECT",
+        object_col="OBJECT",
     )
 
     logger.info("loading events data (significant_event)")
     events_df = join_df[join_df["relationship"] == "significant_event"]
     # significant event
     record_loader.add_triples(
-        events_df, predicate=WDT.P793, subject_col="OBJECT", object_col="SUBJECT"
-    )
-
-    record_loader.add_triples(
-        events_df, predicate=WDT.P793, subject_col="SUBJECT", object_col="OBJECT"
+        # predicate = significant event (object -> event)
+        events_df,
+        predicate=WDT.P793,
+        subject_col="SUBJECT",
+        object_col="OBJECT",
     )
 
     return
