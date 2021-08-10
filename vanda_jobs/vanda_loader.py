@@ -454,11 +454,11 @@ def load_ner_annotations(
                 entity_list_save_path, include_link_candidates=False
             )
 
-    # ner_loader.load_entities_into_source_index(
-    #     linking_confidence_threshold,
-    #     batch_size=32768,
-    #     force_load_without_linker=not (use_trained_linker),
-    # )
+    ner_loader.load_entities_into_source_index(
+        linking_confidence_threshold,
+        batch_size=32768,
+        force_load_without_linker=not (use_trained_linker),
+    )
 
 
 if __name__ == "__main__":
