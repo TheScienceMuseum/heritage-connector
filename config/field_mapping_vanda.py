@@ -59,8 +59,8 @@ mapping = {
         # "PRODUCTION_TYPE": {"RDF": XSD.description},
         "DISAMBIGUATING_DESCRIPTION": {"RDF": SDO.disambiguatingDescription},
         "OBJECT_TYPE": {"RDF": XSD.additionalType},
-        "ACCESSION_NUMBER": {"WDT": WDT.P217},
-        "COLLECTION": {"WDT": WDT.P195},
+        "ACCESSION_NUMBER": {"RDF": WDT.P217},
+        "COLLECTION": {"RDF": SDO.isPartOf},
     },
     "EVENT": {
         "NAME": {"RDF": SDO.event},
