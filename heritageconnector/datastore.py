@@ -49,6 +49,7 @@ try:
             [config.ELASTIC_SEARCH_CLUSTER],
             http_auth=(config.ELASTIC_SEARCH_USER, config.ELASTIC_SEARCH_PASSWORD),
             timeout=60,
+            retry_on_timeout=True,
         )
         logger.debug(
             f"Connected to Elasticsearch cluster at {config.ELASTIC_SEARCH_CLUSTER}",
@@ -57,6 +58,7 @@ try:
         # use localhost
         es = Elasticsearch(
             timeout=60,
+            retry_on_timeout=True,
         )
         logger.debug("Connected to Elasticsearch cluster on localhost")
 
@@ -424,7 +426,6 @@ def es_bulk(
         actions=action_generator,
         chunk_size=es_config["chunk_size"],
         queue_size=es_config["queue_size"],
-        max_retries=es_config["max_retries"],
         raise_on_error=raise_on_error,
     )
 
