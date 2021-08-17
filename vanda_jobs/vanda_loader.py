@@ -422,19 +422,6 @@ def load_ner_annotations(
             model_type, spacy_batch_size=16
         )
 
-    # To save the retrieved entities to JSON.
-    # For now there are no link candidates (see next step) so we set `include_link_candidates=False`.
-
-    ner_loader.export_entity_list_to_json(
-        output_path=ner_data_path, include_link_candidates=False
-    )
-
-    # To load the retrieved entities into the JSON-LD Elasticsearch index.
-    # Because we have no trained linker, we set `force_load_without_linker=True`.
-    ner_loader.load_entities_into_source_index(
-        force_load_without_linker=True,
-    )
-
     ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=15)
 
     if use_trained_linker:
