@@ -64,6 +64,7 @@ try:
     es_config = {
         "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
         "queue_size": int(config.ES_BULK_QUEUE_SIZE),
+        "max_retries": int(config.ES_BULK_MAX_RETRIES),
     }
 
     context = get_jsonld_context()
@@ -423,6 +424,7 @@ def es_bulk(
         actions=action_generator,
         chunk_size=es_config["chunk_size"],
         queue_size=es_config["queue_size"],
+        max_retries=es_config["max_retries"],
         raise_on_error=raise_on_error,
     )
 
