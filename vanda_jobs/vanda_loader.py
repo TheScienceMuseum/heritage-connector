@@ -431,8 +431,9 @@ def load_ner_annotations(
         ner_loader.train_entity_linker(nel_train_data)
     else:
         # get NEL training data to annotate
+        print("Getting links data for review")
         links_data = ner_loader.get_links_data_for_review()
-        links_data.head(200000).to_excel(nel_training_data_path)
+        links_data.head(20000).to_excel(nel_training_data_path)
         print(f"NEL training data exported to {nel_training_data_path}")
 
         # also optionally save list of entities
