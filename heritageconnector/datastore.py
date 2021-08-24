@@ -1353,7 +1353,9 @@ class NERLoader:
             else:
                 entity_list_with_link_candidates.append(item)
 
+        logger.debug("copying entity list (before)")
         self._entity_list = entity_list_with_link_candidates
+        logger.debug("copying entity list (after)")
 
         return self._entity_list
 
