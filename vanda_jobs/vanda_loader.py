@@ -426,15 +426,15 @@ def load_ner_annotations(
 
     if use_trained_linker:
         # load NEL training data
-        print(f"Using NEL training data from {nel_training_data_path}")
+        logger.info(f"Using NEL training data from {nel_training_data_path}")
         nel_train_data = load_nel_training_data(nel_training_data_path)
         ner_loader.train_entity_linker(nel_train_data)
     else:
         # get NEL training data to annotate
-        print("Getting links data for review")
+        logger.info("Getting links data for review")
         links_data = ner_loader.get_links_data_for_review()
         links_data.head(20000).to_excel(nel_training_data_path)
-        print(f"NEL training data exported to {nel_training_data_path}")
+        logger.info(f"NEL training data exported to {nel_training_data_path}")
 
         # also optionally save list of entities
         if entity_list_save_path:
