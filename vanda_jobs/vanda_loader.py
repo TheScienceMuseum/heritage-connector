@@ -440,7 +440,9 @@ def load_ner_annotations(
         if entity_list_save_path:
             logger.info("Exporting entity list to JSON")
             ner_loader.export_entity_list_to_json(
-                entity_list_save_path, include_link_candidates=False
+                # NOTE: usually (not in debug) we don't export link candidates
+                entity_list_save_path,
+                include_link_candidates=True,
             )
 
     ner_loader.load_entities_into_source_index(
