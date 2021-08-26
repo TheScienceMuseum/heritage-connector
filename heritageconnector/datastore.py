@@ -66,7 +66,6 @@ try:
     es_config = {
         "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
         "queue_size": int(config.ES_BULK_QUEUE_SIZE),
-        "max_retries": int(config.ES_BULK_MAX_RETRIES),
     }
 
     context = get_jsonld_context()
