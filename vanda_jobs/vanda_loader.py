@@ -42,7 +42,7 @@ pd.options.mode.chained_assignment = None
 # passed as an argument into `pd.read_csv`. You might want to use your own implementation
 # depending on your source data format
 max_records = None
-
+MAX_NO_WORDS_PER_DESCRIPTION = 500
 
 # create instance of RecordLoader from datastore
 record_loader = datastore.RecordLoader(
@@ -52,6 +52,12 @@ record_loader = datastore.RecordLoader(
 #  ======================================================
 
 ## Content Table Loading
+
+
+def trim_description(desc: str, n_words: int) -> str:
+    """Return the first `n_words` words of description `desc`/"""
+
+    return " ".join(str(desc).split(" ")[0:n_words])
 
 
 def reverse_person_preferred_name_and_strip_brackets(name: str) -> str:
@@ -166,6 +172,9 @@ def load_object_data(data_path):
     object_df.loc[:, "COMBINED_DESCRIPTION"] = object_df[
         ["DESCRIPTION", "PHYS_DESCRIPTION", "PRODUCTION_TYPE"]
     ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
+    object_df["COMBINED_DESCRIPTION"] = object_df["COMBINED_DESCRIPTION"].apply(
+        lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
+    )
 
     object_df["DISAMBIGUATING_DESCRIPTION"] = object_df.apply(
         create_object_disambiguating_description, axis=1
@@ -187,6 +196,9 @@ def load_person_data(data_path):
 
     table_name = "PERSON"
     person_df = pd.read_json(data_path, lines=True, nrows=max_records)
+    person_df["BIOGRAPHY"] = person_df["BIOGRAPHY"].apply(
+        lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
+    )
     person_df["DISAMBIGUATING_DESCRIPTION"] = person_df["BIOGRAPHY"].copy()
 
     #  convert birthdate to year
@@ -205,6 +217,9 @@ def load_org_data(data_path):
 
     table_name = "ORGANISATION"
     org_df = pd.read_json(data_path, lines=True, nrows=max_records)
+    org_df["HISTORY"] = org_df["HISTORY"].apply(
+        lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
+    )
     org_df["DISAMBIGUATING_DESCRIPTION"] = org_df["HISTORY"].copy()
 
     #  convert founding date to year
