@@ -753,6 +753,8 @@ class NERLoader:
         self.entity_markers = entity_markers
 
         self._entity_list = []
+        self._source_record_cache = None
+        self._target_record_cache = dict()
 
     @property
     def entity_list(self) -> List[dict]:
@@ -786,61 +788,56 @@ class NERLoader:
             .set_index(
                 [
                     "item_uri",
-                    "item_description",
-                    "item_description_with_ent",
                     "ent_label",
                     "ent_text",
-                    "ent_sentence",
                 ]
             )["link_candidates"]
             .apply(pd.Series)
             .stack()
             .reset_index()
             # the level of level_n below is the length of the list used in `set_index above`
-            .rename(columns={"level_6": "candidate_rank"})
+            .rename(columns={"level_3": "candidate_rank", 0: "candidate_uri"})
         )
 
-        candidate_cols = ents_with_candidates_df[0].apply(pd.Series)
-        candidate_cols = candidate_cols.rename(
-            columns={col: f"candidate_{col}" for col in candidate_cols}
+        ents_with_candidates_df = pd.concat(
+            [
+                ents_with_candidates_df,
+                ents_with_candidates_df["candidate_uri"]
+                .map(self._target_record_cache)
+                .apply(pd.Series)
+                .add_prefix("candidate_"),
+            ],
+            axis=1,
         )
-
-        ents_with_candidates_transformed_df = (
-            pd.concat([ents_with_candidates_df, candidate_cols], axis=1)
-            .drop(columns=[0])
-            .fillna("")
-        )
-        ents_with_candidates_transformed_df["link_correct"] = ""
+        ents_with_candidates_df["item_description"] = ents_with_candidates_df[
+            "item_uri"
+        ].apply(lambda x: self._source_record_cache.get(x, {}).get("description"))
+        ents_with_candidates_df = ents_with_candidates_df.fillna("")
+        ents_with_candidates_df["link_correct"] = ""
 
         cols_order = [
             "item_uri",
             "candidate_rank",
-            "item_description_with_ent",
+            "item_description",
             "ent_label",
             "ent_text",
-            "ent_sentence",
             "candidate_title",
             "candidate_type",
             "candidate_uri",
             "link_correct",
             "candidate_description",
-            "item_description",
-        ]
-        other_cols = [
-            col
-            for col in ents_with_candidates_transformed_df.columns
-            if col not in cols_order
         ]
 
-        # Return the concatenation of the DataFrame with links and the DataFrame without links.
+        other_cols = [
+            col for col in ents_with_candidates_df.columns if col not in cols_order
+        ]
+
         df_linked_and_unlinked = pd.concat(
-            [ents_no_candidates_df, ents_with_candidates_transformed_df]
+            [ents_no_candidates_df, ents_with_candidates_df]
         )
 
         df_linked_and_unlinked = df_linked_and_unlinked[cols_order + other_cols]
-        # ents_with_candidates_transformed_df = ents_with_candidates_transformed_df[cols_order + other_cols]
 
-        # for debugging: check all records have ended up in final dataframe
         assert set(df_linked_and_unlinked["item_uri"]) == set(
             [item["item_uri"] for item in self._entity_list]
         )
@@ -868,10 +865,8 @@ class NERLoader:
         missing_cols = {
             "item_uri",
             "candidate_rank",
-            "item_description_with_ent",
             "ent_label",
             "ent_text",
-            "ent_sentence",
             "candidate_title",
             "candidate_type",
             "candidate_uri",
@@ -1030,6 +1025,10 @@ class NERLoader:
                 self.source_index, limit, random_sample, random_seed
             )
         )
+        self._source_record_cache = {
+            item[0]: {"description": item[1], "context": item[2]} for item in doc_list
+        }
+
         self.nlp = self._get_ner_model(model_type)
 
         if ignore_duplicated_ents and (
@@ -1067,7 +1066,7 @@ class NERLoader:
 
         return self.entity_list
 
-    def export_entity_list_to_json(
+    def export_entity_data_to_json(
         self, output_path: str, include_link_candidates: bool
     ):
         """Export entity list to JSON
@@ -1092,9 +1091,16 @@ class NERLoader:
             )
 
         with open(output_path, "w") as f:
-            json.dump(self._entity_list, f)
+            json.dump(
+                {
+                    "_entity_list": self._entity_list,
+                    "_source_record_cache": self._source_record_cache,
+                    "_target_record_cache": self._target_record_cache,
+                },
+                f,
+            )
 
-        logger.info(f"Entity list saved to {output_path}")
+        logger.info(f"Entity list and document caches saved to {output_path}")
 
     def import_entity_list_from_json(self, input_path: str):
         """Import entity list from JSON. Overwrites `NERLoader._entity_list`.
@@ -1343,12 +1349,21 @@ class NERLoader:
                     n=candidates_per_entity_mention * 2,
                     reduce_to_key_fields=True,
                 )
-                link_candidates = [
-                    i for i in link_candidates if i["uri"] != item["item_uri"]
+                link_candidates_uris = [
+                    i["uri"] for i in link_candidates if i["uri"] != item["item_uri"]
                 ][:candidates_per_entity_mention]
                 entity_list_with_link_candidates.append(
-                    dict(item, **{"link_candidates": link_candidates})
+                    dict(item, **{"link_candidates": link_candidates_uris})
                 )
+
+                for candidate in link_candidates:
+                    self._target_record_cache.update(
+                        {
+                            candidate["uri"]: {
+                                k: v for k, v in candidate.items() if k != "uri"
+                            }
+                        }
+                    )
             else:
                 entity_list_with_link_candidates.append(item)
 
@@ -1424,7 +1439,7 @@ class NERLoader:
 
     def _reduce_target_doc_to_key_fields(self, doc: dict) -> dict:
         """
-        Reduce doc to target uri, title, description and alias fields. Run preprocessing function on description field.
+        Reduce doc to key fields specified by `self.target_fields`. Run preprocessing function on description field.
         """
 
         reduced_doc = {"uri": _get_dict_field_from_dot_notation(doc, "uri")}
@@ -1473,22 +1488,21 @@ class NERLoader:
                 # This split is used to get the original description (doc.text) from the augmented description
                 # (item_description) so that the entity boundaries can be used, then add the augmented parts
                 # back afterwards.
-                item_context_split = item_description.split(doc.text)
                 ent_text = ent._.alt_ent_text or ent.text
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
-                        "item_description": item_description,
-                        "item_description_with_ent": item_context_split[0]
-                        + doc.text[: doc[ent.start].idx]
-                        + self.entity_markers[0]
-                        + ent_text
-                        + self.entity_markers[1]
-                        + doc.text[doc[ent.start].idx + len(ent.text) :]
-                        + item_context_split[1],
+                        # "item_description": item_description,
+                        # "item_description_with_ent": item_context_split[0]
+                        # + doc.text[: doc[ent.start].idx]
+                        # + self.entity_markers[0]
+                        # + ent_text
+                        # + self.entity_markers[1]
+                        # + doc.text[doc[ent.start].idx + len(ent.text) :]
+                        # + item_context_split[1],
                         "ent_label": ent.label_,
                         "ent_text": ent_text,
-                        "ent_sentence": ent.sent.text,
+                        # "ent_sentence": ent.sent.text,
                     }
                 )
 
@@ -1500,19 +1514,20 @@ class NERLoader:
         limit: Optional[int] = None,
         random_sample: bool = True,
         random_seed: int = 42,
-    ) -> Generator[List[Tuple[str, str]], None, None]:
+    ) -> Generator[Tuple[str, str, str], None, None]:
         """
-        Returns a generator of document IDs and descriptions from the Elasticsearch index, batched according to
-            `self.batch_size` and limited according to `limit`. Only documents with an XSD.description value are
-            returned, and these are processed by the function specified in class instance creation.
+        Returns a generator of document IDs and descriptions and contexts from the Elasticsearch index, limited according to `limit`.
+            Only documents with an XSD.description value are returned, and these are processed by the function specified in class
+            instance creation.
 
         Args:
+            index (str): Elasticsearch index
             limit (Optional[int], optional): limit the number of documents to get and therefore load. Defaults to None.
             random_sample (bool, optional): whether to take documents at random. Defaults to True.
             random_seed (int, optional): random seed to use if random sampling is enabled using the `random_sample` parameter. Defaults to 42.
 
         Returns:
-            Generator[List[Tuple[str, str]]]: generator of lists with length `self.batch_size`, where each list contains `(uri, description)` tuples.
+            Generator[Tuple[str, str, str], None, None]: generator of tuples with the form `(uri, description, context)`.
         """
 
         if random_sample:

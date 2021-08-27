@@ -446,15 +446,15 @@ def load_ner_annotations(
         ner_loader.train_entity_linker(nel_train_data)
     else:
         # get NEL training data to annotate
-        # logger.info("Getting links data for review")
-        # links_data = ner_loader.get_links_data_for_review()
-        # links_data.head(20000).to_excel(nel_training_data_path)
-        # logger.info(f"NEL training data exported to {nel_training_data_path}")
+        logger.info("Getting links data for review")
+        links_data = ner_loader.get_links_data_for_review()
+        links_data.head(20000).to_excel(nel_training_data_path)
+        logger.info(f"NEL training data exported to {nel_training_data_path}")
 
         # also optionally save list of entities
         if entity_list_save_path:
             logger.info("Exporting entity list to JSON")
-            ner_loader.export_entity_list_to_json(
+            ner_loader.export_entity_data_to_json(
                 # NOTE: usually (not in debug) we don't export link candidates
                 entity_list_save_path,
                 include_link_candidates=True,
