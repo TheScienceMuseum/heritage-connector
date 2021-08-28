@@ -852,7 +852,7 @@ class NERLoader:
         matches and a '0' for incorrect matches.
         """
 
-        links_df = self.entity_list_as_dataframe.copy()
+        links_df = self.entity_list_as_dataframe
         links_df = links_df[~links_df["candidate_rank"].isnull()]
 
         return links_df
