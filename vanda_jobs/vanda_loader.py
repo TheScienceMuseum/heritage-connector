@@ -456,8 +456,8 @@ def load_ner_annotations(
 
         # get NEL training data to annotate
         logger.info("Getting links data for review")
-        links_data = ner_loader.get_links_data_for_review()
-        links_data.head(20000).to_excel(nel_training_data_path)
+        links_data = ner_loader.get_links_data_for_review(max_no_entities=10000)
+        links_data.to_excel(nel_training_data_path)
         logger.info(f"NEL training data exported to {nel_training_data_path}")
 
     ner_loader.load_entities_into_source_index(
