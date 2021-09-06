@@ -42,7 +42,7 @@ pd.options.mode.chained_assignment = None
 # passed as an argument into `pd.read_csv`. You might want to use your own implementation
 # depending on your source data format
 max_records = None
-
+MAX_NO_WORDS_PER_DESCRIPTION = 500
 
 # create instance of RecordLoader from datastore
 record_loader = datastore.RecordLoader(
@@ -52,6 +52,12 @@ record_loader = datastore.RecordLoader(
 #  ======================================================
 
 ## Content Table Loading
+
+
+def trim_description(desc: str, n_words: int) -> str:
+    """Return the first `n_words` words of description `desc`/"""
+
+    return " ".join(str(desc).split(" ")[0:n_words])
 
 
 def reverse_person_preferred_name_and_strip_brackets(name: str) -> str:
@@ -166,6 +172,9 @@ def load_object_data(data_path):
     object_df.loc[:, "COMBINED_DESCRIPTION"] = object_df[
         ["DESCRIPTION", "PHYS_DESCRIPTION", "PRODUCTION_TYPE"]
     ].apply(lambda x: f"{newline.join(x)}" if any(x) else "", axis=1)
+    object_df["COMBINED_DESCRIPTION"] = object_df["COMBINED_DESCRIPTION"].apply(
+        lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
+    )
 
     object_df["DISAMBIGUATING_DESCRIPTION"] = object_df.apply(
         create_object_disambiguating_description, axis=1
@@ -187,6 +196,9 @@ def load_person_data(data_path):
 
     table_name = "PERSON"
     person_df = pd.read_json(data_path, lines=True, nrows=max_records)
+    person_df["BIOGRAPHY"] = person_df["BIOGRAPHY"].apply(
+        lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
+    )
     person_df["DISAMBIGUATING_DESCRIPTION"] = person_df["BIOGRAPHY"].copy()
 
     #  convert birthdate to year
@@ -205,6 +217,9 @@ def load_org_data(data_path):
 
     table_name = "ORGANISATION"
     org_df = pd.read_json(data_path, lines=True, nrows=max_records)
+    org_df["HISTORY"] = org_df["HISTORY"].apply(
+        lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
+    )
     org_df["DISAMBIGUATING_DESCRIPTION"] = org_df["HISTORY"].copy()
 
     #  convert founding date to year
@@ -430,17 +445,20 @@ def load_ner_annotations(
         nel_train_data = load_nel_training_data(nel_training_data_path)
         ner_loader.train_entity_linker(nel_train_data)
     else:
-        # get NEL training data to annotate
-        logger.info("Getting links data for review")
-        links_data = ner_loader.get_links_data_for_review()
-        links_data.head(20000).to_excel(nel_training_data_path)
-        logger.info(f"NEL training data exported to {nel_training_data_path}")
-
         # also optionally save list of entities
         if entity_list_save_path:
-            ner_loader.export_entity_list_to_json(
-                entity_list_save_path, include_link_candidates=False
+            logger.info("Exporting entity list to JSON")
+            ner_loader.export_entity_data_to_json(
+                # NOTE: usually (not in debug) we don't export link candidates
+                entity_list_save_path,
+                include_link_candidates=True,
             )
+
+        # get NEL training data to annotate
+        logger.info("Getting links data for review")
+        links_data = ner_loader.get_links_data_for_review(max_no_entities=10000)
+        links_data.to_excel(nel_training_data_path)
+        logger.info(f"NEL training data exported to {nel_training_data_path}")
 
     ner_loader.load_entities_into_source_index(
         linking_confidence_threshold,

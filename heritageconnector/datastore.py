@@ -1,3 +1,4 @@
+from multiprocessing import Value
 from elasticsearch import helpers, Elasticsearch
 from elasticsearch import exceptions as es_exceptions
 import rdflib
@@ -33,6 +34,7 @@ from heritageconnector.nlp import nel
 from heritageconnector.utils.wikidata import is_qid
 from heritageconnector import logging, best_spacy_pipeline
 import pandas as pd
+import numpy as np
 import spacy
 from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
@@ -66,7 +68,6 @@ try:
     es_config = {
         "chunk_size": int(config.ES_BULK_CHUNK_SIZE),
         "queue_size": int(config.ES_BULK_QUEUE_SIZE),
-        "max_retries": int(config.ES_BULK_MAX_RETRIES),
     }
 
     context = get_jsonld_context()
@@ -754,6 +755,8 @@ class NERLoader:
         self.entity_markers = entity_markers
 
         self._entity_list = []
+        self._source_record_cache = None
+        self._target_record_cache = dict()
 
     @property
     def entity_list(self) -> List[dict]:
@@ -764,102 +767,149 @@ class NERLoader:
         """
         return self._entity_list
 
-    @property
-    def entity_list_as_dataframe(self) -> pd.DataFrame:
+    def entity_list_as_dataframe(
+        self,
+        max_no_entities: int = None,
+        ents_with_link_candidates: bool = True,
+        ents_without_link_candidates: bool = True,
+    ) -> pd.DataFrame:
+        """Get a dataframe of the entities stored in the class. Each row in the DataFrame corresponds to an entity mention and link candidate if candidates were
+        found, or just the entity mention if they were not.
+
+        Args:
+            max_no_entities (int, optional): used to limit the size of the returned DataFrame. If both `ents_with_link_candidates` and `ents_without_link_candidates`
+            are set to True, the proportion of each will be random. Defaults to None.
+            ents_with_link_candidates (bool, optional): whether to return entities with link candidates. Defaults to True.
+            ents_without_link_candidates (bool, optional): whether to return entities without link candidates. Defaults to True.
+
+        Returns:
+            pd.DataFrame: dataframe of entities and their link candidates where applicable.
+        """
+
+        if not (ents_with_link_candidates or ents_without_link_candidates):
+            raise ValueError(
+                "One of `ents_with_link_candidates` or `ents_without_link_candidates` must be True."
+            )
+
         ent_df = pd.DataFrame(self._entity_list)
 
         if "link_candidates" not in ent_df.columns:
             return ent_df
 
-        # Get DataFrame of entity mentions without link candidates, either because they have types that haven't requested
-        # to be linked (link_candidates column isna()) or because no results were returned from the linking search
-        # (link candidates column is empty list).
-        ents_no_candidates_df = pd.concat(
-            [
-                ent_df[ent_df["link_candidates"].isna()],
-                ent_df[ent_df.astype(str)["link_candidates"] == "[]"],
-            ]
-        )
+        if (
+            ents_with_link_candidates
+            and ents_without_link_candidates
+            and max_no_entities
+            and (max_no_entities < len(ent_df))
+        ):
+            ent_df = ent_df.sample(max_no_entities)
 
-        # Transform data with link candidates for easy review.
-        ents_with_candidates_df = (
-            ent_df.dropna(subset=["link_candidates"])
-            .set_index(
+        if ents_without_link_candidates:
+            # Get DataFrame of entity mentions without link candidates, either because they have types that haven't requested
+            # to be linked (link_candidates column isna()) or because no results were returned from the linking search
+            # (link candidates column is empty list).
+            ents_no_candidates_df = pd.concat(
                 [
-                    "item_uri",
-                    "item_description",
-                    "item_description_with_ent",
-                    "ent_label",
-                    "ent_text",
-                    "ent_sentence",
+                    ent_df[ent_df["link_candidates"].isna()],
+                    ent_df[ent_df.astype(str)["link_candidates"] == "[]"],
                 ]
-            )["link_candidates"]
-            .apply(pd.Series)
-            .stack()
-            .reset_index()
-            # the level of level_n below is the length of the list used in `set_index above`
-            .rename(columns={"level_6": "candidate_rank"})
-        )
+            )
 
-        candidate_cols = ents_with_candidates_df[0].apply(pd.Series)
-        candidate_cols = candidate_cols.rename(
-            columns={col: f"candidate_{col}" for col in candidate_cols}
-        )
+            if max_no_entities and (max_no_entities < len(ents_no_candidates_df)):
+                ents_no_candidates_df = ents_no_candidates_df.sample(max_no_entities)
 
-        ents_with_candidates_transformed_df = (
-            pd.concat([ents_with_candidates_df, candidate_cols], axis=1)
-            .drop(columns=[0])
-            .fillna("")
-        )
-        ents_with_candidates_transformed_df["link_correct"] = ""
+        if ents_with_link_candidates:
+            # Transform data with link candidates for easy review.
+            ents_with_candidates_df = ent_df.dropna(subset=["link_candidates"])
 
-        cols_order = [
-            "item_uri",
-            "candidate_rank",
-            "item_description_with_ent",
-            "ent_label",
-            "ent_text",
-            "ent_sentence",
-            "candidate_title",
-            "candidate_type",
-            "candidate_uri",
-            "link_correct",
-            "candidate_description",
-            "item_description",
-        ]
-        other_cols = [
-            col
-            for col in ents_with_candidates_transformed_df.columns
-            if col not in cols_order
-        ]
+            if max_no_entities and (max_no_entities < len(ents_with_candidates_df)):
+                ents_with_candidates_df = ents_with_candidates_df.sample(
+                    max_no_entities
+                )
 
-        # Return the concatenation of the DataFrame with links and the DataFrame without links.
-        df_linked_and_unlinked = pd.concat(
-            [ents_no_candidates_df, ents_with_candidates_transformed_df]
-        )
+            ents_with_candidates_df = (
+                ents_with_candidates_df.set_index(
+                    [
+                        "item_uri",
+                        "ent_label",
+                        "ent_text",
+                    ]
+                )["link_candidates"]
+                .apply(pd.Series)
+                .stack()
+                .reset_index()
+                # the level of level_n below is the length of the list used in `set_index above`
+                .rename(columns={"level_3": "candidate_rank", 0: "candidate_uri"})
+            )
+
+            ents_with_candidates_df = pd.concat(
+                [
+                    ents_with_candidates_df,
+                    ents_with_candidates_df["candidate_uri"]
+                    .map(self._target_record_cache)
+                    .apply(pd.Series)
+                    .add_prefix("candidate_"),
+                ],
+                axis=1,
+            )
+            ents_with_candidates_df["item_description"] = ents_with_candidates_df[
+                "item_uri"
+            ].apply(lambda x: self._source_record_cache.get(x, {}).get("description"))
+            ents_with_candidates_df = ents_with_candidates_df.fillna("")
+            ents_with_candidates_df["link_correct"] = ""
+
+            cols_order = [
+                "item_uri",
+                "candidate_rank",
+                "item_description",
+                "ent_label",
+                "ent_text",
+                "candidate_title",
+                "candidate_type",
+                "candidate_uri",
+                "link_correct",
+                "candidate_description",
+            ]
+
+            other_cols = [
+                col for col in ents_with_candidates_df.columns if col not in cols_order
+            ]
+
+        if ents_with_link_candidates and ents_without_link_candidates:
+            df_linked_and_unlinked = pd.concat(
+                [ents_no_candidates_df, ents_with_candidates_df]
+            )
+        elif ents_with_link_candidates:
+            df_linked_and_unlinked = ents_with_candidates_df
+        elif ents_without_link_candidates:
+            df_linked_and_unlinked = ents_no_candidates_df
 
         df_linked_and_unlinked = df_linked_and_unlinked[cols_order + other_cols]
-        # ents_with_candidates_transformed_df = ents_with_candidates_transformed_df[cols_order + other_cols]
 
-        # for debugging: check all records have ended up in final dataframe
-        assert set(df_linked_and_unlinked["item_uri"]) == set(
-            [item["item_uri"] for item in self._entity_list]
-        )
+        if max_no_entities is None:
+            assert set(df_linked_and_unlinked["item_uri"]) == set(
+                [item["item_uri"] for item in self._entity_list]
+            )
 
         return df_linked_and_unlinked
 
-    def get_links_data_for_review(self) -> pd.DataFrame:
+    def get_links_data_for_review(self, max_no_entities: int = None) -> pd.DataFrame:
         """
         Returns a DataFrame of only entity mentions with a set of link candidates,
         with an entity-candidate pair on each line. Also creates a blank column for
         review results. This blank column should be populated with a '1' for correct
         matches and a '0' for incorrect matches.
+
+        Args:
+            max_no_entities (int, optional): used to limit the size of the returned DataFrame
+
+        Returns:
+            pd.DataFrame
         """
 
-        links_df = self.entity_list_as_dataframe.copy()
-        links_df = links_df[~links_df["candidate_rank"].isnull()]
-
-        return links_df
+        return self.entity_list_as_dataframe(
+            max_no_entities=max_no_entities, ents_without_link_candidates=False
+        )
 
     def _load_training_data(self, data_path: str) -> pd.DataFrame:
         """
@@ -869,10 +919,8 @@ class NERLoader:
         missing_cols = {
             "item_uri",
             "candidate_rank",
-            "item_description_with_ent",
             "ent_label",
             "ent_text",
-            "ent_sentence",
             "candidate_title",
             "candidate_type",
             "candidate_uri",
@@ -1031,6 +1079,10 @@ class NERLoader:
                 self.source_index, limit, random_sample, random_seed
             )
         )
+        self._source_record_cache = {
+            item[0]: {"description": item[1], "context": item[2]} for item in doc_list
+        }
+
         self.nlp = self._get_ner_model(model_type)
 
         if ignore_duplicated_ents and (
@@ -1068,7 +1120,7 @@ class NERLoader:
 
         return self.entity_list
 
-    def export_entity_list_to_json(
+    def export_entity_data_to_json(
         self, output_path: str, include_link_candidates: bool
     ):
         """Export entity list to JSON
@@ -1093,9 +1145,16 @@ class NERLoader:
             )
 
         with open(output_path, "w") as f:
-            json.dump(self._entity_list, f)
+            json.dump(
+                {
+                    "_entity_list": self._entity_list,
+                    "_source_record_cache": self._source_record_cache,
+                    "_target_record_cache": self._target_record_cache,
+                },
+                f,
+            )
 
-        logger.info(f"Entity list saved to {output_path}")
+        logger.info(f"Entity list and document caches saved to {output_path}")
 
     def import_entity_list_from_json(self, input_path: str):
         """Import entity list from JSON. Overwrites `NERLoader._entity_list`.
@@ -1105,7 +1164,10 @@ class NERLoader:
         """
 
         with open(input_path, "r") as f:
-            self._entity_list = json.load(f)
+            ent_data = json.load(f)
+            self._entity_list = ent_data["_entity_list"]
+            self._source_record_cache = ent_data["_source_record_cache"]
+            self._target_record_cache = ent_data["_target_record_cache"]
 
         logger.info(f"Entity list loaded from {input_path}")
 
@@ -1157,7 +1219,7 @@ class NERLoader:
             f"Loading {len(self._entity_list)} entities into {self.source_index}"
         )
 
-        entity_df = self.entity_list_as_dataframe
+        entity_df = self.entity_list_as_dataframe()
 
         if "candidate_rank" not in entity_df.columns:
             # there are no link candidates so we can load everything in and stop here
@@ -1176,7 +1238,7 @@ class NERLoader:
                     "Flag `force_load_without_linker` has been set to True, so all entities are being loaded with the entity text as the object."
                 )
                 entity_df_unique = entity_df.drop_duplicates(
-                    subset=["item_uri", "ent_label", "item_description_with_ent"],
+                    subset=["item_uri", "ent_label", "ent_text"],
                     ignore_index=True,
                 )
                 self._load_entities_into_es_no_link_candidates(
@@ -1344,16 +1406,27 @@ class NERLoader:
                     n=candidates_per_entity_mention * 2,
                     reduce_to_key_fields=True,
                 )
-                link_candidates = [
-                    i for i in link_candidates if i["uri"] != item["item_uri"]
+                link_candidates_uris = [
+                    i["uri"] for i in link_candidates if i["uri"] != item["item_uri"]
                 ][:candidates_per_entity_mention]
                 entity_list_with_link_candidates.append(
-                    dict(item, **{"link_candidates": link_candidates})
+                    dict(item, **{"link_candidates": link_candidates_uris})
                 )
+
+                for candidate in link_candidates:
+                    self._target_record_cache.update(
+                        {
+                            candidate["uri"]: {
+                                k: v for k, v in candidate.items() if k != "uri"
+                            }
+                        }
+                    )
             else:
                 entity_list_with_link_candidates.append(item)
 
+        logger.debug("copying entity list (before)")
         self._entity_list = entity_list_with_link_candidates
+        logger.debug("copying entity list (after)")
 
         return self._entity_list
 
@@ -1423,7 +1496,7 @@ class NERLoader:
 
     def _reduce_target_doc_to_key_fields(self, doc: dict) -> dict:
         """
-        Reduce doc to target uri, title, description and alias fields. Run preprocessing function on description field.
+        Reduce doc to key fields specified by `self.target_fields`. Run preprocessing function on description field.
         """
 
         reduced_doc = {"uri": _get_dict_field_from_dot_notation(doc, "uri")}
@@ -1472,22 +1545,21 @@ class NERLoader:
                 # This split is used to get the original description (doc.text) from the augmented description
                 # (item_description) so that the entity boundaries can be used, then add the augmented parts
                 # back afterwards.
-                item_context_split = item_description.split(doc.text)
                 ent_text = ent._.alt_ent_text or ent.text
                 ent_data_list.append(
                     {
                         "item_uri": item_uri,
-                        "item_description": item_description,
-                        "item_description_with_ent": item_context_split[0]
-                        + doc.text[: doc[ent.start].idx]
-                        + self.entity_markers[0]
-                        + ent_text
-                        + self.entity_markers[1]
-                        + doc.text[doc[ent.start].idx + len(ent.text) :]
-                        + item_context_split[1],
+                        # "item_description": item_description,
+                        # "item_description_with_ent": item_context_split[0]
+                        # + doc.text[: doc[ent.start].idx]
+                        # + self.entity_markers[0]
+                        # + ent_text
+                        # + self.entity_markers[1]
+                        # + doc.text[doc[ent.start].idx + len(ent.text) :]
+                        # + item_context_split[1],
                         "ent_label": ent.label_,
                         "ent_text": ent_text,
-                        "ent_sentence": ent.sent.text,
+                        # "ent_sentence": ent.sent.text,
                     }
                 )
 
@@ -1499,19 +1571,20 @@ class NERLoader:
         limit: Optional[int] = None,
         random_sample: bool = True,
         random_seed: int = 42,
-    ) -> Generator[List[Tuple[str, str]], None, None]:
+    ) -> Generator[Tuple[str, str, str], None, None]:
         """
-        Returns a generator of document IDs and descriptions from the Elasticsearch index, batched according to
-            `self.batch_size` and limited according to `limit`. Only documents with an XSD.description value are
-            returned, and these are processed by the function specified in class instance creation.
+        Returns a generator of document IDs and descriptions and contexts from the Elasticsearch index, limited according to `limit`.
+            Only documents with an XSD.description value are returned, and these are processed by the function specified in class
+            instance creation.
 
         Args:
+            index (str): Elasticsearch index
             limit (Optional[int], optional): limit the number of documents to get and therefore load. Defaults to None.
             random_sample (bool, optional): whether to take documents at random. Defaults to True.
             random_seed (int, optional): random seed to use if random sampling is enabled using the `random_sample` parameter. Defaults to 42.
 
         Returns:
-            Generator[List[Tuple[str, str]]]: generator of lists with length `self.batch_size`, where each list contains `(uri, description)` tuples.
+            Generator[Tuple[str, str, str], None, None]: generator of tuples with the form `(uri, description, context)`.
         """
 
         if random_sample:

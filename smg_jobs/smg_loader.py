@@ -1085,7 +1085,7 @@ def load_ner_annotations(
 
         # also optionally save list of entities
         if entity_list_save_path:
-            ner_loader.export_entity_list_to_json(
+            ner_loader.export_entity_data_to_json(
                 entity_list_save_path, include_link_candidates=False
             )
 
