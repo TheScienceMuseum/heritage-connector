@@ -1156,7 +1156,7 @@ class NERLoader:
 
         logger.info(f"Entity list and document caches saved to {output_path}")
 
-    def import_entity_list_from_json(self, input_path: str):
+    def import_entity_data_from_json(self, input_path: str):
         """Import entity list from JSON. Overwrites `NERLoader._entity_list`.
 
         Args:

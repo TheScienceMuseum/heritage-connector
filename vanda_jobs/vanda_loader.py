@@ -431,7 +431,7 @@ def load_ner_annotations(
     if entity_list_data_path:
         # we assume that the entity list JSON does not contain link candidates,
         # i.e. that `include_link_candidates` was False in `export_entity_list_to_json`
-        ner_loader.import_entity_list_from_json(entity_list_data_path)
+        ner_loader.import_entity_data_from_json(entity_list_data_path)
     else:
         ner_loader.get_list_of_entities_from_source_index(
             model_type, spacy_batch_size=16
