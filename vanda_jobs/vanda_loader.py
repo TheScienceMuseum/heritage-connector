@@ -437,7 +437,14 @@ def load_ner_annotations(
             model_type, spacy_batch_size=16
         )
 
-    ner_loader.get_link_candidates_from_target_index(candidates_per_entity_mention=15)
+    if ner_loader.has_link_candidates:
+        logger.info(
+            "Link candidates present in imported entity list. Skipping getting link candidates."
+        )
+    else:
+        ner_loader.get_link_candidates_from_target_index(
+            candidates_per_entity_mention=15
+        )
 
     if use_trained_linker:
         # load NEL training data

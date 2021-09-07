@@ -767,6 +767,14 @@ class NERLoader:
         """
         return self._entity_list
 
+    @property
+    def has_link_candidates(self) -> bool:
+        for _dict in self._entity_list:
+            if "link_candidates" in _dict:
+                return True
+
+        return False
+
     def entity_list_as_dataframe(
         self,
         max_no_entities: int = None,
@@ -1289,7 +1297,7 @@ class NERLoader:
 
         # Split data into 'linked' and 'unlinked' depending on whether there is a positive prediction
         # of a link for each entity
-        for _, group in data.groupby(["item_uri", "item_description_with_ent"]):
+        for _, group in data.groupby(["item_uri", "ent_label", "ent_text"]):
             group_uri = group["item_uri"].iloc[0]
             group_ent_type = group["ent_label"].iloc[0]
             group_ent_text = group["ent_text"].iloc[0]
