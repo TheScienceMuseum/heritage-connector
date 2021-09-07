@@ -228,38 +228,35 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
             np.ndarray: X
         """
 
+        _ent_mention_col = data[ent_mention_col].astype(str)
+        _ent_context_col = data[ent_context_col].astype(str)
+        _candidate_title_col = data[candidate_title_col].astype(str)
+        _candidate_context_col = data[candidate_context_col].astype(str)
+
         feats = (
-            self._generate_similarity_fuzz_sort(
-                data[ent_mention_col], data[candidate_title_col]
-            ),
+            self._generate_similarity_fuzz_sort(_ent_mention_col, _candidate_title_col),
             self._generate_similarity_levenshtein(
-                data[ent_mention_col], data[candidate_title_col]
+                _ent_mention_col, _candidate_title_col
             ),
             self._generate_similarity_jarowinkler(
-                data[ent_mention_col], data[candidate_title_col]
+                _ent_mention_col, _candidate_title_col
             ),
             self._generate_similarity_fuzz_sort_ignore_suffixes(
-                data[ent_mention_col], data[candidate_title_col]
+                _ent_mention_col, _candidate_title_col
             ),
             self._generate_similarity_jarowinkler(
-                data[ent_context_col], data[candidate_context_col]
+                _ent_context_col, _candidate_context_col
             ),
-            self._generate_similarity_jaccard(
-                data[ent_context_col], data[candidate_context_col]
-            ),
+            self._generate_similarity_jaccard(_ent_context_col, _candidate_context_col),
             self._generate_similarity_sorensen_dice(
-                data[ent_context_col], data[candidate_context_col]
+                _ent_context_col, _candidate_context_col
             ),
-            self._generate_col_a_in_col_b(
-                data[ent_mention_col], data[candidate_title_col]
-            ),
-            self._generate_col_a_in_col_b(
-                data[candidate_title_col], data[ent_mention_col]
-            ),
+            self._generate_col_a_in_col_b(_ent_mention_col, _candidate_title_col),
+            self._generate_col_a_in_col_b(_candidate_title_col, _ent_mention_col),
             self._generate_type_features(data[ent_type_col], data[candidate_type_col]),
             self._generate_sentence_bert_cosdist(
-                data[ent_context_col],
-                data[candidate_context_col],
+                _ent_context_col,
+                _candidate_context_col,
                 # TODO: make missing_sim_value an argument to __init__?
                 missing_sim_value=0.5,
             ),
