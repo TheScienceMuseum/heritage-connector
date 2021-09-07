@@ -500,17 +500,22 @@ if __name__ == "__main__":
     load_join_data(join_data_path)
 
     # for running using a trained linker
-    # entity_list_data_path = "../GITIGNORE_DATA/NEL/entity_list_20210610-1035.json"
-    # load_ner_annotations(
-    #     "en_core_web_trf",
-    #     use_trained_linker=True,
-    #     entity_list_data_path=entity_list_data_path,
-    #     nel_training_data_path="../GITIGNORE_DATA/NEL/nel_train_data_20210610-1035_combined_with_review_data_fixed.xlsx",
-    # )
-    # for running to produce unlabelled training data at `nel_training_data_path`
+    entity_list_data_path = (
+        "../GITIGNORE_DATA/vanda_hc_data/NEL/entity_list_20210829-0102.json"
+    )
+    nel_training_data_path = "../GITIGNORE_DATA/vanda_hc_data/NEL/nel_train_data_manual_20210829-0102_annotated.xlsx"
     load_ner_annotations(
         "en_core_web_trf",
-        use_trained_linker=False,
-        entity_list_save_path=f"../GITIGNORE_DATA/vanda_hc_data/NEL/entity_list_{get_timestamp()}.json",
-        nel_training_data_path=f"../GITIGNORE_DATA/vanda_hc_data/NEL/nel_train_data_{get_timestamp()}.xlsx",
+        use_trained_linker=True,
+        entity_list_data_path=entity_list_data_path,
+        nel_training_data_path=nel_training_data_path,
+        # NOTE: we use a higher threshold here because lots of people descriptions are empty (see notebook)
+        linking_confidence_threshold=0.8,
     )
+    # for running to produce unlabelled training data at `nel_training_data_path`
+    # load_ner_annotations(
+    #     "en_core_web_trf",
+    #     use_trained_linker=False,
+    #     entity_list_save_path=f"../GITIGNORE_DATA/vanda_hc_data/NEL/entity_list_{get_timestamp()}.json",
+    #     nel_training_data_path=f"../GITIGNORE_DATA/vanda_hc_data/NEL/nel_train_data_{get_timestamp()}.xlsx",
+    # )
