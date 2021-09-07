@@ -13,6 +13,18 @@ Run a dump of either all or a subset of objects.
 There is a custom query script for dumping subsets of object data in the vanda/etc_apps repo. Currently I am using the following query to extract objects that are likely to have a significant overlap with The Science Museum.
 
 ```bash
+# Collection codes are:
+
+# "THES48601": "Textiles and Fashion Collection",
+# "THES48602": "Theatre and Performance Collection",
+
+# the category codes are:
+
+# THES48903 - Prints
+# THES48976 - Clocks & Watches
+# THES252963 - Posters
+# THES488881 - Transport
+
 elasticdump \
     --input=$ELASTIC_URL/$INDEX \
     --output=$DATA_PATH/$INDEX.jsonl \
