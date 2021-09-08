@@ -191,6 +191,90 @@ def load_object_data(data_path):
     return
 
 
+def create_people_disambiguating_description(row: pd.Series) -> str:
+    """
+    Original description col = BIOGRAPHY.
+    Components:
+    - NATIONALITY -> 'American photographer.'
+    - BIRTH_DATE + BIRTH_PLACE -> 'Born 1962, United Kingdom.'
+    - DEATH_DATE + DEATH_PLACE + CAUSE_OF_DEATH -> 'Died 1996 of heart attack.' (Add place if no overlap between
+        BIRTH_PLACE and DEATH_PLACE strings. Joined to founded string above)
+    - BIOGRAPHY (original description)
+    NOTE: must be used before dates are converted to numbers using `get_year_from_date_string`, so that
+    uncertainty such as 'about 1971' is added to the description.
+    """
+
+    # NATIONALITY + OCCUPATION (only uses first of each)
+    nationality = str(row["NATIONALITY"])
+    add_nationality = (nationality != "nan") and (
+        nationality.lower() not in row.BIOGRAPHY.lower()
+    )
+
+    if add_nationality:
+        nationality_occupation_str = f"{nationality.strip().title()}."
+    else:
+        nationality_occupation_str = ""
+
+    # BIRTH_PLACE + BIRTH_DATE
+    add_birth_place = (str(row["BIRTHPLACE"]) != "nan") and (
+        str(row["BIRTHPLACE"]).lower() not in row.BIOGRAPHY.lower()
+    )
+    add_birth_date = (str(row["BIRTHDATE_EARLIEST"]) != "nan") and (
+        str(row["BIRTHDATE_EARLIEST"]).lower() not in row.BIOGRAPHY.lower()
+    )
+
+    # Also check for dates minus suffixes, e.g. 200-250 should match with 200-250 AD and vice-versa
+    if re.findall(r"\d+-?\d*", str(row["BIRTHDATE_EARLIEST"])):
+        add_birth_date = add_birth_date and (
+            re.findall(r"\d+-?\d*", row["BIRTHDATE_EARLIEST"])[0].lower()
+            not in row.BIOGRAPHY.lower()
+        )
+
+    if add_birth_place and add_birth_date:
+        founded_str = (
+            f"Born in {row.BIRTHPLACE.strip()}, {row.BIRTHDATE_EARLIEST.strip()}."
+        )
+    elif add_birth_place:
+        founded_str = f"Born in {row.BIRTHPLACE.strip()}."
+    elif add_birth_date:
+        founded_str = f"Born {row.BIRTHDATE_EARLIEST.strip()}."
+    else:
+        founded_str = ""
+
+    # DEATH_PLACE + DEATH_DATE
+    add_death_place = (
+        row["DEATHPLACE"]
+        and (str(row["DEATHPLACE"]) != "nan")
+        and (str(row["DEATHPLACE"]).lower() not in row.BIOGRAPHY.lower())
+        and (str(row["DEATHPLACE"]) not in str(row["BIRTHPLACE"]))
+        and (str(row["BIRTHPLACE"]) not in str(row["DEATHPLACE"]))
+    )
+
+    if add_death_place:
+        dissolved_str = f"Died in {row.DEATHPLACE.strip()}."
+    else:
+        dissolved_str = ""
+
+    # Assemble
+    dates_str = " ".join([founded_str, dissolved_str]).strip()
+
+    # add space and full stop (if needed) to end of description
+    if row.BIOGRAPHY and str(row.BIOGRAPHY) != "nan":
+        description = (
+            row.BIOGRAPHY.strip()
+            if row.BIOGRAPHY.strip()[-1] == "."
+            else f"{row.BIOGRAPHY.strip()}."
+        )
+    else:
+        description = ""
+
+    # we shuffle the components of the description so any model using them does not learn the order that we put them in
+    aug_description_components = [nationality_occupation_str, description, dates_str]
+    random.shuffle(aug_description_components)
+
+    return (" ".join(aug_description_components)).strip()
+
+
 def load_person_data(data_path):
     """Load data from ndjson files """
 
@@ -199,17 +283,81 @@ def load_person_data(data_path):
     person_df["BIOGRAPHY"] = person_df["BIOGRAPHY"].apply(
         lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
     )
-    person_df["DISAMBIGUATING_DESCRIPTION"] = person_df["BIOGRAPHY"].copy()
 
     #  convert birthdate to year
-    person_df["BIRTHDATE_EARLIEST"] = person_df["BIRTHDATE_EARLIEST"].apply(
-        lambda x: int(x[0:4]) if x is not None else x
+    person_df["BIRTHDATE_EARLIEST"] = (
+        person_df["BIRTHDATE_EARLIEST"]
+        .apply(lambda x: x[0:4] if x is not None else x)
+        .fillna("")
+    )
+    person_df["DISAMBIGUATING_DESCRIPTION"] = person_df.apply(
+        create_people_disambiguating_description, axis=1
     )
 
     logger.info("loading person data")
     record_loader.add_records(table_name, person_df, add_type=WD.Q5)
 
     return
+
+
+def create_org_disambiguating_description(row: pd.Series) -> str:
+    """
+    Original description col = BIOGRAPHY.
+    Components:
+    - NATIONALITY + OCCUPATION -> 'British Railway Board'
+    - BIRTH_DATE + BIRTH_PLACE -> 'Founded 1962, United Kingdom'
+    - DEATH_DATE + DEATH_PLACE -> 'Dissolved 1996.' (Add place if no overlap between
+        BIRTH_PLACE and DEATH_PLACE strings. Joined to founded string above)
+    - BIOGRAPHY (original description)
+    NOTE: must be used before dates are converted to numbers using `get_year_from_date_string`, so that
+    uncertainty such as 'about 1971' is added to the description.
+    """
+
+    founded_place_col = "FOUNDATION_PLACE_NAME"
+    founded_date_col = "FOUNDATION_DATE_EARLIEST"
+    description_col = "HISTORY"
+
+    # BIRTH_PLACE + BIRTH_DATE
+    add_birth_place = (str(row[founded_place_col]) != "nan") and (
+        str(row[founded_place_col]).lower() not in row[description_col].lower()
+    )
+    add_birth_date = (str(row[founded_date_col]) != "nan") and (
+        str(row[founded_date_col]).lower() not in row[description_col].lower()
+    )
+    # Also check for dates minus suffixes, e.g. 200-250 should match with 200-250 AD and vice-versa
+    if re.findall(r"\d+-?\d*", str(row[founded_date_col])):
+        add_birth_date = add_birth_date and (
+            re.findall(r"\d+-?\d*", row[founded_date_col])[0].lower()
+            not in row[description_col].lower()
+        )
+
+    if add_birth_place and add_birth_date:
+        founded_str = f"Founded in {row[founded_place_col].strip()}, {row[founded_date_col].strip()}."
+    elif add_birth_place:
+        founded_str = f"Founded in {row[founded_place_col].strip()}."
+    elif add_birth_date:
+        founded_str = f"Founded {row[founded_date_col].strip()}."
+    else:
+        founded_str = ""
+
+    # Assemble
+    dates_str = founded_str.strip()
+
+    # add space and full stop (if needed) to end of description
+    if row[description_col] and str(row[description_col]) != "nan":
+        description = (
+            row[description_col].strip()
+            if row[description_col].strip()[-1] == "."
+            else f"{row[description_col].strip()}."
+        )
+    else:
+        description = ""
+
+    # we shuffle the components of the description so any model using them does not learn the order that we put them in
+    aug_description_components = [description, dates_str]
+    random.shuffle(aug_description_components)
+
+    return (" ".join(aug_description_components)).strip()
 
 
 def load_org_data(data_path):
@@ -220,11 +368,16 @@ def load_org_data(data_path):
     org_df["HISTORY"] = org_df["HISTORY"].apply(
         lambda x: trim_description(x, MAX_NO_WORDS_PER_DESCRIPTION)
     )
-    org_df["DISAMBIGUATING_DESCRIPTION"] = org_df["HISTORY"].copy()
 
     #  convert founding date to year
-    org_df["FOUNDATION_DATE_EARLIEST"] = org_df["FOUNDATION_DATE_EARLIEST"].apply(
-        lambda x: int(x[0:4]) if x is not None else x
+    org_df["FOUNDATION_DATE_EARLIEST"] = (
+        org_df["FOUNDATION_DATE_EARLIEST"]
+        .apply(lambda x: x[0:4] if x is not None else x)
+        .fillna("")
+    )
+
+    org_df["DISAMBIGUATING_DESCRIPTION"] = org_df.apply(
+        create_org_disambiguating_description, axis=1
     )
 
     logger.info("loading org data")
