@@ -509,7 +509,7 @@ if __name__ == "__main__":
         use_trained_linker=True,
         entity_list_data_path=entity_list_data_path,
         nel_training_data_path=nel_training_data_path,
-        # NOTE: we use a higher threshold here because lots of people descriptions are empty (see notebook)
+        # NOTE: we use a higher threshold here than for SMG because lots of people descriptions are empty (see notebook)
         linking_confidence_threshold=0.8,
     )
     # for running to produce unlabelled training data at `nel_training_data_path`
