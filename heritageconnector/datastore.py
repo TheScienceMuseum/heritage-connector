@@ -853,16 +853,22 @@ class NERLoader:
             ents_with_candidates_df = pd.concat(
                 [
                     ents_with_candidates_df,
-                    ents_with_candidates_df["candidate_uri"]
-                    .map(self._target_record_cache)
-                    .apply(pd.Series)
-                    .add_prefix("candidate_"),
+                    pd.DataFrame(
+                        ents_with_candidates_df["candidate_uri"]
+                        .map(self._target_record_cache)
+                        .tolist()
+                    ).add_prefix("candidate_"),
                 ],
                 axis=1,
             )
-            ents_with_candidates_df["item_description"] = ents_with_candidates_df[
-                "item_uri"
-            ].apply(lambda x: self._source_record_cache.get(x, {}).get("description"))
+            source_description_cache = {
+                k: v.get("description") for k, v in self._source_record_cache.items()
+            }
+            ents_with_candidates_df["item_description"] = (
+                ents_with_candidates_df["item_uri"]
+                .astype("category")
+                .map(source_description_cache)
+            )
             ents_with_candidates_df = ents_with_candidates_df.fillna("")
             ents_with_candidates_df["link_correct"] = ""
 
@@ -886,18 +892,15 @@ class NERLoader:
         if ents_with_link_candidates and ents_without_link_candidates:
             df_linked_and_unlinked = pd.concat(
                 [ents_no_candidates_df, ents_with_candidates_df]
-            )
+            )[cols_order + other_cols]
+            if max_no_entities is None:
+                assert set(df_linked_and_unlinked["item_uri"]) == set(
+                    [item["item_uri"] for item in self._entity_list]
+                )
         elif ents_with_link_candidates:
-            df_linked_and_unlinked = ents_with_candidates_df
+            df_linked_and_unlinked = ents_with_candidates_df[cols_order + other_cols]
         elif ents_without_link_candidates:
             df_linked_and_unlinked = ents_no_candidates_df
-
-        df_linked_and_unlinked = df_linked_and_unlinked[cols_order + other_cols]
-
-        if max_no_entities is None:
-            assert set(df_linked_and_unlinked["item_uri"]) == set(
-                [item["item_uri"] for item in self._entity_list]
-            )
 
         return df_linked_and_unlinked
 
@@ -1227,10 +1230,9 @@ class NERLoader:
             f"Loading {len(self._entity_list)} entities into {self.source_index}"
         )
 
-        entity_df = self.entity_list_as_dataframe()
-
-        if "candidate_rank" not in entity_df.columns:
+        if not self.has_link_candidates:
             # there are no link candidates so we can load everything in and stop here
+            entity_df = self.entity_list_as_dataframe(ents_with_link_candidates=False)
             self._load_entities_into_es_no_link_candidates(entity_df, progress_bar=True)
             return
 
@@ -1245,6 +1247,9 @@ class NERLoader:
                 logger.info(
                     "Flag `force_load_without_linker` has been set to True, so all entities are being loaded with the entity text as the object."
                 )
+                entity_df = self.entity_list_as_dataframe(
+                    ents_with_link_candidates=False
+                )
                 entity_df_unique = entity_df.drop_duplicates(
                     subset=["item_uri", "ent_label", "ent_text"],
                     ignore_index=True,
@@ -1254,21 +1259,20 @@ class NERLoader:
                 )
                 return
 
-        entities_with_link_candidates, entities_without_link_candidates = (
-            entity_df[~entity_df["candidate_rank"].isna()],
-            entity_df[entity_df["candidate_rank"].isna()],
-        )
-
-        logger.info("Loading entity mentions with no link candidates by type...")
-        self._load_entities_into_es_no_link_candidates(
-            entities_without_link_candidates, progress_bar=True
-        )
-
-        num_batches = len(entity_df) // batch_size + 1
+        # logger.info("Loading entity mentions with no link candidates by type...")
+        # entities_without_link_candidates = self.entity_list_as_dataframe(ents_with_link_candidates=False)
+        # self._load_entities_into_es_no_link_candidates(
+        #     entities_without_link_candidates, progress_bar=True
+        # )
 
         logger.info(
             f"Predicting links for entity mentions with link candidates and loading them in, in batches of {batch_size}..."
         )
+        entities_with_link_candidates = self.entity_list_as_dataframe(
+            ents_without_link_candidates=False
+        )
+        num_batches = len(entities_with_link_candidates) // batch_size + 1
+
         for data_batch in tqdm(
             paginate_dataframe(entities_with_link_candidates, batch_size),
             total=num_batches,

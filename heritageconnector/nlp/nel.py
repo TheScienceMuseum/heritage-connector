@@ -271,6 +271,9 @@ class NELFeatureGenerator(BaseEstimator, TransformerMixin):
         """
         Returns text with any of the suffixes in suffix_list removed. Detection of suffixes is case-insensitive.
         """
+        if text == "":
+            return text
+
         mod_text = text[:-1] if text[-1] == "." else text
 
         for suffix in suffix_list:
