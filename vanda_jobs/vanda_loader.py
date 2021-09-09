@@ -656,7 +656,7 @@ if __name__ == "__main__":
     entity_list_data_path = (
         "../GITIGNORE_DATA/vanda_hc_data/NEL/entity_list_20210829-0102.json"
     )
-    nel_training_data_path = "../GITIGNORE_DATA/vanda_hc_data/NEL/nel_train_data_manual_20210829-0102_annotated.xlsx"
+    nel_training_data_path = "../GITIGNORE_DATA/vanda_hc_data/NEL/nel_train_data_manual_20210829-0102_annotated_new_descriptions.xlsx"
     load_ner_annotations(
         "en_core_web_trf",
         use_trained_linker=True,
