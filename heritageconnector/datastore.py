@@ -1259,11 +1259,13 @@ class NERLoader:
                 )
                 return
 
-        # logger.info("Loading entity mentions with no link candidates by type...")
-        # entities_without_link_candidates = self.entity_list_as_dataframe(ents_with_link_candidates=False)
-        # self._load_entities_into_es_no_link_candidates(
-        #     entities_without_link_candidates, progress_bar=True
-        # )
+        logger.info("Loading entity mentions with no link candidates by type...")
+        entities_without_link_candidates = self.entity_list_as_dataframe(
+            ents_with_link_candidates=False
+        )
+        self._load_entities_into_es_no_link_candidates(
+            entities_without_link_candidates, progress_bar=True
+        )
 
         logger.info(
             f"Predicting links for entity mentions with link candidates and loading them in, in batches of {batch_size}..."
