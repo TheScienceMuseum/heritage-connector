@@ -1,3 +1,14 @@
+"""
+Script to convert data stored in several Elasticsearch indices to triples. Also creates a relevant Wikidata cache.
+
+Indices:
+- heritageconnector: SMG collection
+- heritageconnector_blog: SMG blog
+- heritageconnector_journal: SMG journal
+- heritageconnector_vanda: V&A collection
+- config.ELASTIC_SEARCH_WIKI_INDEX (wikidump): Wikidata cache
+"""
+
 import sys
 
 import rdflib
@@ -23,6 +34,7 @@ entity_terms = [
     "entityDATE",
     "entityEVENT",
 ]
+
 
 def postprocess_heritageconnector_graph(g: rdflib.Graph) -> rdflib.Graph:
     """Fixing issues in the graph after they've happened. All things on here should also exist as TODOs in the loader or elsewhere in the code,
@@ -87,11 +99,14 @@ if len(sys.argv) == 2:
 method = sys.argv[1]
 file_path = sys.argv[2]
 
-logger.info("Creating and combining graphs from collection, blog and journal")
+logger.info(
+    "Creating and combining graphs from SMG collection, blog and journal, and V&A collection"
+)
 g_collection = es_to_rdflib_graph(index="heritageconnector")
 g_blog = es_to_rdflib_graph(index="heritageconnector_blog")
 g_journal = es_to_rdflib_graph(index="heritageconnector_journal")
-g = g_collection + g_blog + g_journal
+g_vanda = es_to_rdflib_graph(index="heritageconnector_vanda")
+g = g_collection + g_blog + g_journal + g_vanda
 
 logger.info("Postprocessing graph")
 g = postprocess_heritageconnector_graph(g)
