@@ -573,7 +573,8 @@ def wikidump_to_rdflib_graph(
         qids (Set[str], optional): a set of QIDs to retrieve.
         pids (Set[str], optional): a set of PIDs to retrieve (use "label" or "description" for label and description).
         es_index_max_terms_count (int, optional): the maximum number of QIDs that can be provided in one 'terms' query to Elasticsearch. Defaults to 65,536, which is the Elasticsearch default.
-        filter_exclude_lowercase_labels (bool, optional): whether to exclude Wikidata entities with lowercase labels (i.e. those that are not proper nouns) from the export. Defaults to True.
+        filter_exclude_lowercase_labels (bool, optional): whether to exclude Wikidata entities with lowercase labels (i.e. those that are not proper nouns) from the export. If True,
+            triples (entity, sdo:potentialAction, "delete") are added for each entity with a lowercase label - this makes them easy to find and delete. Defaults to True.
     """
 
     g = g or Graph()
@@ -610,7 +611,7 @@ def wikidump_to_rdflib_graph(
 
         if filter_exclude_lowercase_labels and ("labels" in doc["_source"].keys()):
             if doc["_source"]["labels"] == doc["_source"]["labels"].lower():
-                continue
+                g.add((head, SDO.potentialAction, Literal("delete")))
 
         if ((not pids) or ("label" in pids)) and ("labels" in doc["_source"].keys()):
             g.add((head, RDFS.label, Literal(doc["_source"]["labels"])))

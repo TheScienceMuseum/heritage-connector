@@ -10,16 +10,19 @@ Indices:
 """
 
 import sys
+import csv
+from typing import Literal
 
 import rdflib
+from rdflib.namespace import SDO
+from tqdm.auto import tqdm
 
 sys.path.append("..")
 
 from heritageconnector.config import config
 from heritageconnector.datastore import es_to_rdflib_graph, wikidump_to_rdflib_graph
 from heritageconnector.logging import get_logger
-from heritageconnector.namespace import SMGD, SMGO, SMGP, FOAF, OWL, HC
-import csv
+from heritageconnector.namespace import SMGD, SMGO, SMGP, FOAF, OWL, HC, WD
 
 logger = get_logger(__name__)
 
@@ -89,6 +92,24 @@ def postprocess_heritageconnector_graph(g: rdflib.Graph) -> rdflib.Graph:
     return g
 
 
+def remove_unlabelled_wikidata_entities(g: rdflib.Graph) -> rdflib.Graph:
+    """Remove Wikidata entities without labels from the graph. Operates inplace on `g`.
+
+    By definition, entities with titles that are proper nouns should be the only Wikidata entities in our KG.
+    Therefore, all Wikidata entities with lowercase titles (which, by the Wikidata style guide means they're not
+    proper nouns) should not be in the KG.
+
+    This should be run on the KG *after* the Wikidata cache is added.
+    """
+    logger.info("Removing Wikidata entities with no labels")
+
+    for s, p, o in tqdm(
+        g.triples((None, SDO.potentialAction, rdflib.Literal("delete")))
+    ):
+        g.remove((s, p, o))
+        g.remove((None, None, s))
+
+
 if len(sys.argv) == 1:
     raise ValueError(
         "output format (csv/ntriples) and filename must be provided as arguments"
@@ -131,6 +152,7 @@ wiki_g = wikidump_to_rdflib_graph(
 )
 
 g = g + wiki_g
+remove_unlabelled_wikidata_entities(g)
 
 if method == "csv":
     res = g.query(
