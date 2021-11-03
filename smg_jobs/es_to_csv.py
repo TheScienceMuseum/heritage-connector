@@ -99,7 +99,7 @@ def remove_unlabelled_wikidata_entities(g: rdflib.Graph) -> rdflib.Graph:
     Therefore, all Wikidata entities with lowercase titles (which, by the Wikidata style guide means they're not
     proper nouns) should not be in the KG.
 
-    This should be run on the KG *after* the Wikidata cache is added.
+    This should be run on the KG *after* the Wikidata cache is added, with the `filter_exclude_lowercase_labels` set to True.
     """
     logger.info("Removing Wikidata entities with no labels")
 

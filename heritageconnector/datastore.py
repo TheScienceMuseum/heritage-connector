@@ -561,6 +561,7 @@ def wikidump_to_rdflib_graph(
     pids: Set[str] = None,
     es_index_max_terms_count: int = 65536,
     filter_exclude_lowercase_labels: bool = True,
+    lowercase_labels_keep: Optional[List[str]] = ["Q6581097", "Q6581072"],
 ) -> Union[rdflib.Graph, bytes]:
     """
     Convert a Wikidata dump created using `elastic_wikidata` into RDF format.
@@ -575,6 +576,9 @@ def wikidump_to_rdflib_graph(
         es_index_max_terms_count (int, optional): the maximum number of QIDs that can be provided in one 'terms' query to Elasticsearch. Defaults to 65,536, which is the Elasticsearch default.
         filter_exclude_lowercase_labels (bool, optional): whether to exclude Wikidata entities with lowercase labels (i.e. those that are not proper nouns) from the export. If True,
             triples (entity, sdo:potentialAction, "delete") are added for each entity with a lowercase label - this makes them easy to find and delete. Defaults to True.
+        lowercase_labels_keep (List[str], optional): list of Wikidata entities with lowercase labels to keep. Useful for when Wikidata entities are
+            assigned explictly as objects in the main knowledge graph, e.g. genders, rather than having been erroneously identified by NER. By default
+            we keep the entities for 'male' and 'female'.
     """
 
     g = g or Graph()
@@ -610,7 +614,9 @@ def wikidump_to_rdflib_graph(
         head = WD[doc["_source"]["id"]]
 
         if filter_exclude_lowercase_labels and ("labels" in doc["_source"].keys()):
-            if doc["_source"]["labels"] == doc["_source"]["labels"].lower():
+            if (doc["_source"]["id"] not in lowercase_labels_keep) and (
+                doc["_source"]["labels"] == doc["_source"]["labels"].lower()
+            ):
                 g.add((head, SDO.potentialAction, Literal("delete")))
 
         if ((not pids) or ("label" in pids)) and ("labels" in doc["_source"].keys()):
