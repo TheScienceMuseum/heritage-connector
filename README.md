@@ -54,7 +54,3 @@ Cite as:
 ```
 Dutia, K, Stack, J. Heritage connector: A machine learning framework for building linked open data from museum collections. Applied AI Letters. 2021;e23. https://doi.org/10.1002/ail2.23
 ```
-
-## Deployment
-TODO
-
