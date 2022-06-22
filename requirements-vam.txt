@@ -32,7 +32,7 @@ MarkupSafe==2.0.0
 multidict==5.1.0
 murmurhash==1.0.5
 nltk==3.6.2
-numpy==1.20.3
+numpy==1.22.0
 openpyxl==3.0.7
 packaging==20.9
 pandas==1.2.4
