@@ -75,7 +75,7 @@ tqdm==4.60.0
 transformers==4.5.1
 typer==0.3.2
 typing-extensions==3.10.0.0
-urllib3==1.26.4
+urllib3==1.26.5
 uvicorn==0.13.4
 wasabi==0.8.2
 wrapt==1.12.1
