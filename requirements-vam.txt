@@ -31,7 +31,7 @@ lxml==4.6.3
 MarkupSafe==2.0.0
 multidict==5.1.0
 murmurhash==1.0.5
-nltk==3.6.2
+nltk==3.6.6
 numpy==1.20.3
 openpyxl==3.0.7
 packaging==20.9
